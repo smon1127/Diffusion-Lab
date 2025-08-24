@@ -57,8 +57,8 @@ const canvas = document.getElementsByTagName('canvas')[0];
 resizeCanvas();
 
 let config = {
-    SIM_RESOLUTION: 128,
-    DYE_RESOLUTION: 1024,
+    SIM_RESOLUTION: 256,        // Fixed simulation resolution for better performance
+    DYE_RESOLUTION: 1024,       // High quality by default
     CAPTURE_RESOLUTION: 512,
     DENSITY_DISSIPATION: 1,
     VELOCITY_DISSIPATION: 0.2,
@@ -67,8 +67,8 @@ let config = {
     CURL: 30,
     SPLAT_RADIUS: 0.25,
     SPLAT_FORCE: 6000,
-    SHADING: true,
-    COLORFUL: true,
+    SHADING: true,              // Adds 3D lighting effects for depth and realism
+    COLORFUL: false,            // Disabled by default for cleaner look
     COLOR_UPDATE_SPEED: 10,
     PAUSED: false,
     BACK_COLOR: { r: 0, g: 0, b: 0 },
@@ -206,11 +206,11 @@ function supportRenderTextureFormat (gl, internalFormat, format, type) {
 }
 
 function startGUI () {
-    var gui = new dat.GUI({ width: 300 });
+    var gui = new dat.GUI({ width: 240 });
     
     // Core quality settings
     gui.add(config, 'DYE_RESOLUTION', { 'high': 1024, 'medium': 512, 'low': 256, 'very low': 128 }).name('quality').onFinishChange(initFramebuffers);
-    gui.add(config, 'SIM_RESOLUTION', { '32': 32, '64': 64, '128': 128, '256': 256 }).name('sim resolution').onFinishChange(initFramebuffers);
+    // SIM_RESOLUTION is fixed at 256 for optimal performance
     
     // Essential fluid properties
     gui.add(config, 'DENSITY_DISSIPATION', 0, 4.0).name('density diffusion');
@@ -254,8 +254,8 @@ function startGUI () {
     // Mobile-optimized GUI behavior
     if (isMobile()) {
         // Don't auto-close on mobile, but make it more touch-friendly
-        gui.domElement.style.fontSize = '14px';
-        gui.domElement.style.width = '280px';
+        gui.domElement.style.fontSize = '13px';
+        gui.domElement.style.width = '260px';
         
         // Make controls more touch-friendly
         const controls = gui.domElement.querySelectorAll('.slider, .cr');
