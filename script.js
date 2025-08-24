@@ -231,13 +231,60 @@ function startGUI () {
     advancedFolder.add(config, 'SUNRAYS').name('sunrays').onFinishChange(updateKeywords);
     advancedFolder.add(config, 'SUNRAYS_WEIGHT', 0.3, 1.0).name('sunray weight');
     advancedFolder.add({ fun: captureScreenshot }, 'fun').name('screenshot');
+    
+    // Mobile performance toggle
+    if (isMobile()) {
+        let mobilePerformance = { enabled: true };
+        advancedFolder.add(mobilePerformance, 'enabled').name('mobile mode').onChange((value) => {
+            if (value) {
+                // Enable mobile optimizations
+                config.DYE_RESOLUTION = 512;
+                config.SIM_RESOLUTION = 64;
+                config.BLOOM_ITERATIONS = 4;
+            } else {
+                // Disable mobile optimizations
+                config.DYE_RESOLUTION = 1024;
+                config.SIM_RESOLUTION = 128;
+                config.BLOOM_ITERATIONS = 8;
+            }
+            initFramebuffers();
+        });
+    }
 
-    if (isMobile())
-        gui.close();
+    // Mobile-optimized GUI behavior
+    if (isMobile()) {
+        // Don't auto-close on mobile, but make it more touch-friendly
+        gui.domElement.style.fontSize = '14px';
+        gui.domElement.style.width = '280px';
+        
+        // Make controls more touch-friendly
+        const controls = gui.domElement.querySelectorAll('.slider, .cr');
+        controls.forEach(control => {
+            control.style.minHeight = '44px'; // Apple's recommended touch target size
+            control.style.padding = '8px';
+        });
+        
+        // Add mobile-specific performance settings
+        if (isMobile()) {
+            config.DYE_RESOLUTION = 512; // Default to medium quality on mobile
+            config.SIM_RESOLUTION = 64;   // Lower simulation resolution for mobile
+            config.BLOOM_ITERATIONS = 4;  // Reduce bloom iterations for mobile
+        }
+    }
 }
 
 function isMobile () {
-    return /Mobi|Android/i.test(navigator.userAgent);
+    return /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+           ('ontouchstart' in window) || 
+           (navigator.maxTouchPoints > 0);
+}
+
+function isTouchDevice() {
+    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+}
+
+function getDevicePixelRatio() {
+    return window.devicePixelRatio || 1;
 }
 
 function captureScreenshot () {
@@ -1131,6 +1178,16 @@ update();
 
 function update () {
     const dt = calcDeltaTime();
+    
+    // Mobile performance optimization
+    if (isMobile()) {
+        // Throttle updates on mobile for better performance
+        if (dt < 0.016) { // Cap at 60fps
+            requestAnimationFrame(update);
+            return;
+        }
+    }
+    
     if (resizeCanvas())
         initFramebuffers();
     updateColors(dt);
@@ -1152,6 +1209,26 @@ function calcDeltaTime () {
 function resizeCanvas () {
     let width = scaleByPixelRatio(canvas.clientWidth);
     let height = scaleByPixelRatio(canvas.clientHeight);
+    
+    // Mobile-specific canvas optimization
+    if (isMobile()) {
+        // Limit canvas size on mobile for better performance
+        const maxMobileSize = 1024;
+        if (width > maxMobileSize) {
+            width = maxMobileSize;
+        }
+        if (height > maxMobileSize) {
+            height = maxMobileSize;
+        }
+        
+        // Adjust for device pixel ratio on mobile
+        const dpr = getDevicePixelRatio();
+        if (dpr > 1) {
+            width = Math.min(width, window.innerWidth * dpr);
+            height = Math.min(height, window.innerHeight * dpr);
+        }
+    }
+    
     if (canvas.width != width || canvas.height != height) {
         canvas.width = width;
         canvas.height = height;
@@ -1441,6 +1518,21 @@ window.addEventListener('mouseup', () => {
 canvas.addEventListener('touchstart', e => {
     e.preventDefault();
     const touches = e.targetTouches;
+    
+    // Enhanced mobile touch handling
+    if (isMobile()) {
+        // Add haptic feedback if available
+        if (navigator.vibrate) {
+            navigator.vibrate(10);
+        }
+        
+        // Optimize for mobile performance
+        if (touches.length > 2) {
+            // Limit to 2 touches on mobile for better performance
+            return;
+        }
+    }
+    
     while (touches.length >= pointers.length)
         pointers.push(new pointerPrototype());
     for (let i = 0; i < touches.length; i++) {
@@ -1453,6 +1545,16 @@ canvas.addEventListener('touchstart', e => {
 canvas.addEventListener('touchmove', e => {
     e.preventDefault();
     const touches = e.targetTouches;
+    
+    // Mobile-optimized touch move handling
+    if (isMobile()) {
+        // Throttle touch events on mobile for better performance
+        if (e.timeStamp - (canvas.lastTouchMove || 0) < 16) { // ~60fps
+            return;
+        }
+        canvas.lastTouchMove = e.timeStamp;
+    }
+    
     for (let i = 0; i < touches.length; i++) {
         let pointer = pointers[i + 1];
         if (!pointer.down) continue;
@@ -1460,7 +1562,7 @@ canvas.addEventListener('touchmove', e => {
         let posY = scaleByPixelRatio(touches[i].pageY);
         updatePointerMoveData(pointer, posX, posY);
     }
-}, false);
+}, { passive: false });
 
 window.addEventListener('touchend', e => {
     const touches = e.changedTouches;

@@ -52,6 +52,56 @@
             .dg {
                 opacity: 0.9;
             }
+            
+            /* Mobile-optimized styles */
+            @media (max-width: 768px) {
+                .dg {
+                    width: 280px !important;
+                    font-size: 14px !important;
+                }
+                
+                .dg .cr {
+                    min-height: 44px !important;
+                    padding: 8px !important;
+                }
+                
+                .dg .slider {
+                    height: 8px !important;
+                }
+                
+                .dg .slider .slider-fg {
+                    height: 8px !important;
+                }
+                
+                .dg .slider .slider-bg {
+                    height: 8px !important;
+                }
+                
+                .dg .slider .slider-handle {
+                    width: 24px !important;
+                    height: 24px !important;
+                    margin-top: -8px !important;
+                }
+                
+                .dg .folder {
+                    margin-left: 10px !important;
+                }
+                
+                .dg .folder .dg {
+                    width: 260px !important;
+                }
+            }
+            
+            /* Touch-friendly improvements */
+            @media (hover: none) and (pointer: coarse) {
+                .dg .cr:hover {
+                    background-color: rgba(255, 255, 255, 0.1) !important;
+                }
+                
+                .dg .slider .slider-handle:hover {
+                    transform: scale(1.1) !important;
+                }
+            }
 
             .dg .property-name {
                 overflow: visible;
