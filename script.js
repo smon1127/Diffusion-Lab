@@ -205,74 +205,199 @@ function supportRenderTextureFormat (gl, internalFormat, format, type) {
     return status == gl.FRAMEBUFFER_COMPLETE;
 }
 
+// Modern UI Control System - No external dependencies
 function startGUI () {
-    var gui = new dat.GUI({ width: 240 });
-    
     // Core quality settings - hidden, fixed at high quality
     // DYE_RESOLUTION is fixed at 1024 (high quality) for optimal visuals
     // SIM_RESOLUTION is fixed at 256 for optimal performance
-    
-    // Essential fluid properties
-    gui.add(config, 'DENSITY_DISSIPATION', 0, 4.0).name('density diffusion');
-    gui.add(config, 'VELOCITY_DISSIPATION', 0, 4.0).name('velocity diffusion');
-    gui.add(config, 'PRESSURE', 0.0, 1.0).name('pressure');
-    gui.add(config, 'CURL', 0, 50).name('vorticity').step(1);
-    gui.add(config, 'SPLAT_RADIUS', 0.01, 1.0).name('splat radius');
-    
-    // Visual toggles
     // SHADING is always enabled for 3D lighting effects
-    gui.add(config, 'COLORFUL').name('colorful');
-    gui.add(config, 'PAUSED').name('paused').listen();
     
-    // Advanced settings in a single folder (closed by default)
-    let advancedFolder = gui.addFolder('Advanced');
-    advancedFolder.add(config, 'BLOOM').name('bloom').onFinishChange(updateKeywords);
-    advancedFolder.add(config, 'BLOOM_INTENSITY', 0.1, 2.0).name('bloom intensity');
-    advancedFolder.add(config, 'SUNRAYS').name('sunrays').onFinishChange(updateKeywords);
-    advancedFolder.add(config, 'SUNRAYS_WEIGHT', 0.3, 1.0).name('sunray weight');
-    advancedFolder.add({ fun: captureScreenshot }, 'fun').name('screenshot');
+    // Initialize modern UI handlers
+    initializeModernUI();
     
-    // Close the advanced folder by default
-    advancedFolder.close();
-    
-    // Mobile performance toggle
+    // Mobile performance optimizations
     if (isMobile()) {
-        let mobilePerformance = { enabled: true };
-        advancedFolder.add(mobilePerformance, 'enabled').name('mobile mode').onChange((value) => {
-            if (value) {
-                // Enable mobile optimizations
-                config.DYE_RESOLUTION = 512;
-                config.SIM_RESOLUTION = 64;
-                config.BLOOM_ITERATIONS = 4;
-            } else {
-                // Disable mobile optimizations
-                config.DYE_RESOLUTION = 1024;
-                config.SIM_RESOLUTION = 128;
-                config.BLOOM_ITERATIONS = 8;
-            }
-            initFramebuffers();
-        });
+        config.DYE_RESOLUTION = 512; // Default to medium quality on mobile
+        config.BLOOM_ITERATIONS = 4;  // Reduce bloom iterations for mobile
     }
+}
 
-    // Mobile-optimized GUI behavior
-    if (isMobile()) {
-        // Don't auto-close on mobile, but make it more touch-friendly
-        gui.domElement.style.fontSize = '13px';
-        gui.domElement.style.width = '260px';
-        
-        // Make controls more touch-friendly
-        const controls = gui.domElement.querySelectorAll('.slider, .cr');
-        controls.forEach(control => {
-            control.style.minHeight = '44px'; // Apple's recommended touch target size
-            control.style.padding = '8px';
-        });
-        
-        // Add mobile-specific performance settings
-        if (isMobile()) {
-            config.DYE_RESOLUTION = 512; // Default to medium quality on mobile
-            config.SIM_RESOLUTION = 64;   // Lower simulation resolution for mobile
-            config.BLOOM_ITERATIONS = 4;  // Reduce bloom iterations for mobile
+// Modern UI Event Handlers
+function initializeModernUI() {
+    // Add slider drag functionality
+    addSliderDragHandlers();
+    
+    // Initialize toggle states
+    updateToggleStates();
+    
+    // Initialize slider positions
+    updateSliderPositions();
+}
+
+function addSliderDragHandlers() {
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray'];
+    
+    sliders.forEach(slider => {
+        const handle = document.getElementById(slider + 'Handle');
+        if (handle) {
+            let isDragging = false;
+            
+            handle.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                e.preventDefault();
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    updateSliderFromMouse(e, slider);
+                }
+            });
+            
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+            
+            // Touch support
+            handle.addEventListener('touchstart', (e) => {
+                isDragging = true;
+                e.preventDefault();
+            });
+            
+            document.addEventListener('touchmove', (e) => {
+                if (isDragging) {
+                    updateSliderFromTouch(e, slider);
+                }
+            });
+            
+            document.addEventListener('touchend', () => {
+                isDragging = false;
+            });
         }
+    });
+}
+
+function updateSliderFromMouse(e, sliderName) {
+    const container = document.getElementById(sliderName + 'Fill').parentElement;
+    const rect = container.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    updateSliderValue(sliderName, percentage);
+}
+
+function updateSliderFromTouch(e, sliderName) {
+    const container = document.getElementById(sliderName + 'Fill').parentElement;
+    const rect = container.getBoundingClientRect();
+    const x = e.touches[0].clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    updateSliderValue(sliderName, percentage);
+}
+
+function handleSliderClick(event, sliderName, min, max) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    updateSliderValue(sliderName, percentage);
+}
+
+function updateSliderValue(sliderName, percentage) {
+    const sliderMap = {
+        'density': { min: 0, max: 4, prop: 'DENSITY_DISSIPATION', decimals: 2 },
+        'velocity': { min: 0, max: 4, prop: 'VELOCITY_DISSIPATION', decimals: 2 },
+        'pressure': { min: 0, max: 1, prop: 'PRESSURE', decimals: 2 },
+        'vorticity': { min: 0, max: 50, prop: 'CURL', decimals: 0 },
+        'splat': { min: 0.01, max: 1, prop: 'SPLAT_RADIUS', decimals: 2 },
+        'bloomIntensity': { min: 0.1, max: 2, prop: 'BLOOM_INTENSITY', decimals: 2 },
+        'sunray': { min: 0.3, max: 1, prop: 'SUNRAYS_WEIGHT', decimals: 2 }
+    };
+    
+    const slider = sliderMap[sliderName];
+    if (!slider) return;
+    
+    const value = slider.min + (slider.max - slider.min) * percentage;
+    config[slider.prop] = value;
+    
+    // Update UI
+    const fill = document.getElementById(sliderName + 'Fill');
+    const valueDisplay = document.getElementById(sliderName + 'Value');
+    
+    if (fill) fill.style.width = (percentage * 100) + '%';
+    if (valueDisplay) valueDisplay.textContent = value.toFixed(slider.decimals);
+}
+
+function updateSliderPositions() {
+    const sliderMap = {
+        'density': { prop: 'DENSITY_DISSIPATION', min: 0, max: 4 },
+        'velocity': { prop: 'VELOCITY_DISSIPATION', min: 0, max: 4 },
+        'pressure': { prop: 'PRESSURE', min: 0, max: 1 },
+        'vorticity': { prop: 'CURL', min: 0, max: 50 },
+        'splat': { prop: 'SPLAT_RADIUS', min: 0.01, max: 1 },
+        'bloomIntensity': { prop: 'BLOOM_INTENSITY', min: 0.1, max: 2 },
+        'sunray': { prop: 'SUNRAYS_WEIGHT', min: 0.3, max: 1 }
+    };
+    
+    Object.keys(sliderMap).forEach(sliderName => {
+        const slider = sliderMap[sliderName];
+        const percentage = (config[slider.prop] - slider.min) / (slider.max - slider.min);
+        updateSliderValue(sliderName, percentage);
+    });
+}
+
+function updateToggleStates() {
+    updateToggle('colorfulToggle', config.COLORFUL);
+    updateToggle('pausedToggle', config.PAUSED);
+    updateToggle('bloomToggle', config.BLOOM);
+    updateToggle('sunraysToggle', config.SUNRAYS);
+}
+
+function updateToggle(toggleId, state) {
+    const toggle = document.getElementById(toggleId);
+    if (toggle) {
+        if (state) {
+            toggle.classList.add('active');
+        } else {
+            toggle.classList.remove('active');
+        }
+    }
+}
+
+// Toggle Functions
+function togglePanel() {
+    const panel = document.getElementById('controlPanel');
+    panel.classList.toggle('collapsed');
+}
+
+function toggleColorful() {
+    config.COLORFUL = !config.COLORFUL;
+    updateToggle('colorfulToggle', config.COLORFUL);
+}
+
+function togglePaused() {
+    config.PAUSED = !config.PAUSED;
+    updateToggle('pausedToggle', config.PAUSED);
+}
+
+function toggleBloom() {
+    config.BLOOM = !config.BLOOM;
+    updateToggle('bloomToggle', config.BLOOM);
+    updateKeywords();
+}
+
+function toggleSunrays() {
+    config.SUNRAYS = !config.SUNRAYS;
+    updateToggle('sunraysToggle', config.SUNRAYS);
+    updateKeywords();
+}
+
+function toggleAdvanced() {
+    const content = document.getElementById('advancedContent');
+    const toggle = document.querySelector('.advanced-toggle span:first-child');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
+        toggle.textContent = '▼';
     }
 }
 

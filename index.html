@@ -21,262 +21,358 @@
         <meta property="og:url" content="https://paveldogreat.github.io/WebGL-Fluid-Simulation/">
         <meta property="og:image" content="https://paveldogreat.github.io/WebGL-Fluid-Simulation/logo.png">
 
-        <script type="text/javascript" src="dat.gui.min.js"></script>
+        <!-- Modern custom UI - no external dependencies -->
         <style>
-            @font-face {
-                font-family: 'iconfont';
-                src: url('iconfont.ttf') format('truetype');
+            /* Modern CSS Reset and Base Styles */
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                user-select: none;
             }
 
-            * {
-                user-select: none;
+            :root {
+                --primary-bg: #0a0a0a;
+                --secondary-bg: rgba(20, 20, 30, 0.95);
+                --control-bg: rgba(40, 40, 50, 0.9);
+                --accent-color: #00d4ff;
+                --accent-hover: #00b8e6;
+                --text-primary: #ffffff;
+                --text-secondary: #b0b0b0;
+                --border-color: rgba(255, 255, 255, 0.1);
+                --shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+                --radius: 12px;
+                --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             }
 
             html, body {
                 overflow: hidden;
-                background-color: #000;
-            }
-
-            body {
-                margin: 0;
-                position: fixed;
-                width: 100%;
+                background-color: var(--primary-bg);
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                color: var(--text-primary);
                 height: 100%;
+                margin: 0;
             }
 
             canvas {
                 width: 100%;
                 height: 100%;
+                display: block;
             }
 
-            .dg {
-                opacity: 0.9;
-                position: fixed !important;
-                bottom: 20px !important;
-                left: 20px !important;
-                top: auto !important;
-                right: auto !important;
-                width: 240px !important;
-                max-height: 80vh !important;
-                overflow-y: auto !important;
-                font-size: 12px !important;
-                z-index: 1000 !important;
-            }
-            
-            /* Make controls more compact but usable */
-            .dg .cr {
-                min-height: 36px !important;
-                padding: 6px 8px !important;
-                margin: 3px 0 !important;
-            }
-            
-            .dg .property-name {
-                font-size: 12px !important;
-                line-height: 1.3 !important;
-            }
-            
-            .dg .slider {
-                height: 10px !important;
-            }
-            
-            .dg .slider .slider-handle {
-                width: 22px !important;
-                height: 22px !important;
-                margin-top: -6px !important;
-            }
-            
-            .dg .folder {
-                margin-left: 8px !important;
-            }
-            
-            .dg .folder .dg {
-                width: 220px !important;
-            }
-            
-            /* Mobile-optimized styles */
-            @media (max-width: 768px) {
-                .dg {
-                    width: 260px !important;
-                    font-size: 13px !important;
-                    bottom: 15px !important;
-                    left: 15px !important;
-                }
-                
-                .dg .cr {
-                    min-height: 36px !important;
-                    padding: 6px !important;
-                }
-                
-                .dg .slider {
-                    height: 12px !important;
-                }
-                
-                .dg .slider .slider-fg {
-                    height: 12px !important;
-                }
-                
-                .dg .slider .slider-bg {
-                    height: 12px !important;
-                }
-                
-                .dg .slider .slider-handle {
-                    width: 24px !important;
-                    height: 24px !important;
-                    margin-top: -6px !important;
-                }
-                
-                .dg .folder {
-                    margin-left: 8px !important;
-                }
-                
-                .dg .folder .dg {
-                    width: 240px !important;
-                }
-            }
-            
-            /* Touch-friendly improvements */
-            @media (hover: none) and (pointer: coarse) {
-                .dg .cr:hover {
-                    background-color: rgba(255, 255, 255, 0.1) !important;
-                }
-                
-                .dg .slider .slider-handle:hover {
-                    transform: scale(1.1) !important;
-                }
+            /* Modern Control Panel */
+            .control-panel {
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                width: 280px;
+                max-height: 80vh;
+                background: var(--secondary-bg);
+                backdrop-filter: blur(20px);
+                border: 1px solid var(--border-color);
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+                z-index: 1000;
+                overflow: hidden;
+                transition: var(--transition);
             }
 
-            .dg .property-name {
-                overflow: visible;
+            .control-panel.collapsed {
+                height: 50px;
+                overflow: hidden;
             }
 
-            .bigFont {
-                font-size: 150%;
-                color: #8C8C8C;
-            }
-
-            .cr.function.appBigFont {
-                font-size: 150%;
-                line-height: 27px;
-                color: #A5F8D3;
-                background-color: #023C40;
-            }
-
-            .cr.function.appBigFont .property-name {
-                float: none;
-            }
-
-            .cr.function.appBigFont .icon {
-                position: sticky;
-                bottom: 27px;
-            }
-
-            .icon {
-                font-family: 'iconfont';
-                font-size: 130%;
-                float: right;
-            }
-
-            .twitter:before {
-                content: 'a';
-            }
-
-            .github:before {
-                content: 'b';
-            }
-
-            .app:before {
-                content: 'c';
-            }
-
-            .discord:before {
-                content: 'd';
-            }
-
-            .promo {
-                display: none;
-                /* display: table; */
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                z-index: 1;
-                overflow: auto;
-                color: lightblue;
-                background-color: rgba(0,0,0,0.4);
-                animation: promo-appear-animation 0.35s ease-out;
-            }
-
-            .promo-middle {
-                display: table-cell;
-                vertical-align: middle;
-            }
-
-            .promo-content {
-                width: 80vw;
-                height: 80vh;
-                max-width: 80vh;
-                max-height: 80vw;
-                margin: auto;
-                padding: 0;
-                font-size: 2.8vmax;
-                font-family: Futura, "Trebuchet MS", Arial, sans-serif;
-                text-align: center;
-                background-image: url("promo_back.png");
-                background-position: center;
-                background-repeat: no-repeat;
-                background-size: cover;
-                border-radius: 15px;
-                box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
-            }
-
-            .promo-header {
-                height: 10%;
-                padding: 2px 16px;
-            }
-
-            .promo-close {
-                width: 10%;
-                height: 100%;
-                text-align: left;
-                float: left;
-                font-size: 1.3em;
-                /* transition: 0.2s; */
-            }
-
-            .promo-close:hover {
-                /* transform: scale(1.25); */
+            /* Header */
+            .panel-header {
+                padding: 15px 20px;
+                background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+                color: white;
+                font-weight: 600;
+                font-size: 14px;
                 cursor: pointer;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                transition: var(--transition);
             }
 
-            .promo-body {
-                padding: 8px 16px 16px 16px;
-                margin: auto;
+            .panel-header:hover {
+                background: linear-gradient(135deg, var(--accent-hover), var(--accent-color));
             }
 
-            .promo-body p {
-                margin-top: 0;
-                mix-blend-mode: color-dodge;
+            .toggle-icon {
+                transition: var(--transition);
+                font-size: 12px;
             }
 
-            .link {
+            .control-panel.collapsed .toggle-icon {
+                transform: rotate(180deg);
+            }
+
+            /* Content */
+            .panel-content {
+                padding: 20px;
+                max-height: calc(80vh - 50px);
+                overflow-y: auto;
+                scrollbar-width: thin;
+                scrollbar-color: var(--accent-color) transparent;
+            }
+
+            .panel-content::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            .panel-content::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            .panel-content::-webkit-scrollbar-thumb {
+                background: var(--accent-color);
+                border-radius: 3px;
+            }
+
+            /* Control Groups */
+            .control-group {
+                margin-bottom: 24px;
+            }
+
+            .control-group:last-child {
+                margin-bottom: 0;
+            }
+
+            .group-title {
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--text-secondary);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 12px;
+                padding-bottom: 6px;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            /* Modern Sliders */
+            .control-item {
+                margin-bottom: 16px;
+            }
+
+            .control-label {
+                display: block;
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--text-primary);
+                margin-bottom: 8px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .control-value {
+                font-size: 12px;
+                color: var(--accent-color);
+                font-weight: 600;
+                background: rgba(0, 212, 255, 0.1);
+                padding: 2px 8px;
+                border-radius: 4px;
+            }
+
+            .slider-container {
+                position: relative;
+                height: 6px;
+                background: var(--control-bg);
+                border-radius: 3px;
+                cursor: pointer;
+                transition: var(--transition);
+            }
+
+            .slider-container:hover {
+                background: rgba(60, 60, 70, 0.9);
+            }
+
+            .slider-fill {
+                height: 100%;
+                background: linear-gradient(90deg, var(--accent-color), var(--accent-hover));
+                border-radius: 3px;
+                transition: var(--transition);
+                position: relative;
+            }
+
+            .slider-handle {
+                position: absolute;
+                right: -8px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 16px;
+                height: 16px;
+                background: white;
+                border: 2px solid var(--accent-color);
+                border-radius: 50%;
+                cursor: pointer;
+                transition: var(--transition);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            }
+
+            .slider-handle:hover {
+                transform: translateY(-50%) scale(1.2);
+                box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+            }
+
+            /* Modern Toggles */
+            .toggle-container {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                cursor: pointer;
+                transition: var(--transition);
+            }
+
+            .toggle-container:hover {
+                opacity: 0.8;
+            }
+
+            .toggle-switch {
+                width: 44px;
+                height: 24px;
+                background: var(--control-bg);
+                border-radius: 12px;
+                position: relative;
+                transition: var(--transition);
+                border: 1px solid var(--border-color);
+            }
+
+            .toggle-switch.active {
+                background: var(--accent-color);
+                border-color: var(--accent-color);
+            }
+
+            .toggle-handle {
+                width: 18px;
+                height: 18px;
+                background: white;
+                border-radius: 50%;
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                transition: var(--transition);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            }
+
+            .toggle-switch.active .toggle-handle {
+                transform: translateX(20px);
+            }
+
+            /* Advanced Section */
+            .advanced-section {
+                border-top: 1px solid var(--border-color);
+                margin-top: 20px;
+                padding-top: 20px;
+            }
+
+            .advanced-toggle {
+                cursor: pointer;
+                padding: 8px 0;
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--text-secondary);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                transition: var(--transition);
+            }
+
+            .advanced-toggle:hover {
+                color: var(--accent-color);
+            }
+
+            .advanced-content {
+                max-height: 0;
+                overflow: hidden;
+                transition: var(--transition);
+            }
+
+            .advanced-content.expanded {
+                max-height: 300px;
+                margin-top: 16px;
+            }
+
+            /* Button */
+            .modern-button {
                 width: 100%;
-                display: inline-block;
+                padding: 12px;
+                background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+                border: none;
+                border-radius: 8px;
+                color: white;
+                font-weight: 600;
+                font-size: 13px;
+                cursor: pointer;
+                transition: var(--transition);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
             }
 
-            .link img {
-                width: 100%;
+            .modern-button:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 8px 20px rgba(0, 212, 255, 0.3);
             }
 
-            @keyframes promo-appear-animation {
-                0% {
-                    transform: scale(2.0);
+            .modern-button:active {
+                transform: translateY(0);
+            }
+
+            /* Mobile Responsive */
+            @media (max-width: 768px) {
+                .control-panel {
+                    width: 260px;
+                    bottom: 15px;
+                    left: 15px;
+                }
+
+                .panel-content {
+                    padding: 16px;
+                }
+
+                .slider-handle {
+                    width: 20px;
+                    height: 20px;
+                    right: -10px;
+                }
+
+                .toggle-switch {
+                    width: 50px;
+                    height: 28px;
+                }
+
+                .toggle-handle {
+                    width: 22px;
+                    height: 22px;
+                    top: 2px;
+                }
+
+                .toggle-switch.active .toggle-handle {
+                    transform: translateX(22px);
+                }
+            }
+
+            /* Animations */
+            @keyframes fadeIn {
+                from {
                     opacity: 0;
+                    transform: translateY(20px);
                 }
-                100% {
-                    transform: scale(1.0);
+                to {
                     opacity: 1;
+                    transform: translateY(0);
                 }
+            }
+
+            .control-panel {
+                animation: fadeIn 0.5s ease-out;
+            }
+
+            /* Hide promo popup for clean experience */
+            .promo {
+                display: none !important;
             }
         </style>
         <script>
@@ -289,22 +385,156 @@
     <body>
         <canvas></canvas>
 
-        <!-- Mother of God, pls forgive me -->
-        <div class="promo">
-            <div class="promo-middle">
-                <div class="promo-content">
-                    <div class="promo-header">
-                        <span class="promo-close">&times;</span>
+        <!-- Modern Control Panel -->
+        <div class="control-panel" id="controlPanel">
+            <div class="panel-header" onclick="togglePanel()">
+                <span>Fluid Controls</span>
+                <span class="toggle-icon">▼</span>
+            </div>
+            
+            <div class="panel-content" id="panelContent">
+                <!-- Physics Controls -->
+                <div class="control-group">
+                    <div class="group-title">Physics</div>
+                    
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Density Diffusion</span>
+                            <span class="control-value" id="densityValue">1.00</span>
+                        </div>
+                        <div class="slider-container" onclick="handleSliderClick(event, 'density', 0, 4)">
+                            <div class="slider-fill" id="densityFill" style="width: 25%">
+                                <div class="slider-handle" id="densityHandle"></div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="promo-body">
-                        <p>Try Fluid Simulation app!</p>
-                        <div class="links-container">
-                            <a class="link" id="apple_link" target="_blank">
-                                <img class="link-img" alt="Download on the App Store" src="app_badge.png"/>
-                            </a>
-                            <a class="link" id="google_link" target="_blank">
-                                <img class="link-img" alt="Get it on Google Play" src="gp_badge.png"/>
-                            </a>
+                    
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Velocity Diffusion</span>
+                            <span class="control-value" id="velocityValue">0.20</span>
+                        </div>
+                        <div class="slider-container" onclick="handleSliderClick(event, 'velocity', 0, 4)">
+                            <div class="slider-fill" id="velocityFill" style="width: 5%">
+                                <div class="slider-handle" id="velocityHandle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Pressure</span>
+                            <span class="control-value" id="pressureValue">0.80</span>
+                        </div>
+                        <div class="slider-container" onclick="handleSliderClick(event, 'pressure', 0, 1)">
+                            <div class="slider-fill" id="pressureFill" style="width: 80%">
+                                <div class="slider-handle" id="pressureHandle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Vorticity</span>
+                            <span class="control-value" id="vorticityValue">30</span>
+                        </div>
+                        <div class="slider-container" onclick="handleSliderClick(event, 'vorticity', 0, 50)">
+                            <div class="slider-fill" id="vorticityFill" style="width: 60%">
+                                <div class="slider-handle" id="vorticityHandle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Splat Radius</span>
+                            <span class="control-value" id="splatValue">0.25</span>
+                        </div>
+                        <div class="slider-container" onclick="handleSliderClick(event, 'splat', 0.01, 1)">
+                            <div class="slider-fill" id="splatFill" style="width: 24%">
+                                <div class="slider-handle" id="splatHandle"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Visual Controls -->
+                <div class="control-group">
+                    <div class="group-title">Visual</div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="toggleColorful()">
+                            <div class="toggle-switch" id="colorfulToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                            <span>Colorful</span>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="togglePaused()">
+                            <div class="toggle-switch" id="pausedToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                            <span>Paused</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Advanced Section -->
+                <div class="advanced-section">
+                    <div class="advanced-toggle" onclick="toggleAdvanced()">
+                        <span>▶</span>
+                        <span>Advanced</span>
+                    </div>
+                    
+                    <div class="advanced-content" id="advancedContent">
+                        <div class="control-item">
+                            <div class="toggle-container" onclick="toggleBloom()">
+                                <div class="toggle-switch active" id="bloomToggle">
+                                    <div class="toggle-handle"></div>
+                                </div>
+                                <span>Bloom</span>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Bloom Intensity</span>
+                                <span class="control-value" id="bloomIntensityValue">0.80</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'bloomIntensity', 0.1, 2)">
+                                <div class="slider-fill" id="bloomIntensityFill" style="width: 37%">
+                                    <div class="slider-handle" id="bloomIntensityHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="toggle-container" onclick="toggleSunrays()">
+                                <div class="toggle-switch active" id="sunraysToggle">
+                                    <div class="toggle-handle"></div>
+                                </div>
+                                <span>Sunrays</span>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Sunray Weight</span>
+                                <span class="control-value" id="sunrayValue">1.00</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'sunray', 0.3, 1)">
+                                <div class="slider-fill" id="sunrayFill" style="width: 100%">
+                                    <div class="slider-handle" id="sunrayHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <button class="modern-button" onclick="captureScreenshot()">
+                                Take Screenshot
+                            </button>
                         </div>
                     </div>
                 </div>
