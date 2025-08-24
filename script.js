@@ -208,8 +208,8 @@ function supportRenderTextureFormat (gl, internalFormat, format, type) {
 function startGUI () {
     var gui = new dat.GUI({ width: 240 });
     
-    // Core quality settings
-    gui.add(config, 'DYE_RESOLUTION', { 'high': 1024, 'medium': 512, 'low': 256, 'very low': 128 }).name('quality').onFinishChange(initFramebuffers);
+    // Core quality settings - hidden, fixed at high quality
+    // DYE_RESOLUTION is fixed at 1024 (high quality) for optimal visuals
     // SIM_RESOLUTION is fixed at 256 for optimal performance
     
     // Essential fluid properties
@@ -220,17 +220,20 @@ function startGUI () {
     gui.add(config, 'SPLAT_RADIUS', 0.01, 1.0).name('splat radius');
     
     // Visual toggles
-    gui.add(config, 'SHADING').name('shading').onFinishChange(updateKeywords);
+    // SHADING is always enabled for 3D lighting effects
     gui.add(config, 'COLORFUL').name('colorful');
     gui.add(config, 'PAUSED').name('paused').listen();
     
-    // Advanced settings in a single folder
+    // Advanced settings in a single folder (closed by default)
     let advancedFolder = gui.addFolder('Advanced');
     advancedFolder.add(config, 'BLOOM').name('bloom').onFinishChange(updateKeywords);
     advancedFolder.add(config, 'BLOOM_INTENSITY', 0.1, 2.0).name('bloom intensity');
     advancedFolder.add(config, 'SUNRAYS').name('sunrays').onFinishChange(updateKeywords);
     advancedFolder.add(config, 'SUNRAYS_WEIGHT', 0.3, 1.0).name('sunray weight');
     advancedFolder.add({ fun: captureScreenshot }, 'fun').name('screenshot');
+    
+    // Close the advanced folder by default
+    advancedFolder.close();
     
     // Mobile performance toggle
     if (isMobile()) {
