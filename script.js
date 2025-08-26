@@ -24,32 +24,7 @@ SOFTWARE.
 
 'use strict';
 
-// Mobile promo section
-
-const promoPopup = document.getElementsByClassName('promo')[0];
-const promoPopupClose = document.getElementsByClassName('promo-close')[0];
-
-if (isMobile()) {
-    setTimeout(() => {
-        promoPopup.style.display = 'table';
-    }, 20000);
-}
-
-promoPopupClose.addEventListener('click', e => {
-    promoPopup.style.display = 'none';
-});
-
-const appleLink = document.getElementById('apple_link');
-appleLink.addEventListener('click', e => {
-    ga('send', 'event', 'link promo', 'app');
-    window.open('https://apps.apple.com/us/app/fluid-simulation/id1443124993');
-});
-
-const googleLink = document.getElementById('google_link');
-googleLink.addEventListener('click', e => {
-    ga('send', 'event', 'link promo', 'app');
-    window.open('https://play.google.com/store/apps/details?id=games.paveldogreat.fluidsimfree');
-});
+// Mobile promo section - removed for modern UI
 
 // Simulation section
 
@@ -113,7 +88,10 @@ if (!ext.supportLinearFiltering) {
     config.SUNRAYS = false;
 }
 
-startGUI();
+// Wait for DOM to be ready before initializing UI
+document.addEventListener('DOMContentLoaded', () => {
+    startGUI();
+});
 
 function getWebGLContext (canvas) {
     const params = { alpha: true, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false };
@@ -239,7 +217,8 @@ function addSliderDragHandlers() {
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
-        if (handle) {
+        const container = document.getElementById(slider + 'Fill');
+        if (handle && container) {
             let isDragging = false;
             
             handle.addEventListener('mousedown', (e) => {
@@ -277,7 +256,10 @@ function addSliderDragHandlers() {
 }
 
 function updateSliderFromMouse(e, sliderName) {
-    const container = document.getElementById(sliderName + 'Fill').parentElement;
+    const fillElement = document.getElementById(sliderName + 'Fill');
+    if (!fillElement) return;
+    
+    const container = fillElement.parentElement;
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const percentage = Math.max(0, Math.min(1, x / rect.width));
@@ -285,7 +267,10 @@ function updateSliderFromMouse(e, sliderName) {
 }
 
 function updateSliderFromTouch(e, sliderName) {
-    const container = document.getElementById(sliderName + 'Fill').parentElement;
+    const fillElement = document.getElementById(sliderName + 'Fill');
+    if (!fillElement) return;
+    
+    const container = fillElement.parentElement;
     const rect = container.getBoundingClientRect();
     const x = e.touches[0].clientX - rect.left;
     const percentage = Math.max(0, Math.min(1, x / rect.width));
@@ -293,6 +278,7 @@ function updateSliderFromTouch(e, sliderName) {
 }
 
 function handleSliderClick(event, sliderName, min, max) {
+    event.stopPropagation(); // Prevent event bubbling
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const percentage = Math.max(0, Math.min(1, x / rect.width));
