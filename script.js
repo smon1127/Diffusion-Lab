@@ -218,12 +218,15 @@ function addSliderDragHandlers() {
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
         const container = document.getElementById(slider + 'Fill');
-        if (handle && container) {
+        const sliderContainer = container ? container.parentElement : null;
+        if (handle && container && sliderContainer) {
             let isDragging = false;
             
             handle.addEventListener('mousedown', (e) => {
                 isDragging = true;
                 e.preventDefault();
+                // Immediately update slider position on mouse down
+                updateSliderFromMouse(e, slider);
             });
             
             document.addEventListener('mousemove', (e) => {
@@ -240,6 +243,8 @@ function addSliderDragHandlers() {
             handle.addEventListener('touchstart', (e) => {
                 isDragging = true;
                 e.preventDefault();
+                // Immediately update slider position on touch start
+                updateSliderFromTouch(e, slider);
             });
             
             document.addEventListener('touchmove', (e) => {
@@ -250,6 +255,23 @@ function addSliderDragHandlers() {
             
             document.addEventListener('touchend', () => {
                 isDragging = false;
+            });
+            
+            // Add immediate response on container click/touch
+            sliderContainer.addEventListener('mousedown', (e) => {
+                if (e.target === sliderContainer || e.target === container) {
+                    isDragging = true;
+                    e.preventDefault();
+                    updateSliderFromMouse(e, slider);
+                }
+            });
+            
+            sliderContainer.addEventListener('touchstart', (e) => {
+                if (e.target === sliderContainer || e.target === container) {
+                    isDragging = true;
+                    e.preventDefault();
+                    updateSliderFromTouch(e, slider);
+                }
             });
         }
     });
