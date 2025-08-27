@@ -64,7 +64,6 @@
             .control-panel {
                 position: fixed;
                 bottom: 20px;
-                left: 20px;
                 width: 280px;
                 max-height: 80vh;
                 background: var(--secondary-bg);
@@ -75,6 +74,14 @@
                 z-index: 1000;
                 overflow: hidden;
                 transition: var(--transition);
+            }
+            
+            .prompt-panel {
+                left: 20px;
+            }
+            
+            .fluid-panel {
+                left: 320px; /* 280px width + 40px gap */
             }
 
             .control-panel.collapsed {
@@ -295,6 +302,36 @@
                 margin-top: 16px;
             }
 
+            /* Input Field */
+            .modern-input {
+                width: 100%;
+                padding: 12px 16px;
+                background: var(--control-bg);
+                border: 1px solid var(--border-color);
+                border-radius: 8px;
+                color: var(--text-primary);
+                font-size: 13px;
+                font-family: 'Courier New', monospace;
+                transition: var(--transition);
+                outline: none;
+            }
+
+            .modern-input::placeholder {
+                color: var(--text-secondary);
+                opacity: 0.7;
+            }
+
+            .modern-input:focus {
+                border-color: var(--accent-color);
+                box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+                background: rgba(40, 40, 50, 1);
+            }
+
+            .modern-input:hover:not(:focus) {
+                border-color: rgba(255, 255, 255, 0.2);
+                background: rgba(50, 50, 60, 0.9);
+            }
+
             /* Button */
             .modern-button {
                 width: 100%;
@@ -325,7 +362,15 @@
                 .control-panel {
                     width: 260px;
                     bottom: 15px;
+                }
+                
+                .prompt-panel {
                     left: 15px;
+                }
+                
+                .fluid-panel {
+                    left: 15px;
+                    bottom: calc(50vh + 15px); /* Stack vertically on mobile */
                 }
 
                 .panel-content {
@@ -352,6 +397,450 @@
                 .toggle-switch.active .toggle-handle {
                     transform: translateX(22px);
                 }
+            }
+
+            /* Toast Notification System */
+            .toast {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: var(--secondary-bg);
+                backdrop-filter: blur(20px);
+                border: 1px solid var(--border-color);
+                border-radius: var(--radius);
+                padding: 16px 20px;
+                color: var(--text-color);
+                font-size: 14px;
+                box-shadow: var(--shadow);
+                z-index: 10000;
+                transform: translateX(400px);
+                transition: transform 0.3s ease;
+                max-width: 300px;
+                word-wrap: break-word;
+            }
+            
+            .toast.show {
+                transform: translateX(0);
+            }
+            
+            .toast.error {
+                border-color: #ff4757;
+                background: rgba(255, 71, 87, 0.1);
+            }
+            
+            .toast.success {
+                border-color: #2ed573;
+                background: rgba(46, 213, 115, 0.1);
+            }
+            
+            .toast.info {
+                border-color: #3742fa;
+                background: rgba(55, 66, 250, 0.1);
+            }
+
+            /* Loading Spinner */
+            .spinner {
+                display: inline-block;
+                width: 16px;
+                height: 16px;
+                border: 2px solid var(--border-color);
+                border-top: 2px solid var(--accent-color);
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin-right: 8px;
+                flex-shrink: 0;
+                box-sizing: border-box;
+            }
+
+            .spinner-large {
+                width: 24px;
+                height: 24px;
+                border-width: 3px;
+                flex-shrink: 0;
+                box-sizing: border-box;
+            }
+
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+
+            /* Loading Overlay */
+            .loading-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.8);
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                z-index: 9999;
+                color: var(--text-color);
+                font-size: 18px;
+                backdrop-filter: blur(5px);
+            }
+
+            .loading-content {
+                text-align: center;
+                background: var(--secondary-bg);
+                border: 1px solid var(--border-color);
+                padding: 30px;
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+                min-width: 300px;
+            }
+
+            .loading-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+            }
+
+            .loading-title {
+                font-size: 20px;
+                font-weight: 600;
+            }
+
+            .loading-controls {
+                display: flex;
+                gap: 8px;
+            }
+
+            .minimize-btn, .cancel-btn {
+                background: var(--secondary-bg);
+                border: 1px solid var(--border-color);
+                border-radius: 4px;
+                padding: 6px 10px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: all 0.2s ease;
+                color: var(--text-color);
+            }
+
+            .minimize-btn:hover {
+                background: var(--accent-color);
+                color: white;
+            }
+
+            .cancel-btn:hover {
+                background: #ff4757;
+                color: white;
+            }
+
+
+
+            .loading-steps {
+                margin-top: 20px;
+                text-align: left;
+            }
+
+            .loading-step {
+                padding: 8px 0;
+                display: flex;
+                align-items: center;
+                font-size: 14px;
+                transition: all 0.3s ease;
+            }
+
+            .step-icon {
+                width: 20px;
+                height: 20px;
+                margin-right: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .step-pending { 
+                color: var(--muted-color); 
+                opacity: 0.6;
+            }
+            .step-loading { 
+                color: var(--accent-color); 
+                font-weight: 500;
+            }
+            .step-success { 
+                color: #2ed573; 
+                font-weight: 500;
+            }
+            .step-error { 
+                color: #ff4757; 
+                font-weight: 500;
+            }
+
+            /* Stream Status Indicator */
+            .stream-status {
+                display: inline-flex;
+                align-items: center;
+                margin-left: 10px;
+                font-size: 12px;
+                padding: 4px 8px;
+                border-radius: 12px;
+                background: var(--secondary-bg);
+                border: 1px solid var(--border-color);
+            }
+
+            .status-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                margin-right: 6px;
+            }
+
+            .status-offline { background: #ff4757; }
+            .status-connecting { 
+                background: #ffc107; 
+                animation: pulse 1.5s infinite; 
+            }
+            .status-ready { background: #2ed573; }
+
+            /* Minimized Loading Notification */
+            .minimized-loading-notification {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: var(--primary-bg);
+                border: 1px solid var(--border-color);
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+                padding: 16px;
+                min-width: 280px;
+                z-index: 10000;
+                backdrop-filter: blur(10px);
+                border-left: 4px solid var(--accent-color);
+            }
+
+            .notification-content {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .notification-progress {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .progress-bar {
+                flex: 1;
+                height: 6px;
+                background: var(--secondary-bg);
+                border-radius: 3px;
+                overflow: hidden;
+            }
+
+            .progress-fill {
+                height: 100%;
+                background: var(--accent-color);
+                transition: width 0.3s ease;
+                border-radius: 3px;
+            }
+
+            .progress-text {
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--accent-color);
+                min-width: 30px;
+                text-align: right;
+            }
+
+            .notification-step {
+                font-size: 13px;
+                color: var(--text-color);
+                font-weight: 500;
+            }
+
+            .notification-controls {
+                display: flex;
+                gap: 8px;
+                justify-content: flex-end;
+            }
+
+            .restore-btn, .notification-controls .cancel-btn {
+                background: var(--secondary-bg);
+                border: 1px solid var(--border-color);
+                border-radius: 4px;
+                padding: 4px 8px;
+                cursor: pointer;
+                font-size: 12px;
+                transition: all 0.2s ease;
+                color: var(--text-color);
+            }
+
+            .restore-btn:hover {
+                background: var(--accent-color);
+                color: white;
+            }
+
+            .notification-controls .cancel-btn:hover {
+                background: #ff4757;
+                color: white;
+            }
+
+            /* Stream Manager Styles */
+            .streams-list {
+                max-height: 300px;
+                overflow-y: auto;
+                margin: 10px 0;
+            }
+
+            .stream-item {
+                padding: 8px 0;
+                margin-bottom: 2px;
+                display: flex !important;
+                align-items: center;
+                width: 100%;
+                box-sizing: border-box;
+                border-bottom: 1px solid var(--border-color);
+                transition: all 0.2s ease;
+            }
+
+            .stream-item:hover {
+                background: var(--secondary-bg);
+                padding-left: 8px;
+                border-bottom-color: var(--accent-color);
+            }
+
+            .refresh-icon {
+                background: none;
+                border: none;
+                color: var(--muted-color);
+                cursor: pointer;
+                padding: 8px;
+                border-radius: 6px;
+                transition: all 0.3s ease;
+                margin-left: auto;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 32px;
+                min-height: 32px;
+            }
+
+            .refresh-icon:hover {
+                color: var(--accent-color);
+                background: var(--secondary-bg);
+                transform: rotate(180deg);
+            }
+
+            .refresh-icon svg {
+                transition: transform 0.3s ease;
+                transform-origin: center;
+            }
+
+            .stream-id {
+                font-family: 'Monaco', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                font-size: 12px;
+                color: var(--muted-color);
+                font-weight: 400;
+                flex: 1;
+                cursor: pointer;
+                transition: color 0.2s ease;
+                user-select: none;
+            }
+
+            .stream-id:hover {
+                color: var(--accent-color);
+            }
+
+            .stream-status-badge {
+                font-size: 11px;
+                padding: 2px 6px;
+                border-radius: 10px;
+                font-weight: 500;
+            }
+
+            .stream-status-active { 
+                background: rgba(46, 213, 115, 0.2); 
+                color: #2ed573; 
+                border: 1px solid rgba(46, 213, 115, 0.3);
+            }
+
+            .stream-status-ready { 
+                background: rgba(255, 193, 7, 0.2); 
+                color: #ffc107; 
+                border: 1px solid rgba(255, 193, 7, 0.3);
+            }
+
+            .stream-status-error { 
+                background: rgba(255, 71, 87, 0.2); 
+                color: #ff4757; 
+                border: 1px solid rgba(255, 71, 87, 0.3);
+            }
+
+            .stream-status-unknown { 
+                background: rgba(128, 128, 128, 0.2); 
+                color: #808080; 
+                border: 1px solid rgba(128, 128, 128, 0.3);
+            }
+
+
+
+            /* Ensure stream manager content is visible when expanded */
+            #streamManagerContent {
+                width: 100%;
+                box-sizing: border-box;
+            }
+
+            #streamManagerContent[style*="block"] {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+
+            /* Override any conflicting advanced-content styles */
+            .advanced-section .advanced-content {
+                padding: 15px 0 0 0;
+            }
+
+            .advanced-section .advanced-content .control-item {
+                margin-bottom: 15px;
+            }
+
+            /* Ensure stream list items are visible */
+            .streams-list .no-streams {
+                display: block !important;
+                color: var(--muted-color) !important;
+                text-align: center !important;
+                padding: 20px !important;
+                font-style: italic !important;
+            }
+
+            .streams-list .stream-item {
+                display: flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+
+            /* Button Loading States */
+            .btn-loading {
+                position: relative;
+                color: transparent !important;
+                pointer-events: none;
+            }
+
+            .btn-loading::after {
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: 16px;
+                height: 16px;
+                margin: -8px 0 0 -8px;
+                border: 2px solid transparent;
+                border-top: 2px solid currentColor;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
             }
 
             /* Animations */
@@ -385,14 +874,173 @@
     <body>
         <canvas></canvas>
 
-        <!-- Modern Control Panel -->
-        <div class="control-panel" id="controlPanel">
-            <div class="panel-header" onclick="togglePanel()">
-                <span>Fluid Controls</span>
+        <!-- Prompt Control Panel -->
+        <div class="control-panel prompt-panel" id="promptPanel">
+            <div class="panel-header" onclick="togglePromptPanel()">
+                <span>Prompt Panel</span>
                 <span class="toggle-icon">▼</span>
             </div>
             
-            <div class="panel-content" id="panelContent">
+            <div class="panel-content" id="promptPanelContent">
+                <div class="control-item">
+                    <div class="control-label">
+                        <span>AI Prompt</span>
+                    </div>
+                    <input type="text" 
+                           class="modern-input" 
+                           id="streamPrompt" 
+                           placeholder="abstract fluid art, colorful, flowing, dynamic, artistic"
+                           value="abstract fluid art, colorful, flowing, dynamic, artistic">
+                </div>
+                
+                <div class="control-item">
+                    <button id="startStreamBtn" class="modern-button" onclick="startStream()">
+                        Start Stream
+                    </button>
+                    <span id="streamStatus" class="stream-status" style="display: none;">
+                        <span class="status-dot status-offline"></span>
+                        <span class="status-text">Offline</span>
+                    </span>
+                </div>
+                
+                <!-- Stream Manager Section -->
+                <div class="control-item">
+                    <div class="control-label">
+                        <span>Stream Manager</span>
+                        <span id="streamCount" style="font-size: 12px; color: var(--muted-color); margin-left: 8px;">(0 active)</span>
+                        <button class="refresh-icon" onclick="refreshStreamList()" title="Refresh streams">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 4v6h-6M1 20v-6h6M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="activeStreamsList" class="streams-list">
+                </div>
+                
+                <!-- ControlNet Subsection -->
+                <div class="advanced-section" style="margin-left: 0; border-left: none; padding-left: 0;">
+                    <div class="advanced-toggle" onclick="toggleControlNet()">
+                        <span>▶</span>
+                        <span>ControlNet</span>
+                    </div>
+                    
+                    <div class="advanced-content" id="controlnetContent">
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Pose</span>
+                                <span class="control-value" id="poseValue">0.40</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'pose', 0, 1)">
+                                <div class="slider-fill" id="poseFill" style="width: 40%">
+                                    <div class="slider-handle" id="poseHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>HED</span>
+                                <span class="control-value" id="hedValue">0.14</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'hed', 0, 1)">
+                                <div class="slider-fill" id="hedFill" style="width: 14%">
+                                    <div class="slider-handle" id="hedHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Canny</span>
+                                <span class="control-value" id="cannyValue">0.27</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'canny', 0, 1)">
+                                <div class="slider-fill" id="cannyFill" style="width: 27%">
+                                    <div class="slider-handle" id="cannyHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Depth</span>
+                                <span class="control-value" id="depthValue">0.34</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'depth', 0, 1)">
+                                <div class="slider-fill" id="depthFill" style="width: 34%">
+                                    <div class="slider-handle" id="depthHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Color</span>
+                                <span class="control-value" id="colorValue">0.66</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'color', 0, 1)">
+                                <div class="slider-fill" id="colorFill" style="width: 66%">
+                                    <div class="slider-handle" id="colorHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="control-item">
+                    <div class="control-label">
+                        <span>Denoise Strength</span>
+                        <span class="control-value" id="denoiseValue">0.30</span>
+                    </div>
+                    <div class="slider-container" onclick="handleSliderClick(event, 'denoise', 0, 1)">
+                        <div class="slider-fill" id="denoiseFill" style="width: 30%">
+                            <div class="slider-handle" id="denoiseHandle"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="control-item">
+                    <div class="control-label">
+                        <span>API Code</span>
+                    </div>
+                    <input type="text" 
+                           class="modern-input" 
+                           id="apiCodeInput" 
+                           placeholder="Enter your API code..."
+                           autocomplete="off"
+                           spellcheck="false">
+                </div>
+                
+                <div class="control-item">
+                    <button class="modern-button" onclick="captureScreenshot()">
+                        Take Screenshot
+                    </button>
+                </div>
+                
+                <div class="control-item">
+                    <button class="modern-button debug-button" onclick="debugStream()" style="background: linear-gradient(135deg, #ff9500, #ff7700); margin-top: 10px;">
+                        🔧 Debug Stream
+                    </button>
+                </div>
+                
+                <div class="control-item">
+                    <button class="modern-button debug-button" onclick="debugLocalStream()" style="background: linear-gradient(135deg, #9500ff, #7700ff); margin-top: 10px;">
+                        📹 Debug Local Stream
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Fluid Control Panel -->
+        <div class="control-panel fluid-panel" id="fluidPanel">
+            <div class="panel-header" onclick="toggleFluidPanel()">
+                <span>Fluid Panel</span>
+                <span class="toggle-icon">▼</span>
+            </div>
+            
+            <div class="panel-content" id="fluidPanelContent">
                 <!-- Physics Controls -->
                 <div class="control-group">
                     <div class="group-title">Physics</div>
@@ -477,18 +1125,9 @@
                                 <div class="toggle-handle"></div>
                             </div>
                             <span>Paused</span>
-                        </div>
                     </div>
                 </div>
                 
-                <!-- Advanced Section -->
-                <div class="advanced-section">
-                    <div class="advanced-toggle" onclick="toggleAdvanced()">
-                        <span>▶</span>
-                        <span>Advanced</span>
-                    </div>
-                    
-                    <div class="advanced-content" id="advancedContent">
                         <div class="control-item">
                             <div class="toggle-container" onclick="toggleBloom()">
                                 <div class="toggle-switch active" id="bloomToggle">
@@ -527,13 +1166,58 @@
                             <div class="slider-container" onclick="handleSliderClick(event, 'sunray', 0.3, 1)">
                                 <div class="slider-fill" id="sunrayFill" style="width: 100%">
                                     <div class="slider-handle" id="sunrayHandle"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                <!-- Advanced Section -->
+                <div class="advanced-section">
+                    <div class="advanced-toggle" onclick="toggleAdvanced()">
+                        <span>▶</span>
+                        <span>Advanced</span>
+                    </div>
+                    
+                    <div class="advanced-content" id="advancedContent">
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Guidance Scale</span>
+                                <span class="control-value" id="guidanceScaleValue">7.5</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'guidanceScale', 1, 20)">
+                                <div class="slider-fill" id="guidanceScaleFill" style="width: 34%">
+                                    <div class="slider-handle" id="guidanceScaleHandle"></div>
                                 </div>
                             </div>
                         </div>
                         
                         <div class="control-item">
-                            <button class="modern-button" onclick="captureScreenshot()">
-                                Take Screenshot
+                            <div class="control-label">
+                                <span>Inference Steps</span>
+                                <span class="control-value" id="inferenceStepsValue">4</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'inferenceSteps', 1, 10)">
+                                <div class="slider-fill" id="inferenceStepsFill" style="width: 30%">
+                                    <div class="slider-handle" id="inferenceStepsHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Strength</span>
+                                <span class="control-value" id="strengthValue">0.80</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'strength', 0.1, 1)">
+                                <div class="slider-fill" id="strengthFill" style="width: 70%">
+                                    <div class="slider-handle" id="strengthHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <button class="modern-button" onclick="debugSliders()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                🔧 Debug API & Sliders
                             </button>
                         </div>
                     </div>
@@ -541,6 +1225,87 @@
             </div>
         </div>
 
-        <script src="./script.js"></script>
+        <script src="./script.js?v=31"></script>
+        
+        <!-- Hot Reload Script -->
+        <script>
+            // Hot reload functionality - only active during development
+            (function() {
+                if (window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost') {
+                    return; // Only enable hot reload in development
+                }
+                
+                let reloadCheckInterval;
+                let isReloading = false;
+                
+                function checkForReload() {
+                    if (isReloading) return;
+                    
+                    fetch('/reload-check')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.reload && !isReloading) {
+                                isReloading = true;
+                                console.log('🔥 Files changed - reloading page...');
+                                
+                                // Show a brief notification
+                                const notification = document.createElement('div');
+                                notification.style.cssText = `
+                                    position: fixed;
+                                    top: 10px;
+                                    right: 10px;
+                                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                    color: white;
+                                    padding: 12px 20px;
+                                    border-radius: 8px;
+                                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                                    font-size: 14px;
+                                    font-weight: 500;
+                                    z-index: 999999;
+                                    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                                    animation: slideIn 0.3s ease-out;
+                                `;
+                                notification.innerHTML = '🔥 Hot reload: Files changed, refreshing...';
+                                
+                                // Add animation keyframes
+                                if (!document.getElementById('hotReloadStyles')) {
+                                    const style = document.createElement('style');
+                                    style.id = 'hotReloadStyles';
+                                    style.textContent = `
+                                        @keyframes slideIn {
+                                            from { transform: translateX(100%); opacity: 0; }
+                                            to { transform: translateX(0); opacity: 1; }
+                                        }
+                                    `;
+                                    document.head.appendChild(style);
+                                }
+                                
+                                document.body.appendChild(notification);
+                                
+                                // Reload after brief delay
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 500);
+                            }
+                        })
+                        .catch(error => {
+                            // Server might be restarting, ignore errors
+                            if (!error.message.includes('fetch')) {
+                                console.debug('Hot reload check failed:', error.message);
+                            }
+                        });
+                }
+                
+                // Start checking for changes every 5 seconds
+                reloadCheckInterval = setInterval(checkForReload, 5000);
+                
+                // Stop checking when page is about to unload
+                window.addEventListener('beforeunload', () => {
+                    clearInterval(reloadCheckInterval);
+                });
+                
+                console.log('🔥 Hot reload enabled - watching for file changes...');
+            })();
+        </script>
     </body>
 </html>
