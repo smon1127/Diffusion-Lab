@@ -444,6 +444,46 @@
                 transform: none !important;
                 box-shadow: none !important;
             }
+
+            /* Checkbox Styles */
+            .checkbox-container {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 8px;
+            }
+
+            .checkbox-input {
+                width: 16px;
+                height: 16px;
+                accent-color: var(--accent-color);
+                cursor: pointer;
+            }
+
+            .checkbox-label {
+                font-size: 12px;
+                color: var(--text-secondary);
+                cursor: pointer;
+                user-select: none;
+            }
+
+            .checkbox-label:hover {
+                color: var(--text-primary);
+            }
+
+            /* Secondary Button */
+            .modern-button.secondary {
+                background: var(--control-bg);
+                border: 1px solid var(--border-color);
+                color: var(--text-primary);
+            }
+
+            .modern-button.secondary:hover {
+                background: rgba(60, 60, 70, 0.9);
+                border-color: var(--accent-color);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            }
         </style>
         <script>
             window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
@@ -606,6 +646,12 @@
                                 Take Screenshot
                             </button>
                         </div>
+                        
+                        <div class="control-item">
+                            <button class="modern-button secondary" onclick="clearAllSettings()">
+                                Clear Saved Settings
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
@@ -622,6 +668,10 @@
                                 <span>API Key</span>
                             </div>
                             <input type="password" class="api-input" id="apiKeyInput" placeholder="sk_dd3PC3YsTgxJTWDRZQdbrpQ7wo7aLQHuX2c1wX6K821Fzp9J3k7vegPhU79Ps7LS" title="Enter your Daydream API key" />
+                            <div class="checkbox-container">
+                                <input type="checkbox" id="apiKeyConsent" class="checkbox-input">
+                                <label for="apiKeyConsent" class="checkbox-label">Remember API key (stored locally)</label>
+                            </div>
                         </div>
                         
                         <div class="control-item">

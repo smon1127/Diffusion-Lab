@@ -337,6 +337,9 @@ function updateSliderValue(sliderName, percentage) {
     
     if (fill) fill.style.width = (percentage * 100) + '%';
     if (valueDisplay) valueDisplay.textContent = value.toFixed(slider.decimals);
+    
+    // Save to localStorage
+    saveConfig();
 }
 
 function updateSliderPositions() {
@@ -387,23 +390,27 @@ function togglePanel() {
 function toggleColorful() {
     config.COLORFUL = !config.COLORFUL;
     updateToggle('colorfulToggle', config.COLORFUL);
+    saveConfig();
 }
 
 function togglePaused() {
     config.PAUSED = !config.PAUSED;
     updateToggle('pausedToggle', config.PAUSED);
+    saveConfig();
 }
 
 function toggleBloom() {
     config.BLOOM = !config.BLOOM;
     updateToggle('bloomToggle', config.BLOOM);
     updateKeywords();
+    saveConfig();
 }
 
 function toggleSunrays() {
     config.SUNRAYS = !config.SUNRAYS;
     updateToggle('sunraysToggle', config.SUNRAYS);
     updateKeywords();
+    saveConfig();
 }
 
 function toggleAdvanced() {
@@ -2256,7 +2263,251 @@ updateSliderValue = function(sliderName, percentage) {
     }
 };
 
+// Local Storage Management
+const STORAGE_PREFIX = 'fluidSim_';
+const STORAGE_KEYS = {
+    CONFIG: STORAGE_PREFIX + 'config',
+    API_KEY: STORAGE_PREFIX + 'apiKey',
+    PROMPTS: STORAGE_PREFIX + 'prompts',
+    API_KEY_CONSENT: STORAGE_PREFIX + 'apiKeyConsent'
+};
+
+function isLocalStorageAvailable() {
+    try {
+        const test = 'test';
+        localStorage.setItem(test, test);
+        localStorage.removeItem(test);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function saveToLocalStorage(key, value) {
+    if (!isLocalStorageAvailable()) return false;
+    
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+        return true;
+    } catch (e) {
+        console.warn('Failed to save to localStorage:', e);
+        return false;
+    }
+}
+
+function loadFromLocalStorage(key, defaultValue = null) {
+    if (!isLocalStorageAvailable()) return defaultValue;
+    
+    try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : defaultValue;
+    } catch (e) {
+        console.warn('Failed to load from localStorage:', e);
+        return defaultValue;
+    }
+}
+
+function clearLocalStorage() {
+    if (!isLocalStorageAvailable()) return;
+    
+    Object.values(STORAGE_KEYS).forEach(key => {
+        localStorage.removeItem(key);
+    });
+}
+
+// Simple obfuscation for API key (not cryptographically secure, just basic protection)
+function obfuscateApiKey(key) {
+    return btoa(key.split('').reverse().join(''));
+}
+
+function deobfuscateApiKey(obfuscated) {
+    try {
+        return atob(obfuscated).split('').reverse().join('');
+    } catch (e) {
+        return '';
+    }
+}
+
+function saveConfig() {
+    const configToSave = {
+        DENSITY_DISSIPATION: config.DENSITY_DISSIPATION,
+        VELOCITY_DISSIPATION: config.VELOCITY_DISSIPATION,
+        PRESSURE: config.PRESSURE,
+        CURL: config.CURL,
+        SPLAT_RADIUS: config.SPLAT_RADIUS,
+        BLOOM_INTENSITY: config.BLOOM_INTENSITY,
+        SUNRAYS_WEIGHT: config.SUNRAYS_WEIGHT,
+        INFERENCE_STEPS: config.INFERENCE_STEPS,
+        SEED: config.SEED,
+        CONTROLNET_SCALE: config.CONTROLNET_SCALE,
+        COLORFUL: config.COLORFUL,
+        PAUSED: config.PAUSED,
+        BLOOM: config.BLOOM,
+        SUNRAYS: config.SUNRAYS
+    };
+    
+    saveToLocalStorage(STORAGE_KEYS.CONFIG, configToSave);
+}
+
+function loadConfig() {
+    const savedConfig = loadFromLocalStorage(STORAGE_KEYS.CONFIG);
+    if (savedConfig) {
+        Object.keys(savedConfig).forEach(key => {
+            if (config.hasOwnProperty(key)) {
+                config[key] = savedConfig[key];
+            }
+        });
+    }
+}
+
+function savePrompts() {
+    const promptInput = document.getElementById('promptInput');
+    const negativePromptInput = document.getElementById('negativePromptInput');
+    
+    if (promptInput && negativePromptInput) {
+        const prompts = {
+            prompt: promptInput.value,
+            negativePrompt: negativePromptInput.value
+        };
+        saveToLocalStorage(STORAGE_KEYS.PROMPTS, prompts);
+    }
+}
+
+function loadPrompts() {
+    const savedPrompts = loadFromLocalStorage(STORAGE_KEYS.PROMPTS);
+    if (savedPrompts) {
+        const promptInput = document.getElementById('promptInput');
+        const negativePromptInput = document.getElementById('negativePromptInput');
+        
+        if (promptInput && savedPrompts.prompt) {
+            promptInput.value = savedPrompts.prompt;
+        }
+        if (negativePromptInput && savedPrompts.negativePrompt) {
+            negativePromptInput.value = savedPrompts.negativePrompt;
+        }
+    }
+}
+
+function saveApiKey() {
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const consentCheckbox = document.getElementById('apiKeyConsent');
+    
+    if (apiKeyInput && consentCheckbox && consentCheckbox.checked) {
+        const apiKey = apiKeyInput.value.trim();
+        if (apiKey) {
+            saveToLocalStorage(STORAGE_KEYS.API_KEY, obfuscateApiKey(apiKey));
+            saveToLocalStorage(STORAGE_KEYS.API_KEY_CONSENT, true);
+        }
+    }
+}
+
+function loadApiKey() {
+    const consent = loadFromLocalStorage(STORAGE_KEYS.API_KEY_CONSENT, false);
+    if (consent) {
+        const savedKey = loadFromLocalStorage(STORAGE_KEYS.API_KEY);
+        if (savedKey) {
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            const consentCheckbox = document.getElementById('apiKeyConsent');
+            
+            if (apiKeyInput) {
+                apiKeyInput.value = deobfuscateApiKey(savedKey);
+            }
+            if (consentCheckbox) {
+                consentCheckbox.checked = true;
+            }
+        }
+    }
+}
+
+function clearAllSettings() {
+    if (confirm('Are you sure you want to clear all saved settings? This will reset all sliders, prompts, and API key to defaults.')) {
+        clearLocalStorage();
+        
+        // Reset to default values
+        config.DENSITY_DISSIPATION = 1;
+        config.VELOCITY_DISSIPATION = 0.2;
+        config.PRESSURE = 0.8;
+        config.CURL = 30;
+        config.SPLAT_RADIUS = 0.25;
+        config.BLOOM_INTENSITY = 0.8;
+        config.SUNRAYS_WEIGHT = 1.0;
+        config.INFERENCE_STEPS = 50;
+        config.SEED = 42;
+        config.CONTROLNET_SCALE = 0.22;
+        config.COLORFUL = false;
+        config.PAUSED = false;
+        config.BLOOM = true;
+        config.SUNRAYS = true;
+        
+        // Update UI
+        updateSliderPositions();
+        updateToggleStates();
+        
+        // Clear input fields
+        const promptInput = document.getElementById('promptInput');
+        const negativePromptInput = document.getElementById('negativePromptInput');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const consentCheckbox = document.getElementById('apiKeyConsent');
+        
+        if (promptInput) promptInput.value = 'superman';
+        if (negativePromptInput) negativePromptInput.value = 'blurry, low quality, flat, 2d';
+        if (apiKeyInput) apiKeyInput.value = '';
+        if (consentCheckbox) consentCheckbox.checked = false;
+        
+        alert('Settings cleared! Page will reload to apply defaults.');
+        window.location.reload();
+    }
+}
+
+function initializeLocalStorage() {
+    loadConfig();
+    updateSliderPositions();
+    updateToggleStates();
+    
+    // Load prompts and API key after DOM elements are ready
+    setTimeout(() => {
+        loadPrompts();
+        loadApiKey();
+        setupInputSaveHandlers();
+    }, 100);
+}
+
+function setupInputSaveHandlers() {
+    const promptInput = document.getElementById('promptInput');
+    const negativePromptInput = document.getElementById('negativePromptInput');
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const consentCheckbox = document.getElementById('apiKeyConsent');
+    
+    // Save prompts on change
+    if (promptInput) {
+        promptInput.addEventListener('blur', savePrompts);
+        promptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') savePrompts();
+        });
+    }
+    
+    if (negativePromptInput) {
+        negativePromptInput.addEventListener('blur', savePrompts);
+        negativePromptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') savePrompts();
+        });
+    }
+    
+    // Save API key on change
+    if (apiKeyInput) {
+        apiKeyInput.addEventListener('blur', saveApiKey);
+        apiKeyInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveApiKey();
+        });
+    }
+    
+    if (consentCheckbox) {
+        consentCheckbox.addEventListener('change', saveApiKey);
+    }
+}
+
 // Initialize parameter listeners when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     initializeStreamParameterListeners();
+    initializeLocalStorage();
 });
