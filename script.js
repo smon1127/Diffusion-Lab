@@ -311,7 +311,7 @@ function handleSliderClick(event, sliderName, min, max) {
     updateSliderValue(sliderName, percentage);
 }
 
-function updateSliderValue(sliderName, percentage) {
+function updateSliderValue(sliderName, percentage, skipSave = false) {
     const sliderMap = {
         'density': { min: 0, max: 4, prop: 'DENSITY_DISSIPATION', decimals: 2 },
         'velocity': { min: 0, max: 4, prop: 'VELOCITY_DISSIPATION', decimals: 2 },
@@ -338,8 +338,10 @@ function updateSliderValue(sliderName, percentage) {
     if (fill) fill.style.width = (percentage * 100) + '%';
     if (valueDisplay) valueDisplay.textContent = value.toFixed(slider.decimals);
     
-    // Save to localStorage
-    saveConfig();
+    // Save to localStorage only if not loading from storage
+    if (!skipSave) {
+        saveConfig();
+    }
 }
 
 function updateSliderPositions() {
@@ -359,7 +361,7 @@ function updateSliderPositions() {
     Object.keys(sliderMap).forEach(sliderName => {
         const slider = sliderMap[sliderName];
         const percentage = (config[slider.prop] - slider.min) / (slider.max - slider.min);
-        updateSliderValue(sliderName, percentage);
+        updateSliderValue(sliderName, percentage, true); // Skip saving when loading
     });
 }
 
@@ -1934,6 +1936,8 @@ function updateStreamButton(isStreaming) {
     }
 }
 
+
+
 async function createDaydreamStream() {
     const apiKey = document.getElementById('apiKeyInput').value;
     if (!apiKey) {
@@ -2064,9 +2068,11 @@ function openStreamPopup(playbackId) {
     const height = 512;
     const left = (window.screen.width - width) / 2;
     const top = (window.screen.height - height) / 2;
+    
+    const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force`;
 
     const popupWindow = window.open(
-        '',
+        streamUrl,
         'AI_Daydream_Stream',
         `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,menubar=no,toolbar=no,status=no`
     );
@@ -2074,26 +2080,6 @@ function openStreamPopup(playbackId) {
     if (!popupWindow) {
         throw new Error('Popup blocked. Please allow popups for this site.');
     }
-
-    popupWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>AI Daydream Stream</title>
-            <style>
-                body, html { margin: 0; padding: 0; overflow: hidden; background: #000; }
-                iframe { width: 100%; height: 100%; border: none; }
-            </style>
-        </head>
-        <body>
-            <iframe 
-                src="https://lvpr.tv/?v=${playbackId}&lowLatency=force"
-                allow="autoplay; encrypted-media"
-                allowfullscreen>
-            </iframe>
-        </body>
-        </html>
-    `);
 
     return popupWindow;
 }
@@ -2493,15 +2479,15 @@ function clearAllSettings() {
 
 function initializeLocalStorage() {
     loadConfig();
-    updateSliderPositions();
-    updateToggleStates();
     
-    // Load prompts and API key after DOM elements are ready
+    // Ensure DOM is ready before updating UI elements
     setTimeout(() => {
+        updateSliderPositions();
+        updateToggleStates();
         loadPrompts();
         loadApiKey();
         setupInputSaveHandlers();
-    }, 100);
+    }, 200); // Increased timeout to ensure DOM is ready
 }
 
 function setupInputSaveHandlers() {

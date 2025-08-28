@@ -428,6 +428,8 @@
                 background: rgba(255, 0, 0, 0.2);
                 color: #ff0000;
             }
+            
+
 
             /* Stream Button States */
             .modern-button.streaming {
@@ -576,7 +578,7 @@
                             <div class="control-label">
                                 <span>API Key</span>
                             </div>
-                            <input type="password" class="api-input" id="apiKeyInput" placeholder="sk_dd3PC3YsTgxJTWDRZQdbrpQ7wo7aLQHuX2c1wX6K821Fzp9J3k7vegPhU79Ps7LS" title="Enter your Daydream API key" />
+                            <input type="password" class="api-input" id="apiKeyInput" placeholder="sk_..." title="Enter your Daydream API key" />
                             <div class="checkbox-container">
                                 <input type="checkbox" id="apiKeyConsent" class="checkbox-input">
                                 <label for="apiKeyConsent" class="checkbox-label">Remember API key (stored locally)</label>
@@ -692,30 +694,25 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="toggleColorful()">
+                            <div class="toggle-switch" id="colorfulToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                            <span>Colorful</span>
                         </div>
-                        
-                        <!-- Visual Controls -->
-                        <div class="control-group">
-                            <div class="group-title">Visual</div>
-                            
-                            <div class="control-item">
-                                <div class="toggle-container" onclick="toggleColorful()">
-                                    <div class="toggle-switch" id="colorfulToggle">
-                                        <div class="toggle-handle"></div>
-                                    </div>
-                                    <span>Colorful</span>
-                                </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="togglePaused()">
+                            <div class="toggle-switch" id="pausedToggle">
+                                <div class="toggle-handle"></div>
                             </div>
-                            
-                            <div class="control-item">
-                                <div class="toggle-container" onclick="togglePaused()">
-                                    <div class="toggle-switch" id="pausedToggle">
-                                        <div class="toggle-handle"></div>
-                                    </div>
-                                    <span>Paused</span>
-                                    <span class="keyboard-hint" title="Keyboard shortcut: Ctrl+P">⌨️</span>
-                                </div>
-                            </div>
+                            <span>Paused</span>
+                            <span class="keyboard-hint" title="Keyboard shortcut: Ctrl+P">⌨️</span>
+                        </div>
+                    </div>
                         </div>
                         
                         <!-- Advanced Section -->
