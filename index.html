@@ -693,106 +693,106 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- Visual Controls -->
-                <div class="control-group">
-                    <div class="group-title">Visual</div>
-                    
-                    <div class="control-item">
-                        <div class="toggle-container" onclick="toggleColorful()">
-                            <div class="toggle-switch" id="colorfulToggle">
-                                <div class="toggle-handle"></div>
-                            </div>
-                            <span>Colorful</span>
-                        </div>
-                    </div>
-                    
-                                            <div class="control-item">
-                            <div class="toggle-container" onclick="togglePaused()">
-                                <div class="toggle-switch" id="pausedToggle">
-                                    <div class="toggle-handle"></div>
-                                </div>
-                                <span>Paused</span>
-                                <span class="keyboard-hint" title="Keyboard shortcut: Ctrl+P">⌨️</span>
-                            </div>
-                        </div>
-                </div>
-                
-                <!-- Advanced Section -->
-                <div class="advanced-section">
-                    <div class="advanced-toggle" onclick="toggleAdvanced()">
-                        <span>▶</span>
-                        <span>Advanced</span>
-                    </div>
-                    
-                    <div class="advanced-content" id="advancedContent">
-                        <div class="control-item">
-                            <div class="toggle-container" onclick="toggleBloom()">
-                                <div class="toggle-switch active" id="bloomToggle">
-                                    <div class="toggle-handle"></div>
-                                </div>
-                                <span>Bloom</span>
-                            </div>
-                        </div>
                         
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Bloom Intensity</span>
-                                <span class="control-value" id="bloomIntensityValue">0.80</span>
+                        <!-- Visual Controls -->
+                        <div class="control-group">
+                            <div class="group-title">Visual</div>
+                            
+                            <div class="control-item">
+                                <div class="toggle-container" onclick="toggleColorful()">
+                                    <div class="toggle-switch" id="colorfulToggle">
+                                        <div class="toggle-handle"></div>
+                                    </div>
+                                    <span>Colorful</span>
+                                </div>
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'bloomIntensity', 0.1, 2)">
-                                <div class="slider-fill" id="bloomIntensityFill" style="width: 37%">
-                                    <div class="slider-handle" id="bloomIntensityHandle"></div>
+                            
+                            <div class="control-item">
+                                <div class="toggle-container" onclick="togglePaused()">
+                                    <div class="toggle-switch" id="pausedToggle">
+                                        <div class="toggle-handle"></div>
+                                    </div>
+                                    <span>Paused</span>
+                                    <span class="keyboard-hint" title="Keyboard shortcut: Ctrl+P">⌨️</span>
                                 </div>
                             </div>
                         </div>
                         
-                        <div class="control-item">
-                            <div class="toggle-container" onclick="toggleSunrays()">
-                                <div class="toggle-switch active" id="sunraysToggle">
-                                    <div class="toggle-handle"></div>
+                        <!-- Advanced Section -->
+                        <div class="advanced-section">
+                            <div class="advanced-toggle" onclick="toggleAdvanced()">
+                                <span>▶</span>
+                                <span>Advanced</span>
+                            </div>
+                            
+                            <div class="advanced-content" id="advancedContent">
+                                <div class="control-item">
+                                    <div class="toggle-container" onclick="toggleBloom()">
+                                        <div class="toggle-switch active" id="bloomToggle">
+                                            <div class="toggle-handle"></div>
+                                        </div>
+                                        <span>Bloom</span>
+                                    </div>
                                 </div>
-                                <span>Sunrays</span>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                        <span>Bloom Intensity</span>
+                                        <span class="control-value" id="bloomIntensityValue">0.80</span>
+                                    </div>
+                                    <div class="slider-container" onclick="handleSliderClick(event, 'bloomIntensity', 0.1, 2)">
+                                        <div class="slider-fill" id="bloomIntensityFill" style="width: 37%">
+                                            <div class="slider-handle" id="bloomIntensityHandle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="toggle-container" onclick="toggleSunrays()">
+                                        <div class="toggle-switch active" id="sunraysToggle">
+                                            <div class="toggle-handle"></div>
+                                        </div>
+                                        <span>Sunrays</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                        <span>Sunray Weight</span>
+                                        <span class="control-value" id="sunrayValue">1.00</span>
+                                    </div>
+                                    <div class="slider-container" onclick="handleSliderClick(event, 'sunray', 0.3, 1)">
+                                        <div class="slider-fill" id="sunrayFill" style="width: 100%">
+                                            <div class="slider-handle" id="sunrayHandle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <button class="modern-button" onclick="captureScreenshot()">
+                                        Take Screenshot
+                                    </button>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <button class="modern-button secondary" onclick="clearAllSettings()">
+                                        Clear Saved Settings
+                                    </button>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="keyboard-shortcuts-info">
+                                        <div class="group-title">Keyboard Shortcuts</div>
+                                        <div class="shortcut-item">
+                                            <span>Ctrl+P:</span> Toggle Pause
+                                        </div>
+                                        <div class="shortcut-item">
+                                            <span>Ctrl+Space:</span> Random Splats
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Sunray Weight</span>
-                                <span class="control-value" id="sunrayValue">1.00</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'sunray', 0.3, 1)">
-                                <div class="slider-fill" id="sunrayFill" style="width: 100%">
-                                    <div class="slider-handle" id="sunrayHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <button class="modern-button" onclick="captureScreenshot()">
-                                Take Screenshot
-                            </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <button class="modern-button secondary" onclick="clearAllSettings()">
-                                Clear Saved Settings
-                            </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="keyboard-shortcuts-info">
-                                <div class="group-title">Keyboard Shortcuts</div>
-                                <div class="shortcut-item">
-                                    <span>Ctrl+P:</span> Toggle Pause
-                                </div>
-                                <div class="shortcut-item">
-                                    <span>Ctrl+Space:</span> Random Splats
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
