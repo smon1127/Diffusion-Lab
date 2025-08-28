@@ -721,16 +721,6 @@
                         
                         <div class="control-item">
                             <div class="control-label">
-                                <span>Stream Status</span>
-                                <span class="stream-status" id="streamStatus">Idle</span>
-                            </div>
-                            <button class="modern-button" id="streamButton" onclick="toggleStream()">
-                                Start Stream
-                            </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
                                 <span>Prompt</span>
                             </div>
                             <input type="text" class="text-input" id="promptInput" placeholder="superman" value="superman" title="Describe what you want the AI to generate" />
@@ -743,40 +733,54 @@
                             <input type="text" class="text-input" id="negativePromptInput" placeholder="blurry, low quality" value="blurry, low quality, flat, 2d" title="Describe what you don't want the AI to generate" />
                         </div>
                         
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Inference Steps</span>
-                                <span class="control-value" id="inferenceStepsValue">50</span>
+                        <div class="control-group">
+                            <div class="group-title">AI Parameters</div>
+                            
+                            <div class="control-item">
+                                <div class="control-label">
+                                    <span>Inference Steps</span>
+                                    <span class="control-value" id="inferenceStepsValue">50</span>
+                                </div>
+                                <div class="slider-container" onclick="handleSliderClick(event, 'inferenceSteps', 1, 100)">
+                                    <div class="slider-fill" id="inferenceStepsFill" style="width: 49%">
+                                        <div class="slider-handle" id="inferenceStepsHandle"></div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'inferenceSteps', 1, 100)">
-                                <div class="slider-fill" id="inferenceStepsFill" style="width: 49%">
-                                    <div class="slider-handle" id="inferenceStepsHandle"></div>
+                            
+                            <div class="control-item">
+                                <div class="control-label">
+                                    <span>Seed</span>
+                                    <span class="control-value" id="seedValue">42</span>
+                                </div>
+                                <div class="slider-container" onclick="handleSliderClick(event, 'seed', 0, 1000)">
+                                    <div class="slider-fill" id="seedFill" style="width: 4.2%">
+                                        <div class="slider-handle" id="seedHandle"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="control-item">
+                                <div class="control-label">
+                                    <span>ControlNet Scale</span>
+                                    <span class="control-value" id="controlnetScaleValue">0.22</span>
+                                </div>
+                                <div class="slider-container" onclick="handleSliderClick(event, 'controlnetScale', 0, 1)">
+                                    <div class="slider-fill" id="controlnetScaleFill" style="width: 22%">
+                                        <div class="slider-handle" id="controlnetScaleHandle"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
                         <div class="control-item">
                             <div class="control-label">
-                                <span>Seed</span>
-                                <span class="control-value" id="seedValue">42</span>
+                                <span>Stream Status</span>
+                                <span class="stream-status" id="streamStatus">Idle</span>
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'seed', 0, 1000)">
-                                <div class="slider-fill" id="seedFill" style="width: 4.2%">
-                                    <div class="slider-handle" id="seedHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>ControlNet Scale</span>
-                                <span class="control-value" id="controlnetScaleValue">0.22</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'controlnetScale', 0, 1)">
-                                <div class="slider-fill" id="controlnetScaleFill" style="width: 22%">
-                                    <div class="slider-handle" id="controlnetScaleHandle"></div>
-                                </div>
-                            </div>
+                            <button class="modern-button" id="streamButton" onclick="toggleStream()">
+                                Start Stream
+                            </button>
                         </div>
                     </div>
                 </div>
