@@ -484,6 +484,38 @@
                 transform: translateY(-1px);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             }
+
+            /* Keyboard Hint */
+            .keyboard-hint {
+                font-size: 12px;
+                opacity: 0.6;
+                margin-left: 8px;
+                cursor: help;
+                transition: var(--transition);
+            }
+
+            .keyboard-hint:hover {
+                opacity: 1;
+            }
+
+            /* Keyboard Shortcuts Info */
+            .keyboard-shortcuts-info {
+                margin-top: 8px;
+            }
+
+            .shortcut-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 12px;
+                color: var(--text-secondary);
+                margin-bottom: 4px;
+            }
+
+            .shortcut-item span:first-child {
+                font-weight: 600;
+                color: var(--accent-color);
+            }
         </style>
         <script>
             window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
@@ -581,14 +613,15 @@
                         </div>
                     </div>
                     
-                    <div class="control-item">
-                        <div class="toggle-container" onclick="togglePaused()">
-                            <div class="toggle-switch" id="pausedToggle">
-                                <div class="toggle-handle"></div>
+                                            <div class="control-item">
+                            <div class="toggle-container" onclick="togglePaused()">
+                                <div class="toggle-switch" id="pausedToggle">
+                                    <div class="toggle-handle"></div>
+                                </div>
+                                <span>Paused</span>
+                                <span class="keyboard-hint" title="Keyboard shortcut: Ctrl+P">⌨️</span>
                             </div>
-                            <span>Paused</span>
                         </div>
-                    </div>
                 </div>
                 
                 <!-- Advanced Section -->
@@ -651,6 +684,18 @@
                             <button class="modern-button secondary" onclick="clearAllSettings()">
                                 Clear Saved Settings
                             </button>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="keyboard-shortcuts-info">
+                                <div class="group-title">Keyboard Shortcuts</div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+P:</span> Toggle Pause
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+Space:</span> Random Splats
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

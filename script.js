@@ -1741,10 +1741,29 @@ window.addEventListener('touchend', e => {
 });
 
 window.addEventListener('keydown', e => {
-    if (e.code === 'KeyP')
-        config.PAUSED = !config.PAUSED;
-    if (e.key === ' ')
-        splatStack.push(parseInt(Math.random() * 20) + 5);
+    // Skip shortcuts if user is typing in an input field
+    const activeElement = document.activeElement;
+    const isTyping = activeElement && (
+        activeElement.tagName === 'INPUT' || 
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.contentEditable === 'true'
+    );
+    
+    if (isTyping) return;
+    
+    // Require Ctrl modifier for shortcuts to avoid conflicts with text input
+    if (e.ctrlKey || e.metaKey) { // metaKey for Mac Cmd key
+        if (e.code === 'KeyP') {
+            e.preventDefault();
+            config.PAUSED = !config.PAUSED;
+            updateToggle('pausedToggle', config.PAUSED);
+            saveConfig();
+        }
+        if (e.key === ' ') {
+            e.preventDefault();
+            splatStack.push(parseInt(Math.random() * 20) + 5);
+        }
+    }
 });
 
 function updatePointerDownData (pointer, id, posX, posY) {
