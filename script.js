@@ -329,7 +329,7 @@ function updateSliderValue(sliderName, percentage) {
     if (!slider) return;
     
     const value = slider.min + (slider.max - slider.min) * percentage;
-    config[slider.prop] = value;
+        config[slider.prop] = value;
     
     // Update UI
     const fill = document.getElementById(sliderName + 'Fill');
@@ -429,6 +429,19 @@ function toggleAdvanced() {
 function toggleStreamDiffusion() {
     const content = document.getElementById('streamDiffusionContent');
     const toggle = document.getElementById('streamDiffusionIcon');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
+        toggle.textContent = '▼';
+    }
+}
+
+function toggleFluidControls() {
+    const content = document.getElementById('fluidControlsContent');
+    const toggle = document.getElementById('fluidControlsIcon');
     
     if (content.classList.contains('expanded')) {
         content.classList.remove('expanded');
@@ -1319,7 +1332,7 @@ function createTextureAsync (url) {
         obj.width = image.width;
         obj.height = image.height;
         gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
     };
     image.src = url;
 
@@ -1755,13 +1768,13 @@ window.addEventListener('keydown', e => {
     if (e.ctrlKey || e.metaKey) { // metaKey for Mac Cmd key
         if (e.code === 'KeyP') {
             e.preventDefault();
-            config.PAUSED = !config.PAUSED;
+        config.PAUSED = !config.PAUSED;
             updateToggle('pausedToggle', config.PAUSED);
             saveConfig();
         }
         if (e.key === ' ') {
             e.preventDefault();
-            splatStack.push(parseInt(Math.random() * 20) + 5);
+        splatStack.push(parseInt(Math.random() * 20) + 5);
         }
     }
 });
@@ -1929,16 +1942,16 @@ async function createDaydreamStream() {
 
     const response = await fetch(`${DAYDREAM_API_BASE}/streams`, {
         method: 'POST',
-        headers: {
+            headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
             pipeline_id: PIPELINE_ID
         })
-    });
+        });
 
-    if (!response.ok) {
+        if (!response.ok) {
         const error = await response.text();
         throw new Error(`Failed to create stream: ${error}`);
     }
