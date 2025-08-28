@@ -38,32 +38,36 @@ let config = {
     SIM_RESOLUTION: 256,        // Fixed simulation resolution for better performance
     DYE_RESOLUTION: 1024,       // High quality by default
     CAPTURE_RESOLUTION: 512,
-    DENSITY_DISSIPATION: 1,
-    VELOCITY_DISSIPATION: 0.2,
-    PRESSURE: 0.8,
+    DENSITY_DISSIPATION: 0.38,  // Updated default from screenshot
+    VELOCITY_DISSIPATION: 1.18, // Updated default from screenshot
+    PRESSURE: 0.37,             // Updated default from screenshot
     PRESSURE_ITERATIONS: 20,
-    CURL: 30,
-    SPLAT_RADIUS: 0.25,
+    CURL: 4,                    // Updated default from screenshot (Vorticity)
+    SPLAT_RADIUS: 0.19,         // Updated default from screenshot
     SPLAT_FORCE: 6000,
     SHADING: true,              // Adds 3D lighting effects for depth and realism
     COLORFUL: false,            // Disabled by default for cleaner look
     COLOR_UPDATE_SPEED: 10,
     PAUSED: false,
     BACK_COLOR: { r: 0, g: 0, b: 0 },
+    STATIC_COLOR: { r: 0, g: 0.831, b: 1 }, // Default cyan color (#00d4ff)
     TRANSPARENT: false,
     BLOOM: true,
     BLOOM_ITERATIONS: 8,
     BLOOM_RESOLUTION: 256,
-    BLOOM_INTENSITY: 0.8,
+    BLOOM_INTENSITY: 0.24,      // Updated default from screenshot
     BLOOM_THRESHOLD: 0.6,
     BLOOM_SOFT_KNEE: 0.7,
     SUNRAYS: true,
     SUNRAYS_RESOLUTION: 196,
-    SUNRAYS_WEIGHT: 1.0,
+    SUNRAYS_WEIGHT: 0.47,       // Updated default from screenshot
     // StreamDiffusion parameters
     INFERENCE_STEPS: 50,
     SEED: 42,
-    CONTROLNET_SCALE: 0.22,
+    CONTROLNET_SCALE: 0.8,
+    GUIDANCE_SCALE: 7.5,
+    DELTA: 0.5,
+    T_INDEX_LIST: [0, 8, 17],
 }
 
 function pointerPrototype () {
@@ -220,7 +224,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'inferenceSteps', 'seed', 'controlnetScale'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'inferenceSteps', 'seed', 'controlnetScale', 'guidanceScale', 'delta', 'tIndexList'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -337,14 +341,26 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         'sunray': { min: 0.3, max: 1, prop: 'SUNRAYS_WEIGHT', decimals: 2 },
         'inferenceSteps': { min: 1, max: 100, prop: 'INFERENCE_STEPS', decimals: 0 },
         'seed': { min: 0, max: 1000, prop: 'SEED', decimals: 0 },
-        'controlnetScale': { min: 0, max: 1, prop: 'CONTROLNET_SCALE', decimals: 2 }
+        'controlnetScale': { min: 0, max: 1, prop: 'CONTROLNET_SCALE', decimals: 2 },
+        'guidanceScale': { min: 1, max: 20, prop: 'GUIDANCE_SCALE', decimals: 1 },
+        'delta': { min: 0, max: 1, prop: 'DELTA', decimals: 2 },
+        'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true }
     };
     
     const slider = sliderMap[sliderName];
     if (!slider) return;
     
     const value = slider.min + (slider.max - slider.min) * percentage;
+    
+    // Handle special array case for T_INDEX_LIST
+    if (slider.isArray && slider.prop === 'T_INDEX_LIST') {
+        // Generate array based on slider value (middle index)
+        const middleIndex = Math.round(value);
+        const step = Math.max(1, Math.floor(middleIndex / 3));
+        config[slider.prop] = [0, middleIndex, Math.min(middleIndex * 2, 50)];
+    } else {
         config[slider.prop] = value;
+    }
     
     // Update UI
     const fill = document.getElementById(sliderName + 'Fill');
@@ -357,7 +373,14 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         const adjustedPercentage = SLIDER_HANDLE_PADDING + (percentage * (1 - 2 * SLIDER_HANDLE_PADDING));
         fill.style.width = (adjustedPercentage * 100) + '%';
     }
-    if (valueDisplay) valueDisplay.textContent = value.toFixed(slider.decimals);
+    
+    if (valueDisplay) {
+        if (slider.isArray && slider.prop === 'T_INDEX_LIST') {
+            valueDisplay.textContent = '[' + config[slider.prop].join(',') + ']';
+        } else {
+            valueDisplay.textContent = value.toFixed(slider.decimals);
+        }
+    }
     
     // Save to localStorage only if not loading from storage
     if (!skipSave) {
@@ -376,12 +399,24 @@ function updateSliderPositions() {
         'sunray': { prop: 'SUNRAYS_WEIGHT', min: 0.3, max: 1 },
         'inferenceSteps': { prop: 'INFERENCE_STEPS', min: 1, max: 100 },
         'seed': { prop: 'SEED', min: 0, max: 1000 },
-        'controlnetScale': { prop: 'CONTROLNET_SCALE', min: 0, max: 1 }
+        'controlnetScale': { prop: 'CONTROLNET_SCALE', min: 0, max: 1 },
+        'guidanceScale': { prop: 'GUIDANCE_SCALE', min: 1, max: 20 },
+        'delta': { prop: 'DELTA', min: 0, max: 1 },
+        'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true }
     };
     
     Object.keys(sliderMap).forEach(sliderName => {
         const slider = sliderMap[sliderName];
-        const percentage = (config[slider.prop] - slider.min) / (slider.max - slider.min);
+        let percentage;
+        
+        if (slider.isArray && slider.prop === 'T_INDEX_LIST') {
+            // For T_INDEX_LIST, use the middle value to determine percentage
+            const middleValue = Array.isArray(config[slider.prop]) ? config[slider.prop][1] || 8 : 8;
+            percentage = (middleValue - slider.min) / (slider.max - slider.min);
+        } else {
+            percentage = (config[slider.prop] - slider.min) / (slider.max - slider.min);
+        }
+        
         updateSliderValue(sliderName, percentage, true); // Skip saving when loading
     });
 }
@@ -1559,7 +1594,7 @@ function render (target) {
     }
 
     if (!config.TRANSPARENT)
-        drawColor(target, normalizeColor(config.BACK_COLOR));
+        drawColor(target, config.BACK_COLOR);
     if (target == null && config.TRANSPARENT)
         drawCheckerboard(target);
     drawDisplay(target);
@@ -1811,7 +1846,7 @@ window.addEventListener('keydown', e => {
             updateToggle('pausedToggle', config.PAUSED);
             saveConfig();
         }
-        if (e.key === ' ') {
+        if (e.code === 'KeyB') {
             e.preventDefault();
         splatStack.push(parseInt(Math.random() * 20) + 5);
         }
@@ -1858,11 +1893,20 @@ function correctDeltaY (delta) {
 }
 
 function generateColor () {
-    let c = HSVtoRGB(Math.random(), 1.0, 1.0);
-    c.r *= 0.15;
-    c.g *= 0.15;
-    c.b *= 0.15;
-    return c;
+    if (config.COLORFUL) {
+        let c = HSVtoRGB(Math.random(), 1.0, 1.0);
+        c.r *= 0.15;
+        c.g *= 0.15;
+        c.b *= 0.15;
+        return c;
+    } else {
+        // Use static color when Colorful is disabled
+        return {
+            r: config.STATIC_COLOR.r * 0.15,
+            g: config.STATIC_COLOR.g * 0.15,
+            b: config.STATIC_COLOR.b * 0.15
+        };
+    }
 }
 
 function HSVtoRGB (h, s, v) {
@@ -1887,6 +1931,41 @@ function HSVtoRGB (h, s, v) {
         g,
         b
     };
+}
+
+// Color conversion utilities
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16) / 255,
+        g: parseInt(result[2], 16) / 255,
+        b: parseInt(result[3], 16) / 255
+    } : null;
+}
+
+function rgbToHex(r, g, b) {
+    const toHex = (c) => {
+        const hex = Math.round(c * 255).toString(16);
+        return hex.length == 1 ? "0" + hex : hex;
+    };
+    return "#" + toHex(r) + toHex(g) + toHex(b);
+}
+
+// Color picker event handlers
+function updateStaticColor(hexColor) {
+    const rgb = hexToRgb(hexColor);
+    if (rgb) {
+        config.STATIC_COLOR = rgb;
+        saveConfig();
+    }
+}
+
+function updateBackgroundColor(hexColor) {
+    const rgb = hexToRgb(hexColor);
+    if (rgb) {
+        config.BACK_COLOR = rgb;
+        saveConfig();
+    }
 }
 
 function normalizeColor (input) {
@@ -1981,7 +2060,7 @@ function updateStreamButton(isStreaming) {
     }
 }
 
-async function copyStreamUrlToClipboard() {
+async function copyStreamUrlToClipboard(forceShare = false) {
     if (!streamState.playbackId) {
         console.warn('No stream URL available to copy');
         return;
@@ -1997,14 +2076,13 @@ async function copyStreamUrlToClipboard() {
         url: streamUrl
     };
     
-    // Try Web Share API first (native sharing)
-    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+    // If forceShare is true (right-click/long press), try Web Share API first
+    if (forceShare && navigator.share && navigator.canShare && navigator.canShare(shareData)) {
         try {
             await navigator.share(shareData);
             showShareFeedback(copyButton, 'Shared!');
             return;
         } catch (err) {
-            // User cancelled sharing or sharing failed
             if (err.name !== 'AbortError') {
                 console.error('Web Share API failed:', err);
             }
@@ -2012,7 +2090,7 @@ async function copyStreamUrlToClipboard() {
         }
     }
     
-    // Fallback to clipboard copy
+    // Primary action: Copy to clipboard (more reliable on Mac)
     if (navigator.clipboard && navigator.clipboard.writeText) {
         try {
             await navigator.clipboard.writeText(streamUrl);
@@ -2103,30 +2181,45 @@ async function updateStreamParameters() {
         const prompt = document.getElementById('promptInput').value;
         const negativePrompt = document.getElementById('negativePromptInput').value;
         
+        console.log('🔄 Updating stream parameters:', { prompt, negativePrompt });
+        
         const params = {
-            model_id: "streamdiffusion",
             pipeline: "live-video-to-video",
+            model_id: "streamdiffusion",
             params: {
                 model_id: "stabilityai/sd-turbo",
                 prompt: prompt,
-                prompt_interpolation_method: "slerp",
+                prompt_interpolation_method: "linear",
                 normalize_prompt_weights: true,
                 normalize_seed_weights: true,
                 negative_prompt: negativePrompt,
+                guidance_scale: config.GUIDANCE_SCALE,
+                delta: config.DELTA,
                 num_inference_steps: config.INFERENCE_STEPS,
+                t_index_list: config.T_INDEX_LIST,
+                width: 512,
+                height: 512,
+                use_lcm_lora: true,
+                acceleration: "tensorrt",
+                use_denoising_batch: true,
+                do_add_noise: true,
                 seed: config.SEED,
-                t_index_list: [0, 8, 17],
+                seed_interpolation_method: "linear",
+                enable_similar_image_filter: true,
+                similar_image_filter_threshold: 0.98,
+                similar_image_filter_max_skip_frame: 10,
                 controlnets: [
                     {
+                        model_id: "lllyasviel/control_v11p_sd15_canny",
                         conditioning_scale: config.CONTROLNET_SCALE,
-                        control_guidance_end: 1,
-                        control_guidance_start: 0,
+                        preprocessor: "canny",
+                        preprocessor_params: {},
                         enabled: true,
-                        model_id: "thibaud/controlnet-sd21-openpose-diffusers",
-                        preprocessor: "pose_tensorrt",
-                        preprocessor_params: {}
+                        control_guidance_start: 0,
+                        control_guidance_end: 1
                     }
-                ]
+                ],
+                weight_type: "linear"
             }
         };
 
@@ -2140,9 +2233,24 @@ async function updateStreamParameters() {
         });
 
         if (response.ok) {
+            const result = await response.json();
             streamState.lastParameterUpdate = now;
+            console.log('✅ Parameters updated successfully:', { 
+                prompt, 
+                negativePrompt, 
+                response: result,
+                guidance_scale: config.GUIDANCE_SCALE,
+                delta: config.DELTA,
+                controlnet_scale: config.CONTROLNET_SCALE 
+            });
         } else {
-            console.warn('Parameter update failed:', response.status, response.statusText);
+            const errorText = await response.text();
+            console.error('❌ Parameter update failed:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorText,
+                sentParams: params
+            });
         }
     } catch (error) {
         console.warn('Failed to update stream parameters:', error);
@@ -2226,12 +2334,26 @@ async function startStream() {
             throw new Error('Failed to capture canvas stream');
         }
         
-        // Create Daydream stream
-        updateStreamStatus('Creating stream...', 'connecting');
-        const streamData = await createDaydreamStream();
-        streamState.streamId = streamData.id;
-        streamState.playbackId = streamData.output_playback_id;
-        streamState.whipUrl = streamData.whip_url;
+        // Try to load existing stream first
+        const savedStream = loadStreamState();
+        if (savedStream) {
+            updateStreamStatus('Reconnecting to existing stream...', 'connecting');
+            streamState.streamId = savedStream.streamId;
+            streamState.playbackId = savedStream.playbackId;
+            streamState.whipUrl = savedStream.whipUrl;
+            console.log('Reusing existing stream:', savedStream.streamId);
+        } else {
+            // Create new Daydream stream
+            updateStreamStatus('Creating new stream...', 'connecting');
+            const streamData = await createDaydreamStream();
+            streamState.streamId = streamData.id;
+            streamState.playbackId = streamData.output_playback_id;
+            streamState.whipUrl = streamData.whip_url;
+            
+            // Save the new stream state
+            saveStreamState();
+            console.log('Created new stream:', streamState.streamId);
+        }
         
         // Update button visibility now that we have a valid stream
         updateStreamButton(false); // Update copy button visibility
@@ -2329,10 +2451,8 @@ function stopStream() {
         streamState.popupCheckInterval = null;
     }
     
-    // Reset state
-    streamState.streamId = null;
-    streamState.playbackId = null;
-    streamState.whipUrl = null;
+    // Reset connection state but preserve stream IDs for reuse
+    // streamState.streamId, playbackId, whipUrl are kept for reconnection
     streamState.popupWindow = null;
     streamState.lastParameterUpdate = 0;
     streamState.isUpdatingParameters = false;
@@ -2407,7 +2527,7 @@ updateSliderValue = function(sliderName, percentage) {
     originalUpdateSliderValue(sliderName, percentage);
     
     // Trigger parameter update for StreamDiffusion sliders with debouncing
-    if (['inferenceSteps', 'seed', 'controlnetScale'].includes(sliderName)) {
+    if (['inferenceSteps', 'seed', 'controlnetScale', 'guidanceScale', 'delta', 'tIndexList'].includes(sliderName)) {
         debouncedSliderParameterUpdate();
     }
 };
@@ -2418,7 +2538,8 @@ const STORAGE_KEYS = {
     CONFIG: STORAGE_PREFIX + 'config',
     API_KEY: STORAGE_PREFIX + 'apiKey',
     PROMPTS: STORAGE_PREFIX + 'prompts',
-    API_KEY_CONSENT: STORAGE_PREFIX + 'apiKeyConsent'
+    API_KEY_CONSENT: STORAGE_PREFIX + 'apiKeyConsent',
+    STREAM_STATE: STORAGE_PREFIX + 'streamState'
 };
 
 function isLocalStorageAvailable() {
@@ -2464,6 +2585,48 @@ function clearLocalStorage() {
     });
 }
 
+// Stream State Persistence Functions
+function saveStreamState() {
+    if (!streamState.streamId || !streamState.playbackId) return;
+    
+    const streamData = {
+        streamId: streamState.streamId,
+        playbackId: streamState.playbackId,
+        whipUrl: streamState.whipUrl,
+        timestamp: Date.now()
+    };
+    
+    saveToLocalStorage(STORAGE_KEYS.STREAM_STATE, streamData);
+}
+
+function loadStreamState() {
+    const savedStream = loadFromLocalStorage(STORAGE_KEYS.STREAM_STATE);
+    if (!savedStream) return null;
+    
+    // Validate stream data structure
+    if (!savedStream.streamId || !savedStream.playbackId || !savedStream.whipUrl) {
+        clearStreamState();
+        return null;
+    }
+    
+    // Check if stream is too old (expire after 24 hours)
+    const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    const age = Date.now() - (savedStream.timestamp || 0);
+    
+    if (age > maxAge) {
+        console.log('Saved stream expired, clearing...');
+        clearStreamState();
+        return null;
+    }
+    
+    return savedStream;
+}
+
+function clearStreamState() {
+    if (!isLocalStorageAvailable()) return;
+    localStorage.removeItem(STORAGE_KEYS.STREAM_STATE);
+}
+
 // Simple obfuscation for API key (not cryptographically secure, just basic protection)
 function obfuscateApiKey(key) {
     return btoa(key.split('').reverse().join(''));
@@ -2489,10 +2652,15 @@ function saveConfig() {
         INFERENCE_STEPS: config.INFERENCE_STEPS,
         SEED: config.SEED,
         CONTROLNET_SCALE: config.CONTROLNET_SCALE,
+        GUIDANCE_SCALE: config.GUIDANCE_SCALE,
+        DELTA: config.DELTA,
+        T_INDEX_LIST: config.T_INDEX_LIST,
         COLORFUL: config.COLORFUL,
         PAUSED: config.PAUSED,
         BLOOM: config.BLOOM,
-        SUNRAYS: config.SUNRAYS
+        SUNRAYS: config.SUNRAYS,
+        STATIC_COLOR: config.STATIC_COLOR,
+        BACK_COLOR: config.BACK_COLOR
     };
     
     saveToLocalStorage(STORAGE_KEYS.CONFIG, configToSave);
@@ -2524,15 +2692,30 @@ function savePrompts() {
 
 function loadPrompts() {
     const savedPrompts = loadFromLocalStorage(STORAGE_KEYS.PROMPTS);
+    const promptInput = document.getElementById('promptInput');
+    const negativePromptInput = document.getElementById('negativePromptInput');
+    
+    console.log('🔄 Loading prompts:', { savedPrompts, promptInput: !!promptInput, negativePromptInput: !!negativePromptInput });
+    
     if (savedPrompts) {
-        const promptInput = document.getElementById('promptInput');
-        const negativePromptInput = document.getElementById('negativePromptInput');
-        
+        // Load saved prompts
         if (promptInput && savedPrompts.prompt) {
             promptInput.value = savedPrompts.prompt;
+            console.log('✅ Loaded saved prompt:', savedPrompts.prompt);
         }
         if (negativePromptInput && savedPrompts.negativePrompt) {
             negativePromptInput.value = savedPrompts.negativePrompt;
+            console.log('✅ Loaded saved negative prompt:', savedPrompts.negativePrompt);
+        }
+    } else {
+        // Set default values if no saved prompts
+        if (promptInput && !promptInput.value) {
+            promptInput.value = 'superman';
+            console.log('✅ Set default prompt: superman');
+        }
+        if (negativePromptInput && !negativePromptInput.value) {
+            negativePromptInput.value = 'blurry, low quality, flat, 2d';
+            console.log('✅ Set default negative prompt');
         }
     }
 }
@@ -2569,28 +2752,40 @@ function loadApiKey() {
 }
 
 function clearAllSettings() {
-    if (confirm('Are you sure you want to clear all saved settings? This will reset all sliders, prompts, and API key to defaults.')) {
+    if (confirm('Are you sure you want to clear all saved settings? This will reset all sliders, prompts, API key, and saved stream data to defaults.')) {
         clearLocalStorage();
         
+        // Clear current stream state in memory
+        streamState.streamId = null;
+        streamState.playbackId = null;
+        streamState.whipUrl = null;
+        updateStreamButton(false);
+        
         // Reset to default values
-        config.DENSITY_DISSIPATION = 1;
-        config.VELOCITY_DISSIPATION = 0.2;
-        config.PRESSURE = 0.8;
-        config.CURL = 30;
-        config.SPLAT_RADIUS = 0.25;
-        config.BLOOM_INTENSITY = 0.8;
-        config.SUNRAYS_WEIGHT = 1.0;
+        config.DENSITY_DISSIPATION = 0.38;
+        config.VELOCITY_DISSIPATION = 1.18;
+        config.PRESSURE = 0.37;
+        config.CURL = 4;
+        config.SPLAT_RADIUS = 0.19;
+        config.BLOOM_INTENSITY = 0.24;
+        config.SUNRAYS_WEIGHT = 0.47;
         config.INFERENCE_STEPS = 50;
         config.SEED = 42;
-        config.CONTROLNET_SCALE = 0.22;
+        config.CONTROLNET_SCALE = 0.8;
+        config.GUIDANCE_SCALE = 7.5;
+        config.DELTA = 0.5;
+        config.T_INDEX_LIST = [0, 8, 17];
         config.COLORFUL = false;
         config.PAUSED = false;
         config.BLOOM = true;
         config.SUNRAYS = true;
+        config.STATIC_COLOR = { r: 0, g: 0.831, b: 1 }; // Default cyan color
+        config.BACK_COLOR = { r: 0, g: 0, b: 0 }; // Default black background
         
         // Update UI
         updateSliderPositions();
         updateToggleStates();
+        initializeColorPickers();
         
         // Clear input fields
         const promptInput = document.getElementById('promptInput');
@@ -2618,7 +2813,58 @@ function initializeLocalStorage() {
         loadPrompts();
         loadApiKey();
         setupInputSaveHandlers();
+        initializeStreamRecovery();
+        initializeColorPickers();
     }, 200); // Increased timeout to ensure DOM is ready
+}
+
+function initializeStreamRecovery() {
+    const savedStream = loadStreamState();
+    if (savedStream) {
+        // Restore stream state to memory
+        streamState.streamId = savedStream.streamId;
+        streamState.playbackId = savedStream.playbackId;
+        streamState.whipUrl = savedStream.whipUrl;
+        
+        // Update UI to show available stream
+        updateStreamButton(false); // Show copy button since we have a valid stream
+        
+        console.log('Recovered stream state:', savedStream.streamId);
+        
+        // Calculate and log stream age
+        const ageHours = Math.floor((Date.now() - savedStream.timestamp) / (1000 * 60 * 60));
+        if (ageHours < 1) {
+            console.log('Stream is less than 1 hour old');
+        } else {
+            console.log(`Stream is ${ageHours} hours old`);
+        }
+    }
+}
+
+function initializeColorPickers() {
+    // Set static color picker value
+    const staticColorPicker = document.getElementById('staticColorPicker');
+    if (staticColorPicker) {
+        const staticColorHex = rgbToHex(config.STATIC_COLOR.r, config.STATIC_COLOR.g, config.STATIC_COLOR.b);
+        staticColorPicker.value = staticColorHex;
+        staticColorPicker.style.backgroundColor = staticColorHex;
+        // Update Coloris if it's already initialized
+        if (window.Coloris) {
+            staticColorPicker.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+    
+    // Set background color picker value
+    const backgroundColorPicker = document.getElementById('backgroundColorPicker');
+    if (backgroundColorPicker) {
+        const backgroundColorHex = rgbToHex(config.BACK_COLOR.r, config.BACK_COLOR.g, config.BACK_COLOR.b);
+        backgroundColorPicker.value = backgroundColorHex;
+        backgroundColorPicker.style.backgroundColor = backgroundColorHex;
+        // Update Coloris if it's already initialized
+        if (window.Coloris) {
+            backgroundColorPicker.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
 }
 
 function setupInputSaveHandlers() {
@@ -2659,7 +2905,89 @@ function setupInputSaveHandlers() {
 document.addEventListener('DOMContentLoaded', () => {
     initializeStreamParameterListeners();
     initializeLocalStorage();
+    initializeColoris();
 });
+
+// Initialize Coloris color picker
+function initializeColoris() {
+    // Ensure Coloris is available before initializing
+    if (typeof Coloris === 'undefined') {
+        console.warn('Coloris not loaded yet, retrying...');
+        setTimeout(initializeColoris, 100);
+        return;
+    }
+
+    // Configure Coloris with dark theme and custom options
+    Coloris({
+        el: '[data-coloris]',
+        theme: 'default',
+        themeMode: 'dark',
+        alpha: false,
+        format: 'hex',
+        formatToggle: false,
+        swatches: [
+            // Curated 10-color palette
+            '#FFD700', '#FF8C00', '#FF4500', '#FF1493', '#8A2BE2', 
+            '#4169E1', '#0088FF', '#0000FF', '#00BFFF', '#00FFFF'
+        ],
+        swatchesOnly: false,
+        closeButton: false,
+        clearButton: false,
+        margin: 8,
+        onChange: (color, input) => {
+            // Update the input background color to show selected color
+            input.style.backgroundColor = color;
+            
+            // Determine which color picker was changed and update accordingly
+            if (input.id === 'staticColorPicker') {
+                updateStaticColor(color);
+            } else if (input.id === 'backgroundColorPicker') {
+                updateBackgroundColor(color);
+            }
+        }
+    });
+
+    // Set up color picker click handling
+    const staticColorPicker = document.getElementById('staticColorPicker');
+    const backgroundColorPicker = document.getElementById('backgroundColorPicker');
+
+    function setupColorPickerEvents(picker) {
+        if (!picker) return;
+        
+        // Handle click to deactivate text focus and enable picker
+        picker.addEventListener('click', (e) => {
+            // Deactivate text focus
+            e.target.blur();
+            // Let Coloris handle the picker opening naturally
+            // Don't prevent default here - let Coloris work
+        });
+        
+        // Prevent focus from showing keyboard
+        picker.addEventListener('focus', (e) => {
+            e.target.blur();
+        });
+        
+        // Handle touch events for mobile
+        picker.addEventListener('touchstart', (e) => {
+            // Don't prevent default - let the touch turn into a click
+            // Just ensure no text selection happens
+            e.target.blur();
+        });
+        
+        // Prevent keyboard input but allow Coloris shortcuts
+        picker.addEventListener('keydown', (e) => {
+            // Only prevent text input keys, not Coloris functionality
+            if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
+                e.preventDefault();
+            }
+        });
+    }
+
+    setupColorPickerEvents(staticColorPicker);
+    setupColorPickerEvents(backgroundColorPicker);
+
+    console.log('Coloris initialized successfully');
+}
 
 // Handle mobile orientation and resize changes
 window.addEventListener('resize', () => {
