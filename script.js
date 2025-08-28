@@ -31,6 +31,9 @@ SOFTWARE.
 const canvas = document.getElementsByTagName('canvas')[0];
 resizeCanvas();
 
+// Slider handle padding to prevent clipping at edges
+const SLIDER_HANDLE_PADDING = 0.035; // 3.5% padding on each side
+
 let config = {
     SIM_RESOLUTION: 256,        // Fixed simulation resolution for better performance
     DYE_RESOLUTION: 1024,       // High quality by default
@@ -288,7 +291,11 @@ function updateSliderFromMouse(e, sliderName) {
     const container = fillElement.parentElement;
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    const rawPercentage = Math.max(0, Math.min(1, x / rect.width));
+    
+    // Convert visual percentage back to actual percentage, accounting for handle padding
+    const percentage = Math.max(0, Math.min(1, (rawPercentage - SLIDER_HANDLE_PADDING) / (1 - 2 * SLIDER_HANDLE_PADDING)));
+    
     updateSliderValue(sliderName, percentage);
 }
 
@@ -299,7 +306,11 @@ function updateSliderFromTouch(e, sliderName) {
     const container = fillElement.parentElement;
     const rect = container.getBoundingClientRect();
     const x = e.touches[0].clientX - rect.left;
-    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    const rawPercentage = Math.max(0, Math.min(1, x / rect.width));
+    
+    // Convert visual percentage back to actual percentage, accounting for handle padding
+    const percentage = Math.max(0, Math.min(1, (rawPercentage - SLIDER_HANDLE_PADDING) / (1 - 2 * SLIDER_HANDLE_PADDING)));
+    
     updateSliderValue(sliderName, percentage);
 }
 
@@ -307,7 +318,11 @@ function handleSliderClick(event, sliderName, min, max) {
     event.stopPropagation(); // Prevent event bubbling
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
-    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    const rawPercentage = Math.max(0, Math.min(1, x / rect.width));
+    
+    // Convert visual percentage back to actual percentage, accounting for handle padding
+    const percentage = Math.max(0, Math.min(1, (rawPercentage - SLIDER_HANDLE_PADDING) / (1 - 2 * SLIDER_HANDLE_PADDING)));
+    
     updateSliderValue(sliderName, percentage);
 }
 
@@ -335,7 +350,13 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
     const fill = document.getElementById(sliderName + 'Fill');
     const valueDisplay = document.getElementById(sliderName + 'Value');
     
-    if (fill) fill.style.width = (percentage * 100) + '%';
+    if (fill) {
+        // Adjust percentage to prevent handle clipping
+        // Reserve space for handle on both ends (8px handle radius + 2px border = 10px each side)
+        // For a typical 280px slider, this is about 3.5% padding on each side
+        const adjustedPercentage = SLIDER_HANDLE_PADDING + (percentage * (1 - 2 * SLIDER_HANDLE_PADDING));
+        fill.style.width = (adjustedPercentage * 100) + '%';
+    }
     if (valueDisplay) valueDisplay.textContent = value.toFixed(slider.decimals);
     
     // Save to localStorage only if not loading from storage
@@ -1388,26 +1409,40 @@ function calcDeltaTime () {
 }
 
 function resizeCanvas () {
-    let width = scaleByPixelRatio(canvas.clientWidth);
-    let height = scaleByPixelRatio(canvas.clientHeight);
+    // Get actual viewport dimensions
+    let width, height;
     
-    // Mobile-specific canvas optimization
     if (isMobile()) {
-        // Limit canvas size on mobile for better performance
-        const maxMobileSize = 1024;
-        if (width > maxMobileSize) {
-            width = maxMobileSize;
-        }
-        if (height > maxMobileSize) {
-            height = maxMobileSize;
+        // On mobile, use viewport dimensions directly
+        width = window.innerWidth;
+        height = window.innerHeight;
+        
+        // Account for landscape mode with control panel
+        if (window.innerWidth > window.innerHeight && window.innerWidth <= 768) {
+            // Landscape mode - subtract control panel width (320px) + right padding (20px) + left margin (20px)
+            width = window.innerWidth - 360;
         }
         
-        // Adjust for device pixel ratio on mobile
-        const dpr = getDevicePixelRatio();
-        if (dpr > 1) {
-            width = Math.min(width, window.innerWidth * dpr);
-            height = Math.min(height, window.innerHeight * dpr);
+        // Scale by pixel ratio but limit for performance
+        width = scaleByPixelRatio(width);
+        height = scaleByPixelRatio(height);
+        
+        // Limit canvas resolution on mobile for better performance
+        const maxMobileSize = 1024;
+        if (width > maxMobileSize) {
+            const ratio = height / width;
+            width = maxMobileSize;
+            height = maxMobileSize * ratio;
         }
+        if (height > maxMobileSize) {
+            const ratio = width / height;
+            height = maxMobileSize;
+            width = maxMobileSize * ratio;
+        }
+    } else {
+        // Desktop - use client dimensions
+        width = scaleByPixelRatio(canvas.clientWidth);
+        height = scaleByPixelRatio(canvas.clientHeight);
     }
     
     if (canvas.width != width || canvas.height != height) {
@@ -1676,8 +1711,8 @@ function correctRadius (radius) {
 }
 
 canvas.addEventListener('mousedown', e => {
-    let posX = scaleByPixelRatio(e.offsetX);
-    let posY = scaleByPixelRatio(e.offsetY);
+    let posX = e.offsetX;
+    let posY = e.offsetY;
     let pointer = pointers.find(p => p.id == -1);
     if (pointer == null)
         pointer = new pointerPrototype();
@@ -1687,8 +1722,8 @@ canvas.addEventListener('mousedown', e => {
 canvas.addEventListener('mousemove', e => {
     let pointer = pointers[0];
     if (!pointer.down) return;
-    let posX = scaleByPixelRatio(e.offsetX);
-    let posY = scaleByPixelRatio(e.offsetY);
+    let posX = e.offsetX;
+    let posY = e.offsetY;
     updatePointerMoveData(pointer, posX, posY);
 });
 
@@ -1717,8 +1752,9 @@ canvas.addEventListener('touchstart', e => {
     while (touches.length >= pointers.length)
         pointers.push(new pointerPrototype());
     for (let i = 0; i < touches.length; i++) {
-        let posX = scaleByPixelRatio(touches[i].pageX);
-        let posY = scaleByPixelRatio(touches[i].pageY);
+        const rect = canvas.getBoundingClientRect();
+        let posX = touches[i].clientX - rect.left;
+        let posY = touches[i].clientY - rect.top;
         updatePointerDownData(pointers[i + 1], touches[i].identifier, posX, posY);
     }
 });
@@ -1739,8 +1775,9 @@ canvas.addEventListener('touchmove', e => {
     for (let i = 0; i < touches.length; i++) {
         let pointer = pointers[i + 1];
         if (!pointer.down) continue;
-        let posX = scaleByPixelRatio(touches[i].pageX);
-        let posY = scaleByPixelRatio(touches[i].pageY);
+        const rect = canvas.getBoundingClientRect();
+        let posX = touches[i].clientX - rect.left;
+        let posY = touches[i].clientY - rect.top;
         updatePointerMoveData(pointer, posX, posY);
     }
 }, { passive: false });
@@ -1785,8 +1822,8 @@ function updatePointerDownData (pointer, id, posX, posY) {
     pointer.id = id;
     pointer.down = true;
     pointer.moved = false;
-    pointer.texcoordX = posX / canvas.width;
-    pointer.texcoordY = 1.0 - posY / canvas.height;
+    pointer.texcoordX = posX / canvas.clientWidth;
+    pointer.texcoordY = 1.0 - posY / canvas.clientHeight;
     pointer.prevTexcoordX = pointer.texcoordX;
     pointer.prevTexcoordY = pointer.texcoordY;
     pointer.deltaX = 0;
@@ -1797,8 +1834,8 @@ function updatePointerDownData (pointer, id, posX, posY) {
 function updatePointerMoveData (pointer, posX, posY) {
     pointer.prevTexcoordX = pointer.texcoordX;
     pointer.prevTexcoordY = pointer.texcoordY;
-    pointer.texcoordX = posX / canvas.width;
-    pointer.texcoordY = 1.0 - posY / canvas.height;
+    pointer.texcoordX = posX / canvas.clientWidth;
+    pointer.texcoordY = 1.0 - posY / canvas.clientHeight;
     pointer.deltaX = correctDeltaX(pointer.texcoordX - pointer.prevTexcoordX);
     pointer.deltaY = correctDeltaY(pointer.texcoordY - pointer.prevTexcoordY);
     pointer.moved = Math.abs(pointer.deltaX) > 0 || Math.abs(pointer.deltaY) > 0;
@@ -1934,6 +1971,94 @@ function updateStreamButton(isStreaming) {
         button.textContent = isStreaming ? 'Stop Stream' : 'Start Stream';
         button.className = isStreaming ? 'modern-button streaming' : 'modern-button';
     }
+    
+    // Show/hide copy stream URL button based on whether we have a valid stream
+    const copyButton = document.getElementById('copyStreamUrlButton');
+    if (copyButton) {
+        // Show button if we have a playback ID (stream exists), regardless of popup state
+        const hasValidStream = streamState.playbackId && streamState.streamId;
+        copyButton.style.display = hasValidStream ? 'block' : 'none';
+    }
+}
+
+async function copyStreamUrlToClipboard() {
+    if (!streamState.playbackId) {
+        console.warn('No stream URL available to copy');
+        return;
+    }
+    
+    const streamUrl = `https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force`;
+    const copyButton = document.getElementById('copyStreamUrlButton');
+    
+    // Prepare share data
+    const shareData = {
+        title: 'AI Fluid Simulation Stream',
+        text: 'Check out this AI-powered fluid simulation stream!',
+        url: streamUrl
+    };
+    
+    // Try Web Share API first (native sharing)
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+        try {
+            await navigator.share(shareData);
+            showShareFeedback(copyButton, 'Shared!');
+            return;
+        } catch (err) {
+            // User cancelled sharing or sharing failed
+            if (err.name !== 'AbortError') {
+                console.error('Web Share API failed:', err);
+            }
+            // Fall through to clipboard copy
+        }
+    }
+    
+    // Fallback to clipboard copy
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(streamUrl);
+            showShareFeedback(copyButton, 'Copied!');
+        } catch (err) {
+            console.error('Failed to copy with clipboard API:', err);
+            // Fallback to older method
+            fallbackCopyToClipboard(streamUrl, copyButton);
+        }
+    } else {
+        // Fallback for older browsers
+        fallbackCopyToClipboard(streamUrl, copyButton);
+    }
+}
+
+function fallbackCopyToClipboard(text, button) {
+    // Create a temporary textarea element
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    
+    try {
+        textarea.select();
+        textarea.setSelectionRange(0, 99999); // For mobile devices
+        document.execCommand('copy');
+        showShareFeedback(button, 'Copied!');
+    } catch (err) {
+        console.error('Fallback copy failed:', err);
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
+
+function showShareFeedback(button, message = 'Copied!') {
+    if (!button) return;
+    
+    const originalText = button.textContent;
+    button.textContent = `✓ ${message}`;
+    button.classList.add('copied');
+    
+    setTimeout(() => {
+        button.textContent = originalText;
+        button.classList.remove('copied');
+    }, 2000);
 }
 
 
@@ -2108,6 +2233,9 @@ async function startStream() {
         streamState.playbackId = streamData.output_playback_id;
         streamState.whipUrl = streamData.whip_url;
         
+        // Update button visibility now that we have a valid stream
+        updateStreamButton(false); // Update copy button visibility
+        
         // Open popup window
         updateStreamStatus('Opening player...', 'connecting');
         streamState.popupWindow = openStreamPopup(streamState.playbackId);
@@ -2139,7 +2267,10 @@ async function startStream() {
         const checkPopup = setInterval(() => {
             if (streamState.popupWindow && streamState.popupWindow.closed) {
                 clearInterval(checkPopup);
-                stopStream();
+                // Don't automatically stop stream when popup closes
+                // Just clean up the popup reference
+                streamState.popupWindow = null;
+                streamState.popupCheckInterval = null;
             }
         }, 1000);
         
@@ -2528,4 +2659,21 @@ function setupInputSaveHandlers() {
 document.addEventListener('DOMContentLoaded', () => {
     initializeStreamParameterListeners();
     initializeLocalStorage();
+});
+
+// Handle mobile orientation and resize changes
+window.addEventListener('resize', () => {
+    if (isMobile()) {
+        setTimeout(() => {
+            resizeCanvas();
+        }, 100); // Small delay to let resize complete
+    }
+});
+
+window.addEventListener('orientationchange', () => {
+    if (isMobile()) {
+        setTimeout(() => {
+            resizeCanvas();
+        }, 300); // Longer delay for orientation change
+    }
 });
