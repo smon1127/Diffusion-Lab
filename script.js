@@ -1872,7 +1872,8 @@ let streamState = {
     mediaStream: null,
     popupWindow: null,
     popupCheckInterval: null,
-    lastParameterUpdate: 0
+    lastParameterUpdate: 0,
+    isUpdatingParameters: false
 };
 
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
@@ -1923,40 +1924,44 @@ async function updateStreamParameters() {
     if (!streamState.streamId || !streamState.isStreaming) return;
     
     const now = Date.now();
-    if (now - streamState.lastParameterUpdate < 1000) return; // Throttle updates
+    if (now - streamState.lastParameterUpdate < 500) return; // Reduced throttle time
     
-    const apiKey = document.getElementById('apiKeyInput').value;
-    const prompt = document.getElementById('promptInput').value;
-    const negativePrompt = document.getElementById('negativePromptInput').value;
+    // Prevent overlapping requests
+    if (streamState.isUpdatingParameters) return;
+    streamState.isUpdatingParameters = true;
     
-    const params = {
-        model_id: "streamdiffusion",
-        pipeline: "live-video-to-video",
-        params: {
-            model_id: "stabilityai/sd-turbo",
-            prompt: prompt,
-            prompt_interpolation_method: "slerp",
-            normalize_prompt_weights: true,
-            normalize_seed_weights: true,
-            negative_prompt: negativePrompt,
-            num_inference_steps: config.INFERENCE_STEPS,
-            seed: config.SEED,
-            t_index_list: [0, 8, 17],
-            controlnets: [
-                {
-                    conditioning_scale: config.CONTROLNET_SCALE,
-                    control_guidance_end: 1,
-                    control_guidance_start: 0,
-                    enabled: true,
-                    model_id: "thibaud/controlnet-sd21-openpose-diffusers",
-                    preprocessor: "pose_tensorrt",
-                    preprocessor_params: {}
-                }
-            ]
-        }
-    };
-
     try {
+        const apiKey = document.getElementById('apiKeyInput').value;
+        const prompt = document.getElementById('promptInput').value;
+        const negativePrompt = document.getElementById('negativePromptInput').value;
+        
+        const params = {
+            model_id: "streamdiffusion",
+            pipeline: "live-video-to-video",
+            params: {
+                model_id: "stabilityai/sd-turbo",
+                prompt: prompt,
+                prompt_interpolation_method: "slerp",
+                normalize_prompt_weights: true,
+                normalize_seed_weights: true,
+                negative_prompt: negativePrompt,
+                num_inference_steps: config.INFERENCE_STEPS,
+                seed: config.SEED,
+                t_index_list: [0, 8, 17],
+                controlnets: [
+                    {
+                        conditioning_scale: config.CONTROLNET_SCALE,
+                        control_guidance_end: 1,
+                        control_guidance_start: 0,
+                        enabled: true,
+                        model_id: "thibaud/controlnet-sd21-openpose-diffusers",
+                        preprocessor: "pose_tensorrt",
+                        preprocessor_params: {}
+                    }
+                ]
+            }
+        };
+
         const response = await fetch(`https://api.daydream.live/beta/streams/${streamState.streamId}/prompts`, {
             method: 'POST',
             headers: {
@@ -1968,9 +1973,14 @@ async function updateStreamParameters() {
 
         if (response.ok) {
             streamState.lastParameterUpdate = now;
+        } else {
+            console.warn('Parameter update failed:', response.status, response.statusText);
         }
     } catch (error) {
         console.warn('Failed to update stream parameters:', error);
+        // Don't let API errors affect the simulation - just log and continue
+    } finally {
+        streamState.isUpdatingParameters = false;
     }
 }
 
@@ -2169,6 +2179,7 @@ function stopStream() {
     streamState.whipUrl = null;
     streamState.popupWindow = null;
     streamState.lastParameterUpdate = 0;
+    streamState.isUpdatingParameters = false;
     
     updateStreamStatus('Idle', 'idle');
     updateStreamButton(false);
@@ -2182,28 +2193,66 @@ function toggleStream() {
     }
 }
 
-// Add parameter change listeners for real-time updates
+// Add parameter change listeners with debouncing
 function initializeStreamParameterListeners() {
     const promptInput = document.getElementById('promptInput');
     const negativePromptInput = document.getElementById('negativePromptInput');
     
+    // Debounce function to prevent excessive API calls
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+    
+    // Create debounced version of updateStreamParameters
+    const debouncedUpdate = debounce(updateStreamParameters, 500);
+    
     if (promptInput) {
-        promptInput.addEventListener('input', updateStreamParameters);
+        // Use debounced input for real-time feel, but not overwhelming
+        promptInput.addEventListener('input', debouncedUpdate);
+        // Also update on blur/enter for immediate response
+        promptInput.addEventListener('blur', updateStreamParameters);
+        promptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                updateStreamParameters();
+            }
+        });
     }
     
     if (negativePromptInput) {
-        negativePromptInput.addEventListener('input', updateStreamParameters);
+        negativePromptInput.addEventListener('input', debouncedUpdate);
+        negativePromptInput.addEventListener('blur', updateStreamParameters);
+        negativePromptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                updateStreamParameters();
+            }
+        });
     }
 }
 
 // Override the existing updateSliderValue to trigger parameter updates
 const originalUpdateSliderValue = updateSliderValue;
+
+// Create a debounced version for slider updates
+let sliderUpdateTimeout;
+function debouncedSliderParameterUpdate() {
+    clearTimeout(sliderUpdateTimeout);
+    sliderUpdateTimeout = setTimeout(updateStreamParameters, 200);
+}
+
 updateSliderValue = function(sliderName, percentage) {
     originalUpdateSliderValue(sliderName, percentage);
     
-    // Trigger parameter update for StreamDiffusion sliders
+    // Trigger parameter update for StreamDiffusion sliders with debouncing
     if (['inferenceSteps', 'seed', 'controlnetScale'].includes(sliderName)) {
-        updateStreamParameters();
+        debouncedSliderParameterUpdate();
     }
 };
 
