@@ -374,6 +374,76 @@
             .promo {
                 display: none !important;
             }
+
+            /* Input Styles */
+            .api-input, .text-input {
+                width: 100%;
+                padding: 8px 12px;
+                background: var(--control-bg);
+                border: 1px solid var(--border-color);
+                border-radius: 6px;
+                color: var(--text-primary);
+                font-size: 13px;
+                font-family: inherit;
+                transition: var(--transition);
+                margin-bottom: 8px;
+            }
+
+            .api-input:focus, .text-input:focus {
+                outline: none;
+                border-color: var(--accent-color);
+                box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+            }
+
+            .api-input::placeholder, .text-input::placeholder {
+                color: var(--text-secondary);
+            }
+
+            /* Stream Status */
+            .stream-status {
+                font-size: 12px;
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .stream-status.idle {
+                background: rgba(128, 128, 128, 0.2);
+                color: #888;
+            }
+
+            .stream-status.connecting {
+                background: rgba(255, 165, 0, 0.2);
+                color: #ffa500;
+            }
+
+            .stream-status.active {
+                background: rgba(0, 255, 0, 0.2);
+                color: #00ff00;
+            }
+
+            .stream-status.error {
+                background: rgba(255, 0, 0, 0.2);
+                color: #ff0000;
+            }
+
+            /* Stream Button States */
+            .modern-button.streaming {
+                background: linear-gradient(135deg, #ff4444, #cc3333);
+            }
+
+            .modern-button.streaming:hover {
+                background: linear-gradient(135deg, #cc3333, #ff4444);
+            }
+
+            .modern-button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+                transform: none !important;
+                box-shadow: none !important;
+            }
         </style>
         <script>
             window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
@@ -535,6 +605,83 @@
                             <button class="modern-button" onclick="captureScreenshot()">
                                 Take Screenshot
                             </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Daydream StreamDiffusion Section -->
+                <div class="advanced-section">
+                    <div class="advanced-toggle" onclick="toggleStreamDiffusion()">
+                        <span id="streamDiffusionIcon">▶</span>
+                        <span>StreamDiffusion AI</span>
+                    </div>
+                    
+                    <div class="advanced-content" id="streamDiffusionContent">
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>API Key</span>
+                            </div>
+                            <input type="password" class="api-input" id="apiKeyInput" placeholder="sk_dd3PC3YsTgxJTWDRZQdbrpQ7wo7aLQHuX2c1wX6K821Fzp9J3k7vegPhU79Ps7LS" title="Enter your Daydream API key" />
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Stream Status</span>
+                                <span class="stream-status" id="streamStatus">Idle</span>
+                            </div>
+                            <button class="modern-button" id="streamButton" onclick="toggleStream()">
+                                Start Stream
+                            </button>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Prompt</span>
+                            </div>
+                            <input type="text" class="text-input" id="promptInput" placeholder="superman" value="superman" title="Describe what you want the AI to generate" />
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Negative Prompt</span>
+                            </div>
+                            <input type="text" class="text-input" id="negativePromptInput" placeholder="blurry, low quality" value="blurry, low quality, flat, 2d" title="Describe what you don't want the AI to generate" />
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Inference Steps</span>
+                                <span class="control-value" id="inferenceStepsValue">50</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'inferenceSteps', 1, 100)">
+                                <div class="slider-fill" id="inferenceStepsFill" style="width: 49%">
+                                    <div class="slider-handle" id="inferenceStepsHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Seed</span>
+                                <span class="control-value" id="seedValue">42</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'seed', 0, 1000)">
+                                <div class="slider-fill" id="seedFill" style="width: 4.2%">
+                                    <div class="slider-handle" id="seedHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>ControlNet Scale</span>
+                                <span class="control-value" id="controlnetScaleValue">0.22</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'controlnetScale', 0, 1)">
+                                <div class="slider-fill" id="controlnetScaleFill" style="width: 22%">
+                                    <div class="slider-handle" id="controlnetScaleHandle"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

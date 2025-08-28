@@ -57,6 +57,10 @@ let config = {
     SUNRAYS: true,
     SUNRAYS_RESOLUTION: 196,
     SUNRAYS_WEIGHT: 1.0,
+    // StreamDiffusion parameters
+    INFERENCE_STEPS: 50,
+    SEED: 42,
+    CONTROLNET_SCALE: 0.22,
 }
 
 function pointerPrototype () {
@@ -213,7 +217,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'inferenceSteps', 'seed', 'controlnetScale'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -315,7 +319,10 @@ function updateSliderValue(sliderName, percentage) {
         'vorticity': { min: 0, max: 50, prop: 'CURL', decimals: 0 },
         'splat': { min: 0.01, max: 1, prop: 'SPLAT_RADIUS', decimals: 2 },
         'bloomIntensity': { min: 0.1, max: 2, prop: 'BLOOM_INTENSITY', decimals: 2 },
-        'sunray': { min: 0.3, max: 1, prop: 'SUNRAYS_WEIGHT', decimals: 2 }
+        'sunray': { min: 0.3, max: 1, prop: 'SUNRAYS_WEIGHT', decimals: 2 },
+        'inferenceSteps': { min: 1, max: 100, prop: 'INFERENCE_STEPS', decimals: 0 },
+        'seed': { min: 0, max: 1000, prop: 'SEED', decimals: 0 },
+        'controlnetScale': { min: 0, max: 1, prop: 'CONTROLNET_SCALE', decimals: 2 }
     };
     
     const slider = sliderMap[sliderName];
@@ -340,7 +347,10 @@ function updateSliderPositions() {
         'vorticity': { prop: 'CURL', min: 0, max: 50 },
         'splat': { prop: 'SPLAT_RADIUS', min: 0.01, max: 1 },
         'bloomIntensity': { prop: 'BLOOM_INTENSITY', min: 0.1, max: 2 },
-        'sunray': { prop: 'SUNRAYS_WEIGHT', min: 0.3, max: 1 }
+        'sunray': { prop: 'SUNRAYS_WEIGHT', min: 0.3, max: 1 },
+        'inferenceSteps': { prop: 'INFERENCE_STEPS', min: 1, max: 100 },
+        'seed': { prop: 'SEED', min: 0, max: 1000 },
+        'controlnetScale': { prop: 'CONTROLNET_SCALE', min: 0, max: 1 }
     };
     
     Object.keys(sliderMap).forEach(sliderName => {
@@ -399,6 +409,19 @@ function toggleSunrays() {
 function toggleAdvanced() {
     const content = document.getElementById('advancedContent');
     const toggle = document.querySelector('.advanced-toggle span:first-child');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
+        toggle.textContent = '▼';
+    }
+}
+
+function toggleStreamDiffusion() {
+    const content = document.getElementById('streamDiffusionContent');
+    const toggle = document.getElementById('streamDiffusionIcon');
     
     if (content.classList.contains('expanded')) {
         content.classList.remove('expanded');
@@ -1838,3 +1861,353 @@ function hashCode (s) {
     }
     return hash;
 };
+
+// StreamDiffusion functionality
+let streamState = {
+    isStreaming: false,
+    streamId: null,
+    playbackId: null,
+    whipUrl: null,
+    peerConnection: null,
+    mediaStream: null,
+    popupWindow: null,
+    popupCheckInterval: null,
+    lastParameterUpdate: 0
+};
+
+const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
+const PIPELINE_ID = 'pip_qpUgXycjWF6YMeSL';
+
+function updateStreamStatus(status, className = '') {
+    const statusElement = document.getElementById('streamStatus');
+    if (statusElement) {
+        statusElement.textContent = status;
+        statusElement.className = `stream-status ${className}`;
+    }
+}
+
+function updateStreamButton(isStreaming) {
+    const button = document.getElementById('streamButton');
+    if (button) {
+        button.textContent = isStreaming ? 'Stop Stream' : 'Start Stream';
+        button.className = isStreaming ? 'modern-button streaming' : 'modern-button';
+    }
+}
+
+async function createDaydreamStream() {
+    const apiKey = document.getElementById('apiKeyInput').value;
+    if (!apiKey) {
+        throw new Error('API key is required');
+    }
+
+    const response = await fetch(`${DAYDREAM_API_BASE}/streams`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            pipeline_id: PIPELINE_ID
+        })
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to create stream: ${error}`);
+    }
+
+    return await response.json();
+}
+
+async function updateStreamParameters() {
+    if (!streamState.streamId || !streamState.isStreaming) return;
+    
+    const now = Date.now();
+    if (now - streamState.lastParameterUpdate < 1000) return; // Throttle updates
+    
+    const apiKey = document.getElementById('apiKeyInput').value;
+    const prompt = document.getElementById('promptInput').value;
+    const negativePrompt = document.getElementById('negativePromptInput').value;
+    
+    const params = {
+        model_id: "streamdiffusion",
+        pipeline: "live-video-to-video",
+        params: {
+            model_id: "stabilityai/sd-turbo",
+            prompt: prompt,
+            prompt_interpolation_method: "slerp",
+            normalize_prompt_weights: true,
+            normalize_seed_weights: true,
+            negative_prompt: negativePrompt,
+            num_inference_steps: config.INFERENCE_STEPS,
+            seed: config.SEED,
+            t_index_list: [0, 8, 17],
+            controlnets: [
+                {
+                    conditioning_scale: config.CONTROLNET_SCALE,
+                    control_guidance_end: 1,
+                    control_guidance_start: 0,
+                    enabled: true,
+                    model_id: "thibaud/controlnet-sd21-openpose-diffusers",
+                    preprocessor: "pose_tensorrt",
+                    preprocessor_params: {}
+                }
+            ]
+        }
+    };
+
+    try {
+        const response = await fetch(`https://api.daydream.live/beta/streams/${streamState.streamId}/prompts`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(params)
+        });
+
+        if (response.ok) {
+            streamState.lastParameterUpdate = now;
+        }
+    } catch (error) {
+        console.warn('Failed to update stream parameters:', error);
+    }
+}
+
+async function setupWebRTCConnection(whipUrl, mediaStream) {
+    const peerConnection = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+
+    // Add the media stream to the peer connection
+    mediaStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, mediaStream);
+    });
+
+    // Create offer
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    // Send offer to WHIP endpoint
+    const response = await fetch(whipUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/sdp'
+        },
+        body: offer.sdp
+    });
+
+    if (!response.ok) {
+        throw new Error(`WHIP connection failed: ${response.statusText}`);
+    }
+
+    const answerSdp = await response.text();
+    await peerConnection.setRemoteDescription(new RTCSessionDescription({
+        type: 'answer',
+        sdp: answerSdp
+    }));
+
+    return peerConnection;
+}
+
+function openStreamPopup(playbackId) {
+    const width = 512;
+    const height = 512;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+
+    const popupWindow = window.open(
+        '',
+        'AI_Daydream_Stream',
+        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,menubar=no,toolbar=no,status=no`
+    );
+
+    if (!popupWindow) {
+        throw new Error('Popup blocked. Please allow popups for this site.');
+    }
+
+    popupWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>AI Daydream Stream</title>
+            <style>
+                body, html { margin: 0; padding: 0; overflow: hidden; background: #000; }
+                iframe { width: 100%; height: 100%; border: none; }
+            </style>
+        </head>
+        <body>
+            <iframe 
+                src="https://lvpr.tv/?v=${playbackId}&lowLatency=force"
+                allow="autoplay; encrypted-media"
+                allowfullscreen>
+            </iframe>
+        </body>
+        </html>
+    `);
+
+    return popupWindow;
+}
+
+async function startStream() {
+    try {
+        updateStreamStatus('Connecting...', 'connecting');
+        updateStreamButton(false);
+        
+        // Validate API key
+        const apiKey = document.getElementById('apiKeyInput').value.trim();
+        if (!apiKey) {
+            throw new Error('Please enter your Daydream API key');
+        }
+        
+        // Create canvas media stream
+        streamState.mediaStream = canvas.captureStream(30);
+        if (!streamState.mediaStream) {
+            throw new Error('Failed to capture canvas stream');
+        }
+        
+        // Create Daydream stream
+        updateStreamStatus('Creating stream...', 'connecting');
+        const streamData = await createDaydreamStream();
+        streamState.streamId = streamData.id;
+        streamState.playbackId = streamData.output_playback_id;
+        streamState.whipUrl = streamData.whip_url;
+        
+        // Open popup window
+        updateStreamStatus('Opening player...', 'connecting');
+        streamState.popupWindow = openStreamPopup(streamState.playbackId);
+        
+        // Setup WebRTC connection
+        updateStreamStatus('Connecting to stream...', 'connecting');
+        streamState.peerConnection = await setupWebRTCConnection(
+            streamState.whipUrl,
+            streamState.mediaStream
+        );
+        
+        // Monitor connection state
+        streamState.peerConnection.addEventListener('connectionstatechange', () => {
+            const state = streamState.peerConnection.connectionState;
+            if (state === 'failed' || state === 'disconnected') {
+                updateStreamStatus('Connection lost', 'error');
+                setTimeout(() => stopStream(), 2000);
+            }
+        });
+        
+        // Update parameters
+        await updateStreamParameters();
+        
+        streamState.isStreaming = true;
+        updateStreamStatus('Active', 'active');
+        updateStreamButton(true);
+        
+        // Monitor popup window
+        const checkPopup = setInterval(() => {
+            if (streamState.popupWindow && streamState.popupWindow.closed) {
+                clearInterval(checkPopup);
+                stopStream();
+            }
+        }, 1000);
+        
+        // Store interval ID for cleanup
+        streamState.popupCheckInterval = checkPopup;
+        
+    } catch (error) {
+        console.error('Failed to start stream:', error);
+        let errorMessage = error.message;
+        
+        // Provide user-friendly error messages
+        if (error.message.includes('API key')) {
+            errorMessage = 'Invalid API key';
+        } else if (error.message.includes('Popup blocked')) {
+            errorMessage = 'Popup blocked - please allow popups';
+        } else if (error.message.includes('WHIP connection')) {
+            errorMessage = 'Stream connection failed';
+        } else if (error.message.includes('Failed to create stream')) {
+            errorMessage = 'API error - check your key';
+        }
+        
+        updateStreamStatus('Error: ' + errorMessage, 'error');
+        updateStreamButton(false);
+        stopStream();
+        
+        // Show user notification
+        if (window.confirm(`Stream failed: ${errorMessage}\n\nWould you like to try again?`)) {
+            setTimeout(() => startStream(), 1000);
+        }
+    }
+}
+
+function stopStream() {
+    streamState.isStreaming = false;
+    
+    // Clean up WebRTC connection
+    if (streamState.peerConnection) {
+        streamState.peerConnection.close();
+        streamState.peerConnection = null;
+    }
+    
+    // Clean up media stream
+    if (streamState.mediaStream) {
+        streamState.mediaStream.getTracks().forEach(track => track.stop());
+        streamState.mediaStream = null;
+    }
+    
+    // Clean up popup window
+    if (streamState.popupWindow && !streamState.popupWindow.closed) {
+        streamState.popupWindow.close();
+    }
+    
+    // Clean up intervals
+    if (streamState.popupCheckInterval) {
+        clearInterval(streamState.popupCheckInterval);
+        streamState.popupCheckInterval = null;
+    }
+    
+    // Reset state
+    streamState.streamId = null;
+    streamState.playbackId = null;
+    streamState.whipUrl = null;
+    streamState.popupWindow = null;
+    streamState.lastParameterUpdate = 0;
+    
+    updateStreamStatus('Idle', 'idle');
+    updateStreamButton(false);
+}
+
+function toggleStream() {
+    if (streamState.isStreaming) {
+        stopStream();
+    } else {
+        startStream();
+    }
+}
+
+// Add parameter change listeners for real-time updates
+function initializeStreamParameterListeners() {
+    const promptInput = document.getElementById('promptInput');
+    const negativePromptInput = document.getElementById('negativePromptInput');
+    
+    if (promptInput) {
+        promptInput.addEventListener('input', updateStreamParameters);
+    }
+    
+    if (negativePromptInput) {
+        negativePromptInput.addEventListener('input', updateStreamParameters);
+    }
+}
+
+// Override the existing updateSliderValue to trigger parameter updates
+const originalUpdateSliderValue = updateSliderValue;
+updateSliderValue = function(sliderName, percentage) {
+    originalUpdateSliderValue(sliderName, percentage);
+    
+    // Trigger parameter update for StreamDiffusion sliders
+    if (['inferenceSteps', 'seed', 'controlnetScale'].includes(sliderName)) {
+        updateStreamParameters();
+    }
+};
+
+// Initialize parameter listeners when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    initializeStreamParameterListeners();
+});
