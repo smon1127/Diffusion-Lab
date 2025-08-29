@@ -252,7 +252,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -278,29 +278,36 @@ function addSliderDragHandlers() {
                 isDragging = false;
             });
             
-            // Touch support
+            // Touch support for handle
             handle.addEventListener('touchstart', (e) => {
                 isDragging = true;
                 e.preventDefault();
+                e.stopPropagation(); // Prevent event bubbling
                 // Immediately update slider position on touch start
                 updateSliderFromTouch(e, slider);
             }, { passive: false }); // Need preventDefault for slider
             
+            // Global touch move and end handlers
             document.addEventListener('touchmove', (e) => {
                 if (isDragging) {
+                    e.preventDefault(); // Prevent scrolling while dragging
                     updateSliderFromTouch(e, slider);
                 }
-            }, { passive: true });
+            }, { passive: false }); // Need preventDefault to stop scrolling
             
-            document.addEventListener('touchend', () => {
-                isDragging = false;
-            }, { passive: true });
+            document.addEventListener('touchend', (e) => {
+                if (isDragging) {
+                    isDragging = false;
+                    e.preventDefault();
+                }
+            }, { passive: false });
             
             // Add immediate response on container click/touch
             sliderContainer.addEventListener('mousedown', (e) => {
                 if (e.target === sliderContainer || e.target === container) {
                     isDragging = true;
                     e.preventDefault();
+                    e.stopPropagation();
                     updateSliderFromMouse(e, slider);
                 }
             });
@@ -309,6 +316,7 @@ function addSliderDragHandlers() {
                 if (e.target === sliderContainer || e.target === container) {
                     isDragging = true;
                     e.preventDefault();
+                    e.stopPropagation(); // Prevent event bubbling
                     updateSliderFromTouch(e, slider);
                 }
             }, { passive: false }); // Need preventDefault for slider
@@ -348,8 +356,20 @@ function updateSliderFromTouch(e, sliderName) {
 
 function handleSliderClick(event, sliderName, min, max) {
     event.stopPropagation(); // Prevent event bubbling
+    event.preventDefault(); // Prevent default behavior
+    
     const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
+    let x;
+    
+    // Handle both mouse and touch events
+    if (event.touches && event.touches.length > 0) {
+        x = event.touches[0].clientX - rect.left;
+    } else if (event.changedTouches && event.changedTouches.length > 0) {
+        x = event.changedTouches[0].clientX - rect.left;
+    } else {
+        x = event.clientX - rect.left;
+    }
+    
     const rawPercentage = Math.max(0, Math.min(1, x / rect.width));
     
     // Convert visual percentage back to actual percentage, accounting for handle padding
@@ -870,6 +890,209 @@ function cleanup() {
     updateRecordButton(false);
 }
 
+// Background image functionality
+let backgroundImage = {
+    texture: null,
+    loaded: false,
+    canvas: null,
+    width: 0,
+    height: 0
+};
+
+function initializeImageUpload() {
+    const imageUpload = document.getElementById('imageUpload');
+    if (imageUpload) {
+        imageUpload.addEventListener('change', handleImageUpload);
+    }
+}
+
+function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.match(/^image\/(png|jpeg|jpg)$/)) {
+        alert('Please select a PNG, JPG, or JPEG image file.');
+        return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        alert('Image file is too large. Please select an image smaller than 10MB.');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        loadBackgroundImage(e.target.result);
+    };
+    reader.readAsDataURL(file);
+}
+
+function loadBackgroundImage(dataURL) {
+    const img = new Image();
+    img.onload = function() {
+        // Create a canvas that matches the WebGL viewport aspect ratio
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { 
+            alpha: true, 
+            antialias: true,
+            premultipliedAlpha: false 
+        });
+        
+        // Get current canvas (WebGL viewport) dimensions
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const viewportAspect = viewportWidth / viewportHeight;
+        const imageAspect = img.width / img.height;
+        
+        // Set canvas size to match viewport aspect ratio with high-DPI support
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        const maxSize = Math.min(2048, Math.max(viewportWidth, viewportHeight) * devicePixelRatio);
+        let canvasWidth, canvasHeight;
+        
+        if (viewportAspect > 1) {
+            canvasWidth = Math.min(maxSize, viewportWidth * devicePixelRatio);
+            canvasHeight = canvasWidth / viewportAspect;
+        } else {
+            canvasHeight = Math.min(maxSize, viewportHeight * devicePixelRatio);
+            canvasWidth = canvasHeight * viewportAspect;
+        }
+        
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        
+        // Clear canvas with transparent background
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Enable high-quality image smoothing
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        // Additional quality settings
+        if (ctx.webkitImageSmoothingEnabled !== undefined) {
+            ctx.webkitImageSmoothingEnabled = true;
+        }
+        if (ctx.mozImageSmoothingEnabled !== undefined) {
+            ctx.mozImageSmoothingEnabled = true;
+        }
+        
+        // Calculate how to fit the image in the canvas without stretching
+        let drawWidth, drawHeight, drawX, drawY;
+        
+        if (imageAspect > viewportAspect) {
+            // Image is wider than viewport - fit to width
+            drawWidth = canvas.width;
+            drawHeight = canvas.width / imageAspect;
+            drawX = 0;
+            drawY = (canvas.height - drawHeight) / 2;
+        } else {
+            // Image is taller than viewport - fit to height  
+            drawHeight = canvas.height;
+            drawWidth = canvas.height * imageAspect;
+            drawX = (canvas.width - drawWidth) / 2;
+            drawY = 0;
+        }
+        
+        // Allow scaling up to canvas size for better quality, but respect original image size
+        const maxScale = Math.min(
+            canvas.width / img.width, 
+            canvas.height / img.height,
+            2.0 // Allow up to 2x upscaling for small images
+        );
+        const scale = Math.min(maxScale, Math.min(drawWidth / img.width, drawHeight / img.height));
+        drawWidth = img.width * scale;
+        drawHeight = img.height * scale;
+        drawX = (canvas.width - drawWidth) / 2;
+        drawY = (canvas.height - drawHeight) / 2;
+        
+        // Flip the image vertically to fix upside-down rendering in WebGL
+        ctx.save();
+        ctx.scale(1, -1); // Flip vertically
+        ctx.translate(0, -canvas.height); // Adjust for flip
+        ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+        ctx.restore();
+        
+        // Create WebGL texture
+        createBackgroundTexture(canvas);
+        
+        // Update UI
+        updateImagePreview(dataURL);
+        showClearButton(true);
+        
+        backgroundImage.canvas = canvas;
+        backgroundImage.width = canvas.width;
+        backgroundImage.height = canvas.height;
+        backgroundImage.loaded = true;
+    };
+    img.src = dataURL;
+}
+
+function createBackgroundTexture(canvas) {
+    // Delete existing texture if it exists
+    if (backgroundImage.texture) {
+        gl.deleteTexture(backgroundImage.texture);
+    }
+    
+    // Create new texture
+    backgroundImage.texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, backgroundImage.texture);
+    
+    // Set texture parameters for high quality
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    
+    // Upload image data to texture
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+    
+    // Generate mipmaps for better quality at different scales
+    gl.generateMipmap(gl.TEXTURE_2D);
+    
+    gl.bindTexture(gl.TEXTURE_2D, null);
+}
+
+function updateImagePreview(dataURL) {
+    const preview = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('previewImg');
+    
+    if (preview && previewImg) {
+        previewImg.src = dataURL;
+        preview.style.display = 'block';
+    }
+}
+
+function showClearButton(show) {
+    const clearButton = document.getElementById('clearImageButton');
+    if (clearButton) {
+        clearButton.style.display = show ? 'inline-block' : 'none';
+    }
+}
+
+function clearBackgroundImage() {
+    // Clear WebGL texture
+    if (backgroundImage.texture) {
+        gl.deleteTexture(backgroundImage.texture);
+        backgroundImage.texture = null;
+    }
+    
+    // Reset state
+    backgroundImage.loaded = false;
+    backgroundImage.canvas = null;
+    backgroundImage.width = 0;
+    backgroundImage.height = 0;
+    
+    // Clear UI
+    const preview = document.getElementById('imagePreview');
+    const imageUpload = document.getElementById('imageUpload');
+    
+    if (preview) preview.style.display = 'none';
+    if (imageUpload) imageUpload.value = '';
+    
+    showClearButton(false);
+}
+
 function framebufferToTexture (target) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
     let length = target.width * target.height * 4;
@@ -1097,6 +1320,18 @@ const colorShader = compileShader(gl.FRAGMENT_SHADER, `
 
     void main () {
         gl_FragColor = color;
+    }
+`);
+
+const simpleTextureShader = compileShader(gl.FRAGMENT_SHADER, `
+    precision highp float;
+    precision highp sampler2D;
+
+    varying vec2 vUv;
+    uniform sampler2D uTexture;
+
+    void main () {
+        gl_FragColor = texture2D(uTexture, vUv);
     }
 `);
 
@@ -1536,6 +1771,7 @@ const blurProgram            = new Program(blurVertexShader, blurShader);
 const copyProgram            = new Program(baseVertexShader, copyShader);
 const clearProgram           = new Program(baseVertexShader, clearShader);
 const colorProgram           = new Program(baseVertexShader, colorShader);
+const simpleTextureProgram   = new Program(baseVertexShader, simpleTextureShader);
 const checkerboardProgram    = new Program(baseVertexShader, checkerboardShader);
 const bloomPrefilterProgram  = new Program(baseVertexShader, bloomPrefilterShader);
 const bloomBlurProgram       = new Program(baseVertexShader, bloomBlurShader);
@@ -1964,6 +2200,12 @@ function render (target) {
         drawColor(target, config.BACK_COLOR);
     if (target == null && config.TRANSPARENT)
         drawCheckerboard(target);
+    
+    // Draw background image if loaded
+    if (backgroundImage.loaded && backgroundImage.texture) {
+        drawBackgroundImage(target);
+    }
+    
     drawDisplay(target);
 }
 
@@ -1971,6 +2213,26 @@ function drawColor (target, color) {
     colorProgram.bind();
     gl.uniform4f(colorProgram.uniforms.color, color.r, color.g, color.b, 1);
     blit(target);
+}
+
+function drawBackgroundImage (target) {
+    // Enable blending for the background image with premultiplied alpha
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    
+    // Use the simple texture program for cleaner rendering
+    simpleTextureProgram.bind();
+    
+    // Bind the background image texture
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, backgroundImage.texture);
+    gl.uniform1i(simpleTextureProgram.uniforms.uTexture, 0);
+    
+    // Draw the background image
+    blit(target);
+    
+    // Restore blending state
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 }
 
 function drawCheckerboard (target) {
@@ -3429,6 +3691,9 @@ function resetValues() {
         updateToggleStates();
         initializeColorPickers();
         
+        // Clear background image
+        clearBackgroundImage();
+        
         // Save the reset values to localStorage
         saveConfig();
     }
@@ -3598,6 +3863,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeColoris();
         initializeMobilePanelGestures();
         initializeIdleAnimation();
+        initializeImageUpload();
     } catch (err) {
         console.error('Initialization error:', err);
     }
@@ -3633,8 +3899,8 @@ function initializeColoris() {
         formatToggle: false,
         swatches: [
             // Curated 10-color palette
-            '#FFD700', '#FF8C00', '#FF4500', '#FF1493', '#8A2BE2', 
-            '#4169E1', '#0088FF', '#0000FF', '#00BFFF', '#00FFFF'
+            '#FFD700', '#FFF400', '#FF4500', '#FF1493', '#8A2BE2', 
+            '#4169E1', '#3B74FF', '#0000FF', '#00BFFF', '#00FFFF'
         ],
         swatchesOnly: false,
         closeButton: false,
