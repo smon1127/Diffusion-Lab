@@ -2304,42 +2304,29 @@ async function updateStreamParameters() {
         console.log('🔄 Updating stream parameters:', { prompt, negativePrompt });
         
         const params = {
-            pipeline: "live-video-to-video",
             model_id: "streamdiffusion",
+            pipeline: "live-video-to-video",
             params: {
                 model_id: "stabilityai/sd-turbo",
                 prompt: prompt,
-                prompt_interpolation_method: "linear",
+                prompt_interpolation_method: "slerp",
                 normalize_prompt_weights: true,
                 normalize_seed_weights: true,
                 negative_prompt: negativePrompt,
-                guidance_scale: config.GUIDANCE_SCALE,
-                delta: config.DELTA,
                 num_inference_steps: config.INFERENCE_STEPS,
-                t_index_list: config.T_INDEX_LIST,
-                width: 512,
-                height: 512,
-                use_lcm_lora: true,
-                acceleration: "tensorrt",
-                use_denoising_batch: true,
-                do_add_noise: true,
                 seed: config.SEED,
-                seed_interpolation_method: "linear",
-                enable_similar_image_filter: true,
-                similar_image_filter_threshold: 0.98,
-                similar_image_filter_max_skip_frame: 10,
+                t_index_list: [0, 8, 17],
                 controlnets: [
                     {
-                        model_id: "lllyasviel/control_v11p_sd15_canny",
                         conditioning_scale: config.CONTROLNET_SCALE,
-                        preprocessor: "canny",
-                        preprocessor_params: {},
-                        enabled: true,
+                        control_guidance_end: 1,
                         control_guidance_start: 0,
-                        control_guidance_end: 1
+                        enabled: true,
+                        model_id: "thibaud/controlnet-sd21-openpose-diffusers",
+                        preprocessor: "pose_tensorrt",
+                        preprocessor_params: {}
                     }
-                ],
-                weight_type: "linear"
+                ]
             }
         };
 
