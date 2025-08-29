@@ -1217,14 +1217,70 @@
                         
                         <div class="control-item">
                             <div class="control-label">
-                                <span>ControlNet Scale<span class="info-icon">i
-                                    <div class="info-tooltip">Edge guidance strength. Higher = more control</div>
+                                <span>Pose ControlNet<span class="info-icon">i
+                                    <div class="info-tooltip">Human pose detection strength</div>
                                 </span></span>
-                                <span class="control-value" id="controlnetScaleValue">0.80</span>
+                                <span class="control-value" id="controlnetPoseValue">0.56</span>
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'controlnetScale', 0, 1)">
-                                <div class="slider-fill" id="controlnetScaleFill" style="width: 80%">
-                                    <div class="slider-handle" id="controlnetScaleHandle"></div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'controlnetPose', 0, 1)">
+                                <div class="slider-fill" id="controlnetPoseFill" style="width: 56%">
+                                    <div class="slider-handle" id="controlnetPoseHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>HED ControlNet<span class="info-icon">i
+                                    <div class="info-tooltip">Soft edge detection strength</div>
+                                </span></span>
+                                <span class="control-value" id="controlnetHedValue">0.53</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'controlnetHed', 0, 1)">
+                                <div class="slider-fill" id="controlnetHedFill" style="width: 53%">
+                                    <div class="slider-handle" id="controlnetHedHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Canny ControlNet<span class="info-icon">i
+                                    <div class="info-tooltip">Sharp edge detection strength</div>
+                                </span></span>
+                                <span class="control-value" id="controlnetCannyValue">0.27</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'controlnetCanny', 0, 1)">
+                                <div class="slider-fill" id="controlnetCannyFill" style="width: 27%">
+                                    <div class="slider-handle" id="controlnetCannyHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Depth ControlNet<span class="info-icon">i
+                                    <div class="info-tooltip">3D depth information strength</div>
+                                </span></span>
+                                <span class="control-value" id="controlnetDepthValue">0.34</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'controlnetDepth', 0, 1)">
+                                <div class="slider-fill" id="controlnetDepthFill" style="width: 34%">
+                                    <div class="slider-handle" id="controlnetDepthHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Color ControlNet<span class="info-icon">i
+                                    <div class="info-tooltip">Color preservation strength</div>
+                                </span></span>
+                                <span class="control-value" id="controlnetColorValue">0.66</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'controlnetColor', 0, 1)">
+                                <div class="slider-fill" id="controlnetColorFill" style="width: 66%">
+                                    <div class="slider-handle" id="controlnetColorHandle"></div>
                                 </div>
                             </div>
                         </div>

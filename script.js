@@ -64,7 +64,11 @@ let config = {
     // StreamDiffusion parameters
     INFERENCE_STEPS: 50,
     SEED: 42,
-    CONTROLNET_SCALE: 0.8,
+    CONTROLNET_POSE_SCALE: 0.56,
+    CONTROLNET_HED_SCALE: 0.53,
+    CONTROLNET_CANNY_SCALE: 0.27,
+    CONTROLNET_DEPTH_SCALE: 0.34,
+    CONTROLNET_COLOR_SCALE: 0.66,
     GUIDANCE_SCALE: 7.5,
     DELTA: 0.5,
     T_INDEX_LIST: [0, 8, 17],
@@ -224,7 +228,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'inferenceSteps', 'seed', 'controlnetScale', 'guidanceScale', 'delta', 'tIndexList'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'tIndexList'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -341,7 +345,11 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         'sunray': { min: 0.3, max: 1, prop: 'SUNRAYS_WEIGHT', decimals: 2 },
         'inferenceSteps': { min: 1, max: 100, prop: 'INFERENCE_STEPS', decimals: 0 },
         'seed': { min: 0, max: 1000, prop: 'SEED', decimals: 0 },
-        'controlnetScale': { min: 0, max: 1, prop: 'CONTROLNET_SCALE', decimals: 2 },
+        'controlnetPose': { min: 0, max: 1, prop: 'CONTROLNET_POSE_SCALE', decimals: 2 },
+        'controlnetHed': { min: 0, max: 1, prop: 'CONTROLNET_HED_SCALE', decimals: 2 },
+        'controlnetCanny': { min: 0, max: 1, prop: 'CONTROLNET_CANNY_SCALE', decimals: 2 },
+        'controlnetDepth': { min: 0, max: 1, prop: 'CONTROLNET_DEPTH_SCALE', decimals: 2 },
+        'controlnetColor': { min: 0, max: 1, prop: 'CONTROLNET_COLOR_SCALE', decimals: 2 },
         'guidanceScale': { min: 1, max: 20, prop: 'GUIDANCE_SCALE', decimals: 1 },
         'delta': { min: 0, max: 1, prop: 'DELTA', decimals: 2 },
         'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true }
@@ -399,7 +407,11 @@ function updateSliderPositions() {
         'sunray': { prop: 'SUNRAYS_WEIGHT', min: 0.3, max: 1 },
         'inferenceSteps': { prop: 'INFERENCE_STEPS', min: 1, max: 100 },
         'seed': { prop: 'SEED', min: 0, max: 1000 },
-        'controlnetScale': { prop: 'CONTROLNET_SCALE', min: 0, max: 1 },
+        'controlnetPose': { prop: 'CONTROLNET_POSE_SCALE', min: 0, max: 1 },
+        'controlnetHed': { prop: 'CONTROLNET_HED_SCALE', min: 0, max: 1 },
+        'controlnetCanny': { prop: 'CONTROLNET_CANNY_SCALE', min: 0, max: 1 },
+        'controlnetDepth': { prop: 'CONTROLNET_DEPTH_SCALE', min: 0, max: 1 },
+        'controlnetColor': { prop: 'CONTROLNET_COLOR_SCALE', min: 0, max: 1 },
         'guidanceScale': { prop: 'GUIDANCE_SCALE', min: 1, max: 20 },
         'delta': { prop: 'DELTA', min: 0, max: 1 },
         'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true }
@@ -2304,8 +2316,6 @@ async function updateStreamParameters() {
         console.log('🔄 Updating stream parameters:', { prompt, negativePrompt });
         
         const params = {
-            model_id: "streamdiffusion",
-            pipeline: "live-video-to-video",
             params: {
                 model_id: "stabilityai/sd-turbo",
                 prompt: prompt,
@@ -2315,15 +2325,54 @@ async function updateStreamParameters() {
                 negative_prompt: negativePrompt,
                 num_inference_steps: config.INFERENCE_STEPS,
                 seed: config.SEED,
-                t_index_list: [0, 8, 17],
+                t_index_list: [2, 4, 6],
                 controlnets: [
                     {
-                        conditioning_scale: config.CONTROLNET_SCALE,
+                        conditioning_scale: config.CONTROLNET_POSE_SCALE,
                         control_guidance_end: 1,
                         control_guidance_start: 0,
                         enabled: true,
                         model_id: "thibaud/controlnet-sd21-openpose-diffusers",
                         preprocessor: "pose_tensorrt",
+                        preprocessor_params: {}
+                    },
+                    {
+                        conditioning_scale: config.CONTROLNET_HED_SCALE,
+                        control_guidance_end: 1,
+                        control_guidance_start: 0,
+                        enabled: true,
+                        model_id: "thibaud/controlnet-sd21-hed-diffusers",
+                        preprocessor: "soft_edge",
+                        preprocessor_params: {}
+                    },
+                    {
+                        conditioning_scale: config.CONTROLNET_CANNY_SCALE,
+                        control_guidance_end: 1,
+                        control_guidance_start: 0,
+                        enabled: true,
+                        model_id: "thibaud/controlnet-sd21-canny-diffusers",
+                        preprocessor: "canny",
+                        preprocessor_params: {
+                            high_threshold: 200,
+                            low_threshold: 100
+                        }
+                    },
+                    {
+                        conditioning_scale: config.CONTROLNET_DEPTH_SCALE,
+                        control_guidance_end: 1,
+                        control_guidance_start: 0,
+                        enabled: true,
+                        model_id: "thibaud/controlnet-sd21-depth-diffusers",
+                        preprocessor: "depth_tensorrt",
+                        preprocessor_params: {}
+                    },
+                    {
+                        conditioning_scale: config.CONTROLNET_COLOR_SCALE,
+                        control_guidance_end: 1,
+                        control_guidance_start: 0,
+                        enabled: true,
+                        model_id: "thibaud/controlnet-sd21-color-diffusers",
+                        preprocessor: "passthrough",
                         preprocessor_params: {}
                     }
                 ]
@@ -2348,7 +2397,11 @@ async function updateStreamParameters() {
                 response: result,
                 guidance_scale: config.GUIDANCE_SCALE,
                 delta: config.DELTA,
-                controlnet_scale: config.CONTROLNET_SCALE 
+                controlnet_pose_scale: config.CONTROLNET_POSE_SCALE,
+                controlnet_hed_scale: config.CONTROLNET_HED_SCALE,
+                controlnet_canny_scale: config.CONTROLNET_CANNY_SCALE,
+                controlnet_depth_scale: config.CONTROLNET_DEPTH_SCALE,
+                controlnet_color_scale: config.CONTROLNET_COLOR_SCALE 
             });
         } else {
             const errorText = await response.text();
@@ -2634,7 +2687,7 @@ updateSliderValue = function(sliderName, percentage) {
     originalUpdateSliderValue(sliderName, percentage);
     
     // Trigger parameter update for StreamDiffusion sliders with debouncing
-    if (['inferenceSteps', 'seed', 'controlnetScale', 'guidanceScale', 'delta', 'tIndexList'].includes(sliderName)) {
+    if (['inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'tIndexList'].includes(sliderName)) {
         debouncedSliderParameterUpdate();
     }
 };
@@ -2758,7 +2811,11 @@ function saveConfig() {
         SUNRAYS_WEIGHT: config.SUNRAYS_WEIGHT,
         INFERENCE_STEPS: config.INFERENCE_STEPS,
         SEED: config.SEED,
-        CONTROLNET_SCALE: config.CONTROLNET_SCALE,
+        CONTROLNET_POSE_SCALE: config.CONTROLNET_POSE_SCALE,
+        CONTROLNET_HED_SCALE: config.CONTROLNET_HED_SCALE,
+        CONTROLNET_CANNY_SCALE: config.CONTROLNET_CANNY_SCALE,
+        CONTROLNET_DEPTH_SCALE: config.CONTROLNET_DEPTH_SCALE,
+        CONTROLNET_COLOR_SCALE: config.CONTROLNET_COLOR_SCALE,
         GUIDANCE_SCALE: config.GUIDANCE_SCALE,
         DELTA: config.DELTA,
         T_INDEX_LIST: config.T_INDEX_LIST,
@@ -2878,7 +2935,11 @@ function clearAllSettings() {
         config.SUNRAYS_WEIGHT = 0.47;
         config.INFERENCE_STEPS = 50;
         config.SEED = 42;
-        config.CONTROLNET_SCALE = 0.8;
+        config.CONTROLNET_POSE_SCALE = 0.56;
+        config.CONTROLNET_HED_SCALE = 0.53;
+        config.CONTROLNET_CANNY_SCALE = 0.27;
+        config.CONTROLNET_DEPTH_SCALE = 0.34;
+        config.CONTROLNET_COLOR_SCALE = 0.66;
         config.GUIDANCE_SCALE = 7.5;
         config.DELTA = 0.5;
         config.T_INDEX_LIST = [0, 8, 17];
