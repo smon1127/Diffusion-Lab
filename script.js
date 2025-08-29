@@ -71,7 +71,10 @@ let config = {
     CONTROLNET_COLOR_SCALE: 0.66,
     GUIDANCE_SCALE: 7.5,
     DELTA: 0.5,
-    T_INDEX_LIST: [0, 8, 17],
+    // Denoise controls (t_index_list values)
+    DENOISE_X: 2,
+    DENOISE_Y: 4, 
+    DENOISE_Z: 6,
 }
 
 function pointerPrototype () {
@@ -228,7 +231,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'tIndexList'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -343,6 +346,9 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         'splat': { min: 0.01, max: 1, prop: 'SPLAT_RADIUS', decimals: 2 },
         'bloomIntensity': { min: 0.1, max: 2, prop: 'BLOOM_INTENSITY', decimals: 2 },
         'sunray': { min: 0.3, max: 1, prop: 'SUNRAYS_WEIGHT', decimals: 2 },
+        'denoiseX': { min: 0, max: 45, prop: 'DENOISE_X', decimals: 0 },
+        'denoiseY': { min: 0, max: 45, prop: 'DENOISE_Y', decimals: 0 },
+        'denoiseZ': { min: 0, max: 45, prop: 'DENOISE_Z', decimals: 0 },
         'inferenceSteps': { min: 1, max: 100, prop: 'INFERENCE_STEPS', decimals: 0 },
         'seed': { min: 0, max: 1000, prop: 'SEED', decimals: 0 },
         'controlnetPose': { min: 0, max: 1, prop: 'CONTROLNET_POSE_SCALE', decimals: 2 },
@@ -405,6 +411,9 @@ function updateSliderPositions() {
         'splat': { prop: 'SPLAT_RADIUS', min: 0.01, max: 1 },
         'bloomIntensity': { prop: 'BLOOM_INTENSITY', min: 0.1, max: 2 },
         'sunray': { prop: 'SUNRAYS_WEIGHT', min: 0.3, max: 1 },
+        'denoiseX': { prop: 'DENOISE_X', min: 0, max: 45 },
+        'denoiseY': { prop: 'DENOISE_Y', min: 0, max: 45 },
+        'denoiseZ': { prop: 'DENOISE_Z', min: 0, max: 45 },
         'inferenceSteps': { prop: 'INFERENCE_STEPS', min: 1, max: 100 },
         'seed': { prop: 'SEED', min: 0, max: 1000 },
         'controlnetPose': { prop: 'CONTROLNET_POSE_SCALE', min: 0, max: 1 },
@@ -591,6 +600,36 @@ function toggleStreamDiffusion() {
     } else {
         content.classList.add('expanded');
         toggle.textContent = '▼';
+    }
+}
+
+function togglePromptPresets() {
+    const content = document.getElementById('promptPresetsContent');
+    const toggle = document.getElementById('promptPresetsIcon');
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        toggle.textContent = '▲';
+    } else {
+        content.style.display = 'none';
+        toggle.textContent = '▼';
+    }
+}
+
+function setPrompt(promptText) {
+    const promptInput = document.getElementById('promptInput');
+    if (promptInput) {
+        promptInput.value = promptText;
+        
+        // Save the new prompt
+        savePrompts();
+        
+        // Trigger parameter update if stream is active
+        if (streamState.streamId) {
+            debouncedParameterUpdate();
+        }
+        
+        console.log('✅ Prompt set to:', promptText);
     }
 }
 
@@ -2325,7 +2364,7 @@ async function updateStreamParameters() {
                 negative_prompt: negativePrompt,
                 num_inference_steps: config.INFERENCE_STEPS,
                 seed: config.SEED,
-                t_index_list: [2, 4, 6],
+                t_index_list: [Math.round(config.DENOISE_X), Math.round(config.DENOISE_Y), Math.round(config.DENOISE_Z)],
                 controlnets: [
                     {
                         conditioning_scale: config.CONTROLNET_POSE_SCALE,
@@ -2686,11 +2725,64 @@ function debouncedSliderParameterUpdate() {
 updateSliderValue = function(sliderName, percentage) {
     originalUpdateSliderValue(sliderName, percentage);
     
+    // Handle denoise slider synchronization
+    if (['denoiseX', 'denoiseY', 'denoiseZ'].includes(sliderName)) {
+        syncDenoiseSliders(sliderName);
+    }
+    
     // Trigger parameter update for StreamDiffusion sliders with debouncing
-    if (['inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'tIndexList'].includes(sliderName)) {
+    if (['denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta'].includes(sliderName)) {
         debouncedSliderParameterUpdate();
     }
 };
+
+
+
+function syncDenoiseSliders(changedSlider) {
+    const x = config.DENOISE_X;
+    const y = config.DENOISE_Y;
+    const z = config.DENOISE_Z;
+    
+    if (changedSlider === 'denoiseX' || changedSlider === 'denoiseY') {
+        // Z should sync to max(X, Y)
+        const newZ = Math.max(x, y);
+        if (newZ !== z) {
+            config.DENOISE_Z = newZ;
+            updateSliderPosition('denoiseZ');
+        }
+    } else if (changedSlider === 'denoiseZ') {
+        // If Z goes below X or Y, they should follow Z down
+        let updated = false;
+        if (z < x) {
+            config.DENOISE_X = z;
+            updateSliderPosition('denoiseX');
+            updated = true;
+        }
+        if (z < y) {
+            config.DENOISE_Y = z;
+            updateSliderPosition('denoiseY');
+            updated = true;
+        }
+    }
+}
+
+function updateSliderPosition(sliderName) {
+    const sliderMap = {
+        'denoiseX': { prop: 'DENOISE_X', min: 0, max: 45 },
+        'denoiseY': { prop: 'DENOISE_Y', min: 0, max: 45 },
+        'denoiseZ': { prop: 'DENOISE_Z', min: 0, max: 45 }
+    };
+    
+    const slider = sliderMap[sliderName];
+    if (!slider) return;
+    
+    const percentage = (config[slider.prop] - slider.min) / (slider.max - slider.min);
+    const fill = document.getElementById(sliderName + 'Fill');
+    const valueDisplay = document.getElementById(sliderName + 'Value');
+    
+    if (fill) fill.style.width = (percentage * 100) + '%';
+    if (valueDisplay) valueDisplay.textContent = Math.round(config[slider.prop]);
+}
 
 // Local Storage Management
 const STORAGE_PREFIX = 'fluidSim_';
@@ -2818,7 +2910,9 @@ function saveConfig() {
         CONTROLNET_COLOR_SCALE: config.CONTROLNET_COLOR_SCALE,
         GUIDANCE_SCALE: config.GUIDANCE_SCALE,
         DELTA: config.DELTA,
-        T_INDEX_LIST: config.T_INDEX_LIST,
+        DENOISE_X: config.DENOISE_X,
+        DENOISE_Y: config.DENOISE_Y,
+        DENOISE_Z: config.DENOISE_Z,
         COLORFUL: config.COLORFUL,
         PAUSED: config.PAUSED,
         BLOOM: config.BLOOM,
@@ -2942,7 +3036,9 @@ function clearAllSettings() {
         config.CONTROLNET_COLOR_SCALE = 0.66;
         config.GUIDANCE_SCALE = 7.5;
         config.DELTA = 0.5;
-        config.T_INDEX_LIST = [0, 8, 17];
+        config.DENOISE_X = 2;
+        config.DENOISE_Y = 4;
+        config.DENOISE_Z = 6;
         config.COLORFUL = false;
         config.PAUSED = false;
         config.BLOOM = true;
