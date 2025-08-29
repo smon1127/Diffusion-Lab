@@ -3218,6 +3218,7 @@ let streamState = {
     mediaStream: null,
     popupWindow: null,
     popupCheckInterval: null,
+    promptUpdateInterval: null,
     lastParameterUpdate: 0,
     isUpdatingParameters: false
 };
@@ -3645,6 +3646,16 @@ async function startStream() {
         updateStreamStatus('Active', 'active');
         updateStreamButton(true);
         
+        // Start continuous prompt updates to override default prompts
+        streamState.promptUpdateInterval = setInterval(() => {
+            if (streamState.isStreaming) {
+                console.log('🔄 Auto-updating stream prompt...');
+                updateStreamParameters();
+            }
+        }, 1000); // Update every second
+        
+        console.log('✅ Started continuous prompt updates every 1 second');
+        
         // Monitor popup window
         const checkPopup = setInterval(() => {
             if (streamState.popupWindow && streamState.popupWindow.closed) {
@@ -3728,6 +3739,12 @@ function stopStream() {
     if (streamState.popupCheckInterval) {
         clearInterval(streamState.popupCheckInterval);
         streamState.popupCheckInterval = null;
+    }
+    
+    if (streamState.promptUpdateInterval) {
+        clearInterval(streamState.promptUpdateInterval);
+        streamState.promptUpdateInterval = null;
+        console.log('🔄 Stopped continuous prompt updates');
     }
     
     // Reset connection state but preserve stream IDs and popup for reuse
@@ -4187,6 +4204,12 @@ function clearAllSettings() {
             streamState.popupWindow.close();
         }
         streamState.popupWindow = null;
+        
+        // Clear prompt update interval
+        if (streamState.promptUpdateInterval) {
+            clearInterval(streamState.promptUpdateInterval);
+            streamState.promptUpdateInterval = null;
+        }
         
         updateStreamButton(false);
         
