@@ -1003,11 +1003,24 @@ let backgroundImage = {
     height: 0
 };
 
+// Camera feed functionality
+let cameraFeed = {
+    stream: null,
+    video: null,
+    texture: null,
+    active: false,
+    canvas: null
+};
+
 function initializeImageUpload() {
     const imageUpload = document.getElementById('imageUpload');
     if (imageUpload) {
         imageUpload.addEventListener('change', handleImageUpload);
     }
+    
+    // Initialize camera functionality
+    updateCameraButton();
+    updateBackgroundControls();
 }
 
 function handleImageUpload(event) {
@@ -1163,6 +1176,35 @@ function createBackgroundTexture(canvas) {
     gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
+function updateCameraTexture() {
+    if (!cameraFeed.active || !cameraFeed.video) return;
+    
+    // Create texture if it doesn't exist
+    if (!cameraFeed.texture) {
+        cameraFeed.texture = gl.createTexture();
+    }
+    
+    // Bind texture
+    gl.bindTexture(gl.TEXTURE_2D, cameraFeed.texture);
+    
+    // Set texture parameters for real-time video
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    
+    // Upload video frame to texture
+    try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cameraFeed.video);
+    } catch (e) {
+        // Video might not be ready yet
+        console.warn('Failed to update camera texture:', e);
+    }
+    
+    // Unbind texture
+    gl.bindTexture(gl.TEXTURE_2D, null);
+}
+
 function updateImagePreview(dataURL) {
     const preview = document.getElementById('imagePreview');
     const previewImg = document.getElementById('previewImg');
@@ -1207,7 +1249,148 @@ function clearBackgroundImage() {
     if (preview) preview.style.display = 'none';
     if (imageUpload) imageUpload.value = '';
     
-    showClearButton(false);
+    updateBackgroundControls();
+}
+
+// Camera feed functionality
+async function toggleCamera() {
+    if (cameraFeed.active) {
+        stopCamera();
+    } else {
+        await startCamera();
+    }
+}
+
+async function startCamera() {
+    try {
+        // Request camera access
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                facingMode: 'user' // Front camera by default
+            } 
+        });
+        
+        // Get video element
+        const video = document.getElementById('cameraVideo');
+        if (!video) {
+            throw new Error('Camera video element not found');
+        }
+        
+        // Set up video stream
+        video.srcObject = stream;
+        video.play();
+        
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+            video.addEventListener('loadedmetadata', resolve, { once: true });
+        });
+        
+        // Store references
+        cameraFeed.stream = stream;
+        cameraFeed.video = video;
+        cameraFeed.active = true;
+        
+        // Clear any existing background image
+        clearBackgroundImage();
+        
+        // Show camera preview and update UI
+        const cameraPreview = document.getElementById('cameraPreview');
+        if (cameraPreview) cameraPreview.style.display = 'block';
+        
+        updateCameraButton();
+        updateBackgroundControls();
+        
+        console.log('✅ Camera started successfully');
+        
+    } catch (error) {
+        console.error('❌ Failed to start camera:', error);
+        
+        let errorMessage = 'Failed to access camera';
+        if (error.name === 'NotAllowedError') {
+            errorMessage = 'Camera access denied. Please allow camera permissions.';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage = 'No camera found on this device.';
+        } else if (error.name === 'NotReadableError') {
+            errorMessage = 'Camera is already in use by another application.';
+        }
+        
+        alert(errorMessage);
+        updateCameraButton();
+    }
+}
+
+function stopCamera() {
+    // Stop camera stream
+    if (cameraFeed.stream) {
+        cameraFeed.stream.getTracks().forEach(track => track.stop());
+        cameraFeed.stream = null;
+    }
+    
+    // Clear video element
+    if (cameraFeed.video) {
+        cameraFeed.video.srcObject = null;
+        cameraFeed.video = null;
+    }
+    
+    // Clear WebGL texture
+    if (cameraFeed.texture) {
+        gl.deleteTexture(cameraFeed.texture);
+        cameraFeed.texture = null;
+    }
+    
+    // Reset state
+    cameraFeed.active = false;
+    cameraFeed.canvas = null;
+    
+    // Hide camera preview
+    const cameraPreview = document.getElementById('cameraPreview');
+    if (cameraPreview) cameraPreview.style.display = 'none';
+    
+    updateCameraButton();
+    updateBackgroundControls();
+    
+    console.log('🔄 Camera stopped');
+}
+
+function updateCameraButton() {
+    const button = document.getElementById('cameraButton');
+    if (button) {
+        if (cameraFeed.active) {
+            button.textContent = '📷 Stop Camera';
+            button.classList.add('streaming'); // Use existing streaming style
+        } else {
+            button.textContent = '📷 Camera';
+            button.classList.remove('streaming');
+        }
+    }
+}
+
+function clearAllBackground() {
+    clearBackgroundImage();
+    stopCamera();
+}
+
+function updateBackgroundControls() {
+    const clearButton = document.getElementById('clearBackgroundButton');
+    const scaleControl = document.getElementById('backgroundScaleControl');
+    
+    const hasBackground = backgroundImage.loaded || cameraFeed.active;
+    
+    if (clearButton) {
+        clearButton.style.display = hasBackground ? 'inline-block' : 'none';
+    }
+    
+    // Only show scale control for images, not camera (camera is always full screen)
+    if (scaleControl) {
+        scaleControl.style.display = backgroundImage.loaded ? 'block' : 'none';
+    }
+}
+
+function showClearButton(show) {
+    // Legacy function - now handled by updateBackgroundControls
+    updateBackgroundControls();
 }
 
 function framebufferToTexture (target) {
@@ -1449,6 +1632,43 @@ const simpleTextureShader = compileShader(gl.FRAGMENT_SHADER, `
 
     void main () {
         gl_FragColor = texture2D(uTexture, vUv);
+    }
+`);
+
+const cameraShader = compileShader(gl.FRAGMENT_SHADER, `
+    precision highp float;
+    precision highp sampler2D;
+
+    varying vec2 vUv;
+    uniform sampler2D uTexture;
+    uniform float uCanvasAspect;
+    uniform float uVideoAspect;
+
+    void main () {
+        // Flip Y coordinate for camera feed
+        vec2 flippedUv = vec2(vUv.x, 1.0 - vUv.y);
+        
+        // Calculate aspect ratio correction for "cover" behavior
+        vec2 scale = vec2(1.0);
+        vec2 offset = vec2(0.0);
+        
+        if (uCanvasAspect > uVideoAspect) {
+            // Canvas is wider than video - scale video to fit width, crop height
+            scale.y = uCanvasAspect / uVideoAspect;
+            offset.y = (1.0 - scale.y) * 0.5;
+        } else {
+            // Canvas is taller than video - scale video to fit height, crop width  
+            scale.x = uVideoAspect / uCanvasAspect;
+            offset.x = (1.0 - scale.x) * 0.5;
+        }
+        
+        // Apply scaling and centering
+        vec2 correctedUv = (flippedUv - offset) / scale;
+        
+        // Clamp to prevent sampling outside texture bounds
+        correctedUv = clamp(correctedUv, 0.0, 1.0);
+        
+        gl_FragColor = texture2D(uTexture, correctedUv);
     }
 `);
 
@@ -1889,6 +2109,7 @@ const copyProgram            = new Program(baseVertexShader, copyShader);
 const clearProgram           = new Program(baseVertexShader, clearShader);
 const colorProgram           = new Program(baseVertexShader, colorShader);
 const simpleTextureProgram   = new Program(baseVertexShader, simpleTextureShader);
+const cameraProgram          = new Program(baseVertexShader, cameraShader);
 const checkerboardProgram    = new Program(baseVertexShader, checkerboardShader);
 const bloomPrefilterProgram  = new Program(baseVertexShader, bloomPrefilterShader);
 const bloomBlurProgram       = new Program(baseVertexShader, bloomBlurShader);
@@ -2318,7 +2539,12 @@ function render (target) {
     if (target == null && config.TRANSPARENT)
         drawCheckerboard(target);
     
-    // Draw background image if loaded
+    // Draw camera feed if active (bottom background layer)
+    if (cameraFeed.active && cameraFeed.video) {
+        drawCameraFeed(target);
+    }
+    
+    // Draw background image if loaded (top background layer, over camera)
     if (backgroundImage.loaded && backgroundImage.texture) {
         drawBackgroundImage(target);
     }
@@ -2346,6 +2572,44 @@ function drawBackgroundImage (target) {
     gl.uniform1i(simpleTextureProgram.uniforms.uTexture, 0);
     
     // Draw the background image
+    blit(target);
+    
+    // Restore blending state
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+}
+
+function drawCameraFeed (target) {
+    // Update camera texture with latest video frame
+    updateCameraTexture();
+    
+    if (!cameraFeed.texture || !cameraFeed.video) return;
+    
+    // Enable blending for the camera feed
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    
+    // Use the camera program for aspect-corrected rendering
+    cameraProgram.bind();
+    
+    // Calculate aspect ratios
+    const canvasWidth = target == null ? gl.drawingBufferWidth : target.width;
+    const canvasHeight = target == null ? gl.drawingBufferHeight : target.height;
+    const canvasAspect = canvasWidth / canvasHeight;
+    
+    const videoWidth = cameraFeed.video.videoWidth || cameraFeed.video.width || 1920;
+    const videoHeight = cameraFeed.video.videoHeight || cameraFeed.video.height || 1080;
+    const videoAspect = videoWidth / videoHeight;
+    
+    // Bind the camera texture
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, cameraFeed.texture);
+    gl.uniform1i(cameraProgram.uniforms.uTexture, 0);
+    
+    // Pass aspect ratios to shader
+    gl.uniform1f(cameraProgram.uniforms.uCanvasAspect, canvasAspect);
+    gl.uniform1f(cameraProgram.uniforms.uVideoAspect, videoAspect);
+    
+    // Draw the camera feed (aspect-corrected, flipped)
     blit(target);
     
     // Restore blending state
@@ -3250,6 +3514,34 @@ async function setupWebRTCConnection(whipUrl, mediaStream) {
 }
 
 function openStreamPopup(playbackId) {
+    // Check if we already have a popup window open
+    if (streamState.popupWindow && !streamState.popupWindow.closed) {
+        // Get the current URL of the existing popup
+        try {
+            const currentUrl = streamState.popupWindow.location.href;
+            const expectedUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force`;
+            
+            // If the popup is showing the same playback ID, just focus it
+            if (currentUrl === expectedUrl) {
+                console.log('🔄 Reusing existing popup window for same stream');
+                streamState.popupWindow.focus();
+                return streamState.popupWindow;
+            } else {
+                console.log('🔄 Updating existing popup window to new stream');
+                // Update the popup to show the new stream
+                streamState.popupWindow.location.href = expectedUrl;
+                streamState.popupWindow.focus();
+                return streamState.popupWindow;
+            }
+        } catch (e) {
+            // Cross-origin error - popup might be from different domain
+            // In this case, we'll close the old popup and open a new one
+            console.log('🔄 Closing old popup due to cross-origin restrictions');
+            streamState.popupWindow.close();
+        }
+    }
+    
+    // Create new popup window
     const width = 512;
     const height = 512;
     const left = (window.screen.width - width) / 2;
@@ -3257,6 +3549,7 @@ function openStreamPopup(playbackId) {
     
     const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force`;
 
+    console.log('🆕 Opening new popup window for stream');
     const popupWindow = window.open(
         streamUrl,
         'AI_Daydream_Stream',
@@ -3271,6 +3564,9 @@ function openStreamPopup(playbackId) {
 }
 
 async function startStream() {
+    let savedStream = null;
+    let streamIsValid = false;
+    
     try {
         updateStreamStatus('Connecting...', 'connecting');
         updateStreamButton(false);
@@ -3287,15 +3583,26 @@ async function startStream() {
             throw new Error('Failed to capture canvas stream');
         }
         
-        // Try to load existing stream first
-        const savedStream = loadStreamState();
+        // Try to load and validate existing stream first
+        savedStream = loadStreamState();
+        
         if (savedStream) {
-            updateStreamStatus('Reconnecting to existing stream...', 'connecting');
-            streamState.streamId = savedStream.streamId;
-            streamState.playbackId = savedStream.playbackId;
-            streamState.whipUrl = savedStream.whipUrl;
-            console.log('Reusing existing stream:', savedStream.streamId);
-        } else {
+            updateStreamStatus('Checking saved stream...', 'connecting');
+            streamIsValid = await validateSavedStream(savedStream);
+            
+            if (streamIsValid) {
+                updateStreamStatus('Reconnecting to existing stream...', 'connecting');
+                streamState.streamId = savedStream.streamId;
+                streamState.playbackId = savedStream.playbackId;
+                streamState.whipUrl = savedStream.whipUrl;
+                console.log('✅ Reusing validated stream:', savedStream.streamId);
+            } else {
+                console.log('❌ Saved stream is no longer valid, creating new one...');
+                clearStreamState(); // Clear invalid stream data
+            }
+        }
+        
+        if (!streamIsValid) {
             // Create new Daydream stream
             updateStreamStatus('Creating new stream...', 'connecting');
             const streamData = await createDaydreamStream();
@@ -3305,7 +3612,7 @@ async function startStream() {
             
             // Save the new stream state
             saveStreamState();
-            console.log('Created new stream:', streamState.streamId);
+            console.log('✅ Created new stream:', streamState.streamId);
         }
         
         // Update button visibility now that we have a valid stream
@@ -3355,6 +3662,7 @@ async function startStream() {
     } catch (error) {
         console.error('Failed to start stream:', error);
         let errorMessage = error.message;
+        let shouldRetryWithNewStream = false;
         
         // Provide user-friendly error messages
         if (error.message.includes('API key')) {
@@ -3363,6 +3671,11 @@ async function startStream() {
             errorMessage = 'Popup blocked - please allow popups';
         } else if (error.message.includes('WHIP connection')) {
             errorMessage = 'Stream connection failed';
+            // If we were trying to reuse a saved stream, suggest creating a new one
+            if (savedStream && streamIsValid) {
+                shouldRetryWithNewStream = true;
+                errorMessage += ' (saved stream may be expired)';
+            }
         } else if (error.message.includes('Failed to create stream')) {
             errorMessage = 'API error - check your key';
         }
@@ -3371,7 +3684,16 @@ async function startStream() {
         updateStreamButton(false);
         stopStream();
         
-        // Show user notification
+        // If connection failed with saved stream, try creating a new one automatically
+        if (shouldRetryWithNewStream) {
+            console.log('🔄 Retrying with new stream after saved stream connection failed...');
+            clearStreamState(); // Clear the problematic saved stream
+            updateStreamStatus('Retrying with new stream...', 'connecting');
+            setTimeout(() => startStream(), 2000);
+            return;
+        }
+        
+        // Show user notification for other errors
         if (window.confirm(`Stream failed: ${errorMessage}\n\nWould you like to try again?`)) {
             setTimeout(() => startStream(), 1000);
         }
@@ -3393,9 +3715,13 @@ function stopStream() {
         streamState.mediaStream = null;
     }
     
-    // Clean up popup window
-    if (streamState.popupWindow && !streamState.popupWindow.closed) {
-        streamState.popupWindow.close();
+    // Clean up popup window only if it's closed or we're fully stopping
+    if (streamState.popupWindow && streamState.popupWindow.closed) {
+        streamState.popupWindow = null;
+        console.log('🔄 Popup window was closed, clearing reference');
+    } else if (streamState.popupWindow && !streamState.popupWindow.closed) {
+        console.log('🔄 Keeping popup window open for potential reconnection');
+        // Don't close or null the popup - keep it for reconnection
     }
     
     // Clean up intervals
@@ -3404,9 +3730,8 @@ function stopStream() {
         streamState.popupCheckInterval = null;
     }
     
-    // Reset connection state but preserve stream IDs for reuse
-    // streamState.streamId, playbackId, whipUrl are kept for reconnection
-    streamState.popupWindow = null;
+    // Reset connection state but preserve stream IDs and popup for reuse
+    // streamState.streamId, playbackId, whipUrl, popupWindow are kept for reconnection
     streamState.lastParameterUpdate = 0;
     streamState.isUpdatingParameters = false;
     
@@ -3603,6 +3928,37 @@ function saveStreamState() {
     };
     
     saveToLocalStorage(STORAGE_KEYS.STREAM_STATE, streamData);
+}
+
+// Validate if a saved stream is still active on the server
+async function validateSavedStream(savedStream) {
+    if (!savedStream || !savedStream.streamId) return false;
+    
+    try {
+        const apiKey = getApiKey();
+        if (!apiKey) return false;
+        
+        // Check if stream still exists on Daydream servers
+        const response = await fetch(`https://api.daydream.live/beta/streams/${savedStream.streamId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const streamData = await response.json();
+            // Check if stream is in a valid state (not ended or failed)
+            const validStates = ['created', 'running', 'ready'];
+            return validStates.includes(streamData.status);
+        }
+        
+        return false;
+    } catch (error) {
+        console.log('Stream validation failed:', error.message);
+        return false;
+    }
 }
 
 function loadStreamState() {
@@ -3809,8 +4165,8 @@ function resetValues() {
         updateToggleStates();
         initializeColorPickers();
         
-        // Clear background image
-        clearBackgroundImage();
+        // Clear background image and camera
+        clearAllBackground();
         
         // Save the reset values to localStorage
         saveConfig();
@@ -3821,10 +4177,17 @@ function clearAllSettings() {
     if (confirm('Are you sure you want to clear all saved settings? This will reset all sliders, prompts, API key, and saved stream data to defaults.')) {
         clearLocalStorage();
         
-        // Clear current stream state in memory
+        // Clear current stream state in memory and close popup
         streamState.streamId = null;
         streamState.playbackId = null;
         streamState.whipUrl = null;
+        
+        // Close popup window when clearing all settings
+        if (streamState.popupWindow && !streamState.popupWindow.closed) {
+            streamState.popupWindow.close();
+        }
+        streamState.popupWindow = null;
+        
         updateStreamButton(false);
         
         // Reset to default values - optimized for slower, longer-lasting animations
@@ -4096,9 +4459,14 @@ window.addEventListener('orientationchange', () => {
     }
 });
 
-// Cleanup video recording when page is closed
+// Cleanup video recording and camera when page is closed
 window.addEventListener('beforeunload', () => {
     if (videoRecorder.isRecording) {
         cleanup();
+    }
+    
+    // Stop camera if active
+    if (cameraFeed.active) {
+        stopCamera();
     }
 });

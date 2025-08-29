@@ -1068,13 +1068,45 @@
                 display: block;
                 margin: 0 auto;
             }
+            
+            .camera-preview {
+                margin-top: 8px;
+                border: 1px solid var(--border-color);
+                border-radius: var(--radius);
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.3);
+                position: relative;
+            }
+            
+            .camera-preview video {
+                max-width: 100%;
+                max-height: 80px;
+                border-radius: 4px;
+                display: block;
+                margin: 0 auto;
+            }
+            
+            .camera-preview::after {
+                content: "📹 LIVE";
+                position: absolute;
+                top: 12px;
+                right: 12px;
+                background: rgba(255, 0, 0, 0.9);
+                color: white;
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+                z-index: 10;
+            }
 
             @media (max-width: 768px) {
                 .image-upload-container {
                     gap: 6px;
                 }
                 
-                .image-preview img {
+                .image-preview img, .camera-preview video {
                     max-height: 60px;
                 }
             }
@@ -1558,21 +1590,29 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Image Upload <div class="tooltip"><span class="info-icon">i</span>
-                                <span class="tooltiptext">Upload PNG image to display behind fluid effects</span>
+                            <span>Background <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Upload image or use camera feed as background behind fluid effects</span>
                             </div></span>
                         </div>
                         <div class="image-upload-container">
                             <input type="file" id="imageUpload" accept=".png,.jpg,.jpeg" style="display: none;">
-                            <button class="modern-button secondary" onclick="document.getElementById('imageUpload').click()">
-                                Choose Image
-                            </button>
-                            <button class="modern-button secondary" id="clearImageButton" onclick="clearBackgroundImage()" style="display: none; margin-left: 8px;">
-                                Clear
-                            </button>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="modern-button secondary" onclick="document.getElementById('imageUpload').click()">
+                                    📁 Choose Image
+                                </button>
+                                <button class="modern-button secondary" id="cameraButton" onclick="toggleCamera()">
+                                    📷 Camera
+                                </button>
+                                <button class="modern-button secondary" id="clearBackgroundButton" onclick="clearAllBackground()" style="display: none;">
+                                    🗑️ Clear
+                                </button>
+                            </div>
                             <div class="image-preview" id="imagePreview" style="display: none;">
                                 <img id="previewImg" alt="Background preview">
-                    </div>
+                            </div>
+                            <div class="camera-preview" id="cameraPreview" style="display: none;">
+                                <video id="cameraVideo" autoplay muted style="width: 100%; max-height: 80px; border-radius: 4px;"></video>
+                            </div>
                         </div>
                         
                         <div class="control-item" id="backgroundScaleControl" style="display: none;">
