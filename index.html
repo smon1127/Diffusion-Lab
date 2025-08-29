@@ -74,6 +74,7 @@
                 box-shadow: var(--shadow);
                 z-index: 1000;
                 overflow: hidden;
+                overflow-x: hidden; /* Prevent horizontal scrolling */
                 transition: var(--transition);
             }
 
@@ -100,12 +101,12 @@
                 background: linear-gradient(135deg, var(--accent-hover), var(--accent-color));
             }
 
-            .toggle-icon {
+            .panel-header .toggle-icon {
                 transition: var(--transition);
                 font-size: 12px;
             }
 
-            .control-panel.collapsed .toggle-icon {
+            .control-panel.collapsed .panel-header .toggle-icon {
                 transform: rotate(180deg);
             }
 
@@ -114,6 +115,7 @@
                 padding: 20px;
                 max-height: calc(80vh - 50px);
                 overflow-y: auto;
+                overflow-x: hidden; /* Prevent horizontal scrolling */
                 scrollbar-width: thin;
                 scrollbar-color: var(--accent-color) transparent;
             }
@@ -264,25 +266,57 @@
 
             /* Advanced Section */
             .advanced-section {
-                /* border-top: 1px solid var(--border-color); */
-                /* margin-top: 20px; */
-                /* padding-top: 20px; */
+                margin-top: 8px;
             }
 
             .advanced-toggle {
                 cursor: pointer;
-                padding: 8px 0;
-                font-size: 13px;
+                padding: 12px 8px;
+                font-size: 14px;
                 font-weight: 500;
                 color: var(--text-secondary);
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 10px;
                 transition: var(--transition);
+                border-radius: 6px;
+                margin: -4px -8px;
+                position: relative;
             }
 
             .advanced-toggle:hover {
                 color: var(--accent-color);
+                background: rgba(255, 255, 255, 0.05);
+            }
+            
+            .toggle-icon {
+                transition: var(--transition);
+                font-size: 12px;
+                width: 16px;
+                text-align: center;
+            }
+            
+            @media (max-width: 768px) {
+                .advanced-toggle {
+                    padding: 16px 12px;
+                    font-size: 15px;
+                    gap: 12px;
+                    margin: -8px -12px;
+                    min-height: 48px; /* Larger touch target */
+                    border-radius: 8px;
+                }
+                
+                .toggle-icon {
+                    font-size: 14px;
+                    width: 18px;
+                }
+                
+                /* Touch feedback */
+                .advanced-toggle:active {
+                    background: rgba(0, 212, 255, 0.1);
+                    transform: scale(0.98);
+                    transition: all 0.1s ease;
+                }
             }
 
             .advanced-content {
@@ -549,22 +583,50 @@
             .api-input::placeholder, .text-input::placeholder {
                 color: var(--text-secondary);
             }
-
-            /* Preset Buttons */
-            .preset-buttons {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-                gap: 8px;
-                margin-top: 8px;
+            
+            /* Auto-resize Textarea */
+            .auto-resize-textarea {
+                min-height: 40px;
+                max-height: 120px;
+                resize: none;
+                overflow-y: auto;
+                line-height: 1.4;
+                transition: height 0.2s ease;
+            }
+            
+            @media (max-width: 768px) {
+                .auto-resize-textarea {
+                    min-height: 44px; /* Larger touch target on mobile */
+                    max-height: 140px;
+                    font-size: 16px; /* Prevent zoom on iOS */
+                }
             }
 
-            .preset-btn {
-                padding: 8px 12px;
+            /* Unified Preset Buttons */
+            .preset-buttons {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+                gap: 10px;
+                margin-top: 12px;
+            }
+            
+            /* Prompt Preset Grid - Optimized Layout */
+            .prompt-preset-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr); /* 2 columns for better spacing */
+                gap: 12px;
+                margin-top: 12px;
+            }
+
+            .preset-btn,
+            .preset-button {
+                padding: 10px 14px;
                 background: var(--control-bg);
                 border: 1px solid var(--border-color);
-                border-radius: 6px;
+                border-radius: 8px;
                 color: var(--text-primary);
                 font-size: 12px;
+                font-weight: 500;
                 font-family: inherit;
                 cursor: pointer;
                 transition: var(--transition);
@@ -572,9 +634,14 @@
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+                min-height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
 
-            .preset-btn:hover {
+            .preset-btn:hover,
+            .preset-button:hover {
                 background: var(--accent-color);
                 border-color: var(--accent-color);
                 color: white;
@@ -582,20 +649,50 @@
                 box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
             }
 
-            .preset-btn:active {
+            .preset-btn:active,
+            .preset-button:active {
                 transform: translateY(0);
                 box-shadow: 0 2px 6px rgba(0, 212, 255, 0.2);
             }
 
+            .preset-button.active {
+                background: var(--accent-color);
+                border-color: var(--accent-color);
+                color: white;
+                box-shadow: 0 2px 8px rgba(0, 212, 255, 0.4);
+            }
+
             @media (max-width: 768px) {
                 .preset-buttons {
-                    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-                    gap: 6px;
+                    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                    gap: 12px;
                 }
                 
-                .preset-btn {
-                    padding: 6px 8px;
-                    font-size: 11px;
+                .prompt-preset-grid {
+                    grid-template-columns: repeat(2, 1fr); /* Keep 2 columns on mobile */
+                    gap: 12px;
+                }
+                
+                .preset-btn,
+                .preset-button {
+                    padding: 14px 16px;
+                    font-size: 13px;
+                    min-height: 48px; /* Larger touch target */
+                    border-radius: 10px;
+                }
+                
+                /* Touch feedback */
+                .preset-btn:active,
+                .preset-button:active {
+                    transform: scale(0.98);
+                    transition: transform 0.1s ease;
+                }
+            }
+            
+            @media (max-width: 480px) {
+                .prompt-preset-grid {
+                    grid-template-columns: 1fr; /* Single column on very small screens */
+                    gap: 10px;
                 }
             }
 
@@ -922,6 +1019,26 @@
                 opacity: 1;
             }
 
+            /* ControlNet Preset Grid - Special 2x2 Layout */
+            .controlnet-preset-buttons {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                margin-top: 12px;
+            }
+            
+            @media (max-width: 768px) {
+                .controlnet-preset-buttons {
+                    gap: 12px;
+                }
+                
+                .controlnet-preset-buttons .preset-button {
+                    min-height: 48px;
+                    padding: 14px 12px;
+                    font-size: 12px;
+                }
+            }
+
             /* Image Upload Styles */
             .image-upload-container {
                 display: flex;
@@ -962,7 +1079,13 @@
                 }
             }
 
-            /* Info Icon Tooltips */
+            /* Simple Tooltip System - W3Schools Style */
+            .tooltip {
+                position: relative;
+                display: inline;
+                cursor: help;
+            }
+
             .info-icon {
                 display: inline-block;
                 width: 18px;
@@ -978,12 +1101,12 @@
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 color: rgba(255, 255, 255, 0.9);
                 cursor: help;
-                position: relative;
                 transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             }
 
-            .info-icon:hover {
+            .info-icon:hover,
+            .tooltip.mobile-active .info-icon {
                 background: linear-gradient(135deg, rgba(100, 200, 255, 0.4), rgba(100, 200, 255, 0.2));
                 border-color: rgba(100, 200, 255, 0.6);
                 color: rgba(255, 255, 255, 1);
@@ -993,89 +1116,118 @@
                     0 2px 6px rgba(0, 0, 0, 0.2);
             }
 
-            .info-tooltip {
-                position: fixed;
-                bottom: auto;
-                left: auto;
-                transform: none;
-                background: rgba(20, 25, 35, 0.95);
-                backdrop-filter: blur(10px);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 12px;
-                padding: 12px 16px;
-                font-size: 11px;
-                font-weight: 400;
-                line-height: 1.4;
-                color: rgba(255, 255, 255, 0.95);
-                white-space: nowrap;
-                max-width: 560px;
-                white-space: normal;
-                text-align: left;
-                box-shadow: 
-                    0 8px 32px rgba(0, 0, 0, 0.4),
-                    0 2px 8px rgba(0, 0, 0, 0.2),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-                z-index: 9999;
-                opacity: 0;
+            /* Tooltip text */
+            .tooltiptext {
                 visibility: hidden;
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                pointer-events: none;
+                width: 160px; /* Reduced from 220px to fit within panel */
+                max-width: 160px;
+                background-color: rgba(20, 25, 35, 0.95);
+                backdrop-filter: blur(10px);
+                color: rgba(255, 255, 255, 0.95);
+                text-align: left;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 11px;
+                line-height: 1.4;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                word-wrap: break-word; /* Ensure long words wrap */
+
+                /* Position the tooltip above to avoid overflow */
+                position: absolute;
+                z-index: 9999;
+                bottom: 100%;
+                left: 50%;
+                margin-left: -80px; /* Half of tooltip width for centering */
+                margin-bottom: 8px;
+
+                /* Fade in tooltip */
+                opacity: 0;
+                transition: opacity 0.3s;
             }
 
-            .info-tooltip::after {
-                content: '';
+            /* Tooltip arrow pointing down */
+            .tooltiptext::after {
+                content: "";
                 position: absolute;
                 top: 100%;
                 left: 50%;
-                transform: translateX(-50%);
-                border: 8px solid transparent;
-                border-top-color: rgba(20, 25, 35, 0.95);
-                filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+                margin-left: -5px;
+                border-width: 5px;
+                border-style: solid;
+                border-color: rgba(20, 25, 35, 0.95) transparent transparent transparent;
             }
 
-            .info-icon:hover .info-tooltip {
-                opacity: 1;
+            /* Show the tooltip text when you mouse over the tooltip container */
+            .tooltip:hover .tooltiptext {
                 visibility: visible;
-            }
-
-            /* Smart tooltip positioning */
-            .info-tooltip.tooltip-right {
-                left: calc(100% + 10px);
-                transform: translateY(-50%);
-                bottom: auto;
-                top: 50%;
-            }
-            
-            .info-tooltip.tooltip-right::after {
-                left: -8px;
-                top: 50%;
-                transform: translateY(-50%);
-                border: 8px solid transparent;
-                border-right-color: rgba(20, 25, 35, 0.95);
-                border-top-color: transparent;
+                opacity: 1;
             }
 
             /* Mobile adjustments for tooltips */
             @media (max-width: 768px) {
-                .info-tooltip {
-                    position: fixed;
-                    bottom: 20px;
+                .info-icon {
+                    width: 24px; /* Larger touch target */
+                    height: 24px;
+                    line-height: 22px;
+                    font-size: 12px;
+                    margin-left: 6px;
+                }
+                
+                .tooltiptext {
+                    width: 200px; /* Wider for better readability */
+                    max-width: calc(100vw - 40px); /* Account for panel padding */
+                    font-size: 13px;
+                    padding: 12px 16px;
+                    line-height: 1.5;
+                    /* Better mobile positioning */
                     top: auto;
                     left: 50%;
-                    transform: translateX(-50%);
-                    max-width: calc(100vw - 40px);
-                    z-index: 9999;
-                    font-size: 12px;
-                    padding: 16px 20px;
-                    border-radius: 16px;
+                    bottom: 100%;
+                    margin-left: -100px; /* Half of width for centering */
+                    margin-top: 0;
+                    margin-bottom: 12px;
+                    /* Ensure tooltip stays within viewport */
+                    transform: translateX(0);
                 }
                 
-                .info-icon:hover .info-tooltip {
-                    transform: translateX(-50%);
+                /* Adjust tooltip position if it would go off-screen */
+                .tooltiptext.adjust-left {
+                    left: 20px;
+                    margin-left: 0;
                 }
                 
-                .info-tooltip::after {
-                    display: none;
+                .tooltiptext.adjust-right {
+                    right: 20px;
+                    left: auto;
+                    margin-left: 0;
+                }
+                
+                /* Arrow points down on mobile */
+                .tooltiptext::after {
+                    top: 100%;
+                    right: auto;
+                    left: 50%;
+                    margin-left: -5px;
+                    margin-top: 0;
+                    border-color: rgba(20, 25, 35, 0.95) transparent transparent transparent;
+                }
+                
+                /* Active state for mobile tooltips */
+                .tooltip.mobile-active .tooltiptext {
+                    visibility: visible;
+                    opacity: 1;
+                }
+                
+                /* Disable hover on mobile to prevent conflicts */
+                .tooltip:hover .tooltiptext {
+                    visibility: hidden;
+                    opacity: 0;
+                }
+                
+                .tooltip.mobile-active:hover .tooltiptext {
+                    visibility: visible;
+                    opacity: 1;
                 }
             }
 
@@ -1123,7 +1275,7 @@
                         <div class="control-label">
                             <span>Prompt</span>
                         </div>
-                        <input type="text" class="text-input" id="promptInput" placeholder="superman" title="Describe what you want the AI to generate" />
+                        <textarea class="text-input auto-resize-textarea" id="promptInput" placeholder="superman" title="Describe what you want the AI to generate" rows="1"></textarea>
                     </div>
                     
                     <!-- Prompt Presets Section -->
@@ -1133,17 +1285,17 @@
                             <div class="toggle-icon" id="promptPresetsIcon">▶</div>
                         </div>
                         <div class="advanced-content" id="promptPresetsContent">
-                            <div class="preset-buttons">
-                                <button class="preset-btn" onclick="setPrompt('superman')">Superman</button>
-                                <button class="preset-btn" onclick="setPrompt('beautiful anime girl')">Anime Girl</button>
-                                <button class="preset-btn" onclick="setPrompt('cyberpunk city at night')">Cyberpunk City</button>
-                                <button class="preset-btn" onclick="setPrompt('majestic dragon')">Dragon</button>
-                                <button class="preset-btn" onclick="setPrompt('fantasy landscape with mountains')">Fantasy Landscape</button>
-                                <button class="preset-btn" onclick="setPrompt('futuristic robot')">Robot</button>
-                                <button class="preset-btn" onclick="setPrompt('magical forest')">Magical Forest</button>
-                                <button class="preset-btn" onclick="setPrompt('space station')">Space Station</button>
-                                <button class="preset-btn" onclick="setPrompt('underwater scene with fish')">Underwater Scene</button>
-                                <button class="preset-btn" onclick="setPrompt('steampunk airship')">Steampunk Airship</button>
+                            <div class="prompt-preset-grid">
+                                <button class="preset-btn" onclick="setPrompt('portrait of a superhero in red cape, muscular build, heroic pose, dramatic lighting, cinematic composition, highly detailed, 8k resolution, photorealistic')">Superhero</button>
+                                <button class="preset-btn" onclick="setPrompt('beautiful anime girl with large expressive eyes, colorful hair, detailed face, soft lighting, studio ghibli style, high quality artwork, vibrant colors')">Anime Girl</button>
+                                <button class="preset-btn" onclick="setPrompt('cyberpunk cityscape at night, neon lights, futuristic buildings, rain reflections, dark atmosphere, blade runner aesthetic, highly detailed, 4k')">Cyberpunk</button>
+                                <button class="preset-btn" onclick="setPrompt('majestic dragon with detailed scales, powerful wings spread, fantasy creature, epic pose, dramatic lighting, mythical beast, high detail, concept art')">Dragon</button>
+                                <button class="preset-btn" onclick="setPrompt('fantasy landscape with snow-capped mountains, mystical forest, magical atmosphere, golden hour lighting, epic vista, highly detailed, concept art style')">Fantasy</button>
+                                <button class="preset-btn" onclick="setPrompt('futuristic humanoid robot, sleek metallic design, glowing blue accents, advanced technology, sci-fi aesthetic, highly detailed, 3d render quality')">Robot</button>
+                                <button class="preset-btn" onclick="setPrompt('enchanted magical forest with glowing particles, mystical trees, ethereal lighting, fantasy atmosphere, vibrant colors, highly detailed, fairy tale style')">Forest</button>
+                                <button class="preset-btn" onclick="setPrompt('massive space station orbiting planet, sci-fi architecture, detailed hull, cosmic background, stars and nebula, futuristic design, cinematic view')">Space</button>
+                                <button class="preset-btn" onclick="setPrompt('underwater coral reef scene with colorful tropical fish, crystal clear water, marine life, vibrant coral formations, natural lighting, high detail')">Ocean</button>
+                                <button class="preset-btn" onclick="setPrompt('steampunk airship with brass fittings, Victorian era design, mechanical details, steam and gears, vintage aesthetic, highly detailed, concept art')">Steampunk</button>
                             </div>
                         </div>
                     </div>
@@ -1213,7 +1365,7 @@
                             </div>
                             <span>Paused</span>
                             <span class="keyboard-hint" title="Keyboard shortcut: Ctrl+P">⌨️</span>
-                            </div>
+                                </div>
                         </div>
                         
                                                 <!-- Organic Animation Controls -->
@@ -1230,9 +1382,9 @@
                         
                         <div class="control-item">
                             <div class="control-label">
-                                <span>Interval<span class="info-icon">i
-                                    <div class="info-tooltip">Animation speed: 0 = slow (1 per second), 1 = moderate (2 per second)</div>
-                                </span></span>
+                                <span>Interval <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Animation speed: 0 = slow (1 per second), 1 = moderate (2 per second)</span>
+                                </div></span>
                                 <span class="control-value" id="animationIntervalValue">0.10</span>
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'animationInterval', 0, 1)">
@@ -1244,9 +1396,9 @@
                         
                         <div class="control-item">
                             <div class="control-label">
-                                <span>Chaos<span class="info-icon">i
-                                    <div class="info-tooltip">Order vs chaos: 0 = coherent streams, 1 = random turbulence</div>
-                                </span></span>
+                                <span>Chaos <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Order vs chaos: 0 = coherent streams, 1 = random turbulence</span>
+                                </div></span>
                                 <span class="control-value" id="chaosValue">0.73</span>
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'chaos', 0, 1)">
@@ -1258,23 +1410,23 @@
                         
                         <div class="control-item">
                             <div class="control-label">
-                                <span>Breathing<span class="info-icon">i
-                                    <div class="info-tooltip">Rhythm intensity: 0 = steady, 1 = dramatic pulsing and timing</div>
-                                </span></span>
+                                <span>Breathing <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Rhythm intensity: 0 = steady, 1 = dramatic pulsing and timing</span>
+                                </div></span>
                                 <span class="control-value" id="breathingValue">0.50</span>
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'breathing', 0, 1)">
                                 <div class="slider-fill" id="breathingFill" style="width: 50%">
                                     <div class="slider-handle" id="breathingHandle"></div>
                                 </div>
-                            </div>
-                        </div>
-                        
+                    </div>
+                </div>
+                
                         <div class="control-item">
                             <div class="control-label">
-                                <span>Color Life<span class="info-icon">i
-                                    <div class="info-tooltip">Color evolution: 0 = static color, 1 = full rainbow cycling</div>
-                                </span></span>
+                                <span>Color Life <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Color evolution: 0 = static color, 1 = full rainbow cycling</span>
+                                </div></span>
                                 <span class="control-value" id="colorLifeValue">0.22</span>
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'colorLife', 0, 1)">
@@ -1282,21 +1434,21 @@
                                     <div class="slider-handle" id="colorLifeHandle"></div>
                                 </div>
                     </div>
-                </div>
-                
+                    </div>
+                    
                     
                         <!-- Physics Controls -->
                         <div class="group-title">FLUID</div>
-                        
+                    
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Fade<span class="info-icon">i
-                                <div class="info-tooltip">How fast colors fade away. Higher = faster fade</div>
-                            </span></span>
-                            <span class="control-value" id="densityValue">1.00</span>
+                            <span>Fade <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">How fast colors fade away. Higher = faster fade</span>
+                            </div></span>
+                            <span class="control-value" id="densityValue">0.50</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'density', 0, 4)" ontouchstart="handleSliderClick(event, 'density', 0, 4)">
-                            <div class="slider-fill" id="densityFill" style="width: 25%">
+                            <div class="slider-fill" id="densityFill" style="width: 12.5%">
                                 <div class="slider-handle" id="densityHandle"></div>
                             </div>
                         </div>
@@ -1304,9 +1456,9 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Viscosity<span class="info-icon">i
-                                <div class="info-tooltip">Fluid thickness. Higher = thicker, slower fluid</div>
-                            </span></span>
+                            <span>Viscosity <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Fluid thickness. Higher = thicker, slower fluid</span>
+                            </div></span>
                             <span class="control-value" id="velocityValue">0.20</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'velocity', 0, 4)" ontouchstart="handleSliderClick(event, 'velocity', 0, 4)">
@@ -1318,9 +1470,9 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Force<span class="info-icon">i
-                                <div class="info-tooltip">Interaction strength. Higher = more powerful strokes</div>
-                            </span></span>
+                            <span>Force <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Interaction strength. Higher = more powerful strokes</span>
+                            </div></span>
                             <span class="control-value" id="pressureValue">0.80</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'pressure', 0, 1)" ontouchstart="handleSliderClick(event, 'pressure', 0, 1)">
@@ -1332,9 +1484,9 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Swirl<span class="info-icon">i
-                                <div class="info-tooltip">Turbulence intensity. Higher = more chaotic swirls</div>
-                            </span></span>
+                            <span>Swirl <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Turbulence intensity. Higher = more chaotic swirls</span>
+                            </div></span>
                             <span class="control-value" id="vorticityValue">30</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'vorticity', 0, 50)" ontouchstart="handleSliderClick(event, 'vorticity', 0, 50)">
@@ -1346,9 +1498,9 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Brush Size<span class="info-icon">i
-                                <div class="info-tooltip">Size of fluid interactions. Larger = bigger strokes</div>
-                            </span></span>
+                            <span>Brush Size <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Size of fluid interactions. Larger = bigger strokes</span>
+                            </div></span>
                             <span class="control-value" id="splatValue">0.25</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'splat', 0.01, 1)" ontouchstart="handleSliderClick(event, 'splat', 0.01, 1)">
@@ -1360,9 +1512,9 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Glow<span class="info-icon">i
-                                <div class="info-tooltip">Bloom effect intensity. Higher = more glowing</div>
-                            </span></span>
+                            <span>Glow <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Bloom effect intensity. Higher = more glowing</span>
+                            </div></span>
                             <span class="control-value" id="bloomIntensityValue">0.40</span>
                             </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'bloomIntensity', 0.1, 2)" ontouchstart="handleSliderClick(event, 'bloomIntensity', 0.1, 2)">
@@ -1374,9 +1526,9 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Rays<span class="info-icon">i
-                                <div class="info-tooltip">Sunray effect intensity. Higher = more dramatic rays</div>
-                            </span></span>
+                            <span>Rays <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Sunray effect intensity. Higher = more dramatic rays</span>
+                            </div></span>
                             <span class="control-value" id="sunrayValue">0.40</span>
                             </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'sunray', 0.3, 1)" ontouchstart="handleSliderClick(event, 'sunray', 0.3, 1)">
@@ -1406,9 +1558,9 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Image Upload<span class="info-icon">i
-                                <div class="info-tooltip">Upload PNG image to display behind fluid effects</div>
-                            </span></span>
+                            <span>Image Upload <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Upload PNG image to display behind fluid effects</span>
+                            </div></span>
                         </div>
                         <div class="image-upload-container">
                             <input type="file" id="imageUpload" accept=".png,.jpg,.jpeg" style="display: none;">
@@ -1420,6 +1572,20 @@
                             </button>
                             <div class="image-preview" id="imagePreview" style="display: none;">
                                 <img id="previewImg" alt="Background preview">
+                    </div>
+                        </div>
+                        
+                        <div class="control-item" id="backgroundScaleControl" style="display: none;">
+                            <div class="control-label">
+                                <span>Scale <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Background image size: 0.1 = very small, 1.0 = fit viewport, 2.0 = 2x larger</span>
+                                </div></span>
+                                <span class="control-value" id="backgroundImageScaleValue">1.00</span>
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'backgroundImageScale', 0.1, 2.0)">
+                                <div class="slider-fill" id="backgroundImageScaleFill" style="width: 47%">
+                                    <div class="slider-handle" id="backgroundImageScaleHandle"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1433,13 +1599,13 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Pose<span class="info-icon">i
-                                <div class="info-tooltip">Human pose detection strength</div>
-                            </span></span>
-                            <span class="control-value" id="controlnetPoseValue">0.56</span>
+                            <span>Pose <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Human pose detection strength</span>
+                            </div></span>
+                            <span class="control-value" id="controlnetPoseValue">0.65</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'controlnetPose', 0, 1)" ontouchstart="handleSliderClick(event, 'controlnetPose', 0, 1)">
-                            <div class="slider-fill" id="controlnetPoseFill" style="width: 56%">
+                            <div class="slider-fill" id="controlnetPoseFill" style="width: 65%">
                                 <div class="slider-handle" id="controlnetPoseHandle"></div>
                             </div>
                         </div>
@@ -1447,13 +1613,13 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>HED<span class="info-icon">i
-                                <div class="info-tooltip">Soft edge detection strength</div>
-                            </span></span>
-                            <span class="control-value" id="controlnetHedValue">0.53</span>
+                            <span>HED <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Soft edge detection strength</span>
+                            </div></span>
+                            <span class="control-value" id="controlnetHedValue">0.60</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'controlnetHed', 0, 1)" ontouchstart="handleSliderClick(event, 'controlnetHed', 0, 1)">
-                            <div class="slider-fill" id="controlnetHedFill" style="width: 53%">
+                            <div class="slider-fill" id="controlnetHedFill" style="width: 60%">
                                 <div class="slider-handle" id="controlnetHedHandle"></div>
                             </div>
                         </div>
@@ -1461,13 +1627,13 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Canny<span class="info-icon">i
-                                <div class="info-tooltip">Sharp edge detection strength</div>
-                            </span></span>
-                            <span class="control-value" id="controlnetCannyValue">0.27</span>
+                            <span>Canny <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Sharp edge detection strength</span>
+                            </div></span>
+                            <span class="control-value" id="controlnetCannyValue">0.50</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'controlnetCanny', 0, 1)" ontouchstart="handleSliderClick(event, 'controlnetCanny', 0, 1)">
-                            <div class="slider-fill" id="controlnetCannyFill" style="width: 27%">
+                            <div class="slider-fill" id="controlnetCannyFill" style="width: 50%">
                                 <div class="slider-handle" id="controlnetCannyHandle"></div>
                             </div>
                         </div>
@@ -1475,13 +1641,13 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Depth<span class="info-icon">i
-                                <div class="info-tooltip">3D depth information strength</div>
-                            </span></span>
-                            <span class="control-value" id="controlnetDepthValue">0.34</span>
+                            <span>Depth <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">3D depth information strength</span>
+                            </div></span>
+                            <span class="control-value" id="controlnetDepthValue">0.45</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'controlnetDepth', 0, 1)" ontouchstart="handleSliderClick(event, 'controlnetDepth', 0, 1)">
-                            <div class="slider-fill" id="controlnetDepthFill" style="width: 34%">
+                            <div class="slider-fill" id="controlnetDepthFill" style="width: 45%">
                                 <div class="slider-handle" id="controlnetDepthHandle"></div>
                             </div>
                         </div>
@@ -1489,13 +1655,13 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Color<span class="info-icon">i
-                                <div class="info-tooltip">Color preservation strength</div>
-                            </span></span>
-                            <span class="control-value" id="controlnetColorValue">0.66</span>
+                            <span>Color <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Color preservation strength</span>
+                            </div></span>
+                            <span class="control-value" id="controlnetColorValue">0.55</span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'controlnetColor', 0, 1)" ontouchstart="handleSliderClick(event, 'controlnetColor', 0, 1)">
-                            <div class="slider-fill" id="controlnetColorFill" style="width: 66%">
+                            <div class="slider-fill" id="controlnetColorFill" style="width: 55%">
                                 <div class="slider-handle" id="controlnetColorHandle"></div>
                             </div>
                         </div>
@@ -1508,10 +1674,10 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>X: <span class="control-value" id="denoiseXValue">2</span></span>
+                            <span>X: <span class="control-value" id="denoiseXValue">3</span></span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'denoiseX', 0, 45)" ontouchstart="handleSliderClick(event, 'denoiseX', 0, 45)">
-                            <div class="slider-fill" id="denoiseXFill" style="width: 4%">
+                            <div class="slider-fill" id="denoiseXFill" style="width: 7%">
                                 <div class="slider-handle" id="denoiseXHandle"></div>
                             </div>
                         </div>
@@ -1519,10 +1685,10 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Y: <span class="control-value" id="denoiseYValue">4</span></span>
+                            <span>Y: <span class="control-value" id="denoiseYValue">6</span></span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'denoiseY', 0, 45)" ontouchstart="handleSliderClick(event, 'denoiseY', 0, 45)">
-                            <div class="slider-fill" id="denoiseYFill" style="width: 9%">
+                            <div class="slider-fill" id="denoiseYFill" style="width: 13%">
                                 <div class="slider-handle" id="denoiseYHandle"></div>
                             </div>
                         </div>
@@ -1530,10 +1696,10 @@
                     
                     <div class="control-item">
                         <div class="control-label">
-                            <span>Z: <span class="control-value" id="denoiseZValue">6</span></span>
+                            <span>Z: <span class="control-value" id="denoiseZValue">9</span></span>
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'denoiseZ', 0, 45)" ontouchstart="handleSliderClick(event, 'denoiseZ', 0, 45)">
-                            <div class="slider-fill" id="denoiseZFill" style="width: 13%">
+                            <div class="slider-fill" id="denoiseZFill" style="width: 20%">
                                 <div class="slider-handle" id="denoiseZHandle"></div>
                             </div>
                         </div>
@@ -1541,70 +1707,89 @@
 
                 </div>
                 
+                <!-- ControlNet Presets Section -->
+                <div class="control-group">
+                    <div class="group-title">PRESETS</div>
+                    
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>ControlNet Presets <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Pre-configured settings for common creative workflows</span>
+                            </div></span>
+                        </div>
+                        <div class="controlnet-preset-buttons">
+                            <button class="preset-button active" onclick="setControlNetPreset('balanced', event)">Balanced</button>
+                            <button class="preset-button" onclick="setControlNetPreset('portrait', event)">Portrait</button>
+                            <button class="preset-button" onclick="setControlNetPreset('composition', event)">Composition</button>
+                            <button class="preset-button" onclick="setControlNetPreset('artistic', event)">Artistic</button>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- StreamDiffusion Advanced Section -->
-                <div class="advanced-section">
+                        <div class="advanced-section">
                     <div class="advanced-toggle" onclick="toggleStreamDiffusion()">
                         <span id="streamDiffusionIcon">▶</span>
                         <span>StreamDiffusion AI</span>
-                    </div>
-                    
-                    <div class="advanced-content" id="streamDiffusionContent">
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Inference Steps<span class="info-icon">i
-                                    <div class="info-tooltip">Denoising steps. Higher = better quality</div>
-                                </span></span>
-                                <span class="control-value" id="inferenceStepsValue">50</span>
                             </div>
+                            
+                    <div class="advanced-content" id="streamDiffusionContent">
+                                <div class="control-item">
+                            <div class="control-label">
+                                <span>Inference Steps <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Denoising steps. Higher = better quality</span>
+                                </div></span>
+                                <span class="control-value" id="inferenceStepsValue">50</span>
+                                        </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'inferenceSteps', 1, 100)">
                                 <div class="slider-fill" id="inferenceStepsFill" style="width: 49%">
                                     <div class="slider-handle" id="inferenceStepsHandle"></div>
                                 </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Seed<span class="info-icon">i
-                                    <div class="info-tooltip">Random seed. Same seed = same result</div>
-                                </span></span>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                <span>Seed <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Random seed. Same seed = same result</span>
+                                </div></span>
                                 <span class="control-value" id="seedValue">42</span>
-                            </div>
+                                    </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'seed', 0, 1000)">
                                 <div class="slider-fill" id="seedFill" style="width: 4.2%">
                                     <div class="slider-handle" id="seedHandle"></div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
+                                
+                                <div class="control-item">
                             <div class="control-label">
-                                <span>Guidance Scale<span class="info-icon">i
-                                    <div class="info-tooltip">Prompt adherence. Higher = less creativity</div>
-                                </span></span>
+                                <span>Guidance Scale <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Prompt adherence. Higher = less creativity</span>
+                                </div></span>
                                 <span class="control-value" id="guidanceScaleValue">7.5</span>
-                            </div>
+                                        </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'guidanceScale', 1, 20)">
                                 <div class="slider-fill" id="guidanceScaleFill" style="width: 34.2%">
                                     <div class="slider-handle" id="guidanceScaleHandle"></div>
                                 </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Delta<span class="info-icon">i
-                                    <div class="info-tooltip">Denoising strength. Higher = more changes</div>
-                                </span></span>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                <span>Delta <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Denoising strength. Higher = more changes</span>
+                                </div></span>
                                 <span class="control-value" id="deltaValue">0.50</span>
-                            </div>
+                                    </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'delta', 0, 1)">
                                 <div class="slider-fill" id="deltaFill" style="width: 50%">
                                     <div class="slider-handle" id="deltaHandle"></div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                        
+                                
                         <div class="control-item">
                             <div class="control-label">
                                 <span>API Key</span>
@@ -1663,59 +1848,179 @@
         <script src="coloris.min.js"></script>
         <script src="./script.js"></script>
         <script>
-    // Dynamic tooltip positioning to prevent cropping
-    function positionTooltip(icon, tooltip) {
-        const iconRect = icon.getBoundingClientRect();
-        const tooltipRect = tooltip.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        
-        // Default position: above the icon, centered
-        let top = iconRect.top - tooltipRect.height - 10;
-        let left = iconRect.left + (iconRect.width / 2) - (tooltipRect.width / 2);
-        
-        // Adjust if tooltip goes off screen horizontally
-        if (left < 10) {
-            left = 10;
-        } else if (left + tooltipRect.width > viewportWidth - 10) {
-            left = viewportWidth - tooltipRect.width - 10;
-        }
-        
-        // Adjust if tooltip goes off screen vertically
-        if (top < 10) {
-            // Position below the icon if no room above
-            top = iconRect.bottom + 10;
-        }
-        
-        // Final boundary check
-        if (top + tooltipRect.height > viewportHeight - 10) {
-            top = viewportHeight - tooltipRect.height - 10;
-        }
-        
-        tooltip.style.top = top + 'px';
-        tooltip.style.left = left + 'px';
-    }
-    
-    // Add event listeners to all info icons
-    document.addEventListener('DOMContentLoaded', function() {
-        const infoIcons = document.querySelectorAll('.info-icon');
-        
-        infoIcons.forEach(icon => {
-            const tooltip = icon.querySelector('.info-tooltip');
-            if (tooltip) {
-                icon.addEventListener('mouseenter', function() {
-                    // Small delay to ensure tooltip is visible for measurement
-                    setTimeout(() => positionTooltip(icon, tooltip), 1);
-                });
+            // Mobile-friendly tooltip system
+            document.addEventListener('DOMContentLoaded', function() {
+                const isMobile = window.innerWidth <= 768;
                 
-                icon.addEventListener('mouseleave', function() {
-                    // Reset position
-                    tooltip.style.top = '';
-                    tooltip.style.left = '';
-                });
-            }
-        });
-    });
-    </script>
-</body>
+                if (isMobile) {
+                    const tooltips = document.querySelectorAll('.tooltip');
+                    let activeTooltip = null;
+                    
+                    tooltips.forEach(tooltip => {
+                        const infoIcon = tooltip.querySelector('.info-icon');
+                        const tooltipText = tooltip.querySelector('.tooltiptext');
+                        
+                        if (infoIcon && tooltipText) {
+                            // Add touch event for showing tooltip
+                            infoIcon.addEventListener('touchstart', function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                
+                                // Close any active tooltip
+                                if (activeTooltip && activeTooltip !== tooltip) {
+                                    activeTooltip.classList.remove('mobile-active');
+                                }
+                                
+                                // Toggle current tooltip
+                                if (tooltip.classList.contains('mobile-active')) {
+                                    tooltip.classList.remove('mobile-active');
+                                    activeTooltip = null;
+                                } else {
+                                    tooltip.classList.add('mobile-active');
+                                    activeTooltip = tooltip;
+                                    
+                                    // Adjust position if tooltip would go off-screen
+                                    adjustTooltipPosition(tooltipText);
+                                }
+                            });
+                            
+                            // Prevent default click behavior
+                            infoIcon.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            });
+                        }
+                    });
+                    
+                    // Close tooltip when tapping outside
+                    document.addEventListener('touchstart', function(e) {
+                        if (activeTooltip && !e.target.closest('.tooltip')) {
+                            activeTooltip.classList.remove('mobile-active');
+                            activeTooltip = null;
+                        }
+                    });
+                    
+                    // Function to adjust tooltip position
+                    function adjustTooltipPosition(tooltipText) {
+                        const rect = tooltipText.getBoundingClientRect();
+                        const viewportWidth = window.innerWidth;
+                        
+                        // Reset classes
+                        tooltipText.classList.remove('adjust-left', 'adjust-right');
+                        
+                        // Check if tooltip goes off left edge
+                        if (rect.left < 20) {
+                            tooltipText.classList.add('adjust-left');
+                        }
+                        // Check if tooltip goes off right edge
+                        else if (rect.right > viewportWidth - 20) {
+                            tooltipText.classList.add('adjust-right');
+                        }
+                    }
+                    
+                    // Handle orientation change
+                    window.addEventListener('orientationchange', function() {
+                        setTimeout(() => {
+                            if (activeTooltip) {
+                                const tooltipText = activeTooltip.querySelector('.tooltiptext');
+                                if (tooltipText) {
+                                    adjustTooltipPosition(tooltipText);
+                                }
+                            }
+                        }, 100);
+                    });
+                }
+                
+                // Enhanced mobile interaction for preset buttons and toggles
+                if (isMobile) {
+                    // Add touch feedback for preset buttons without interfering with click events
+                    const presetButtons = document.querySelectorAll('.preset-btn, .preset-button');
+                    presetButtons.forEach(button => {
+                        button.addEventListener('touchstart', function(e) {
+                            // Don't prevent default to allow click events to work
+                            this.style.transform = 'scale(0.95)';
+                        }, { passive: true });
+                        
+                        button.addEventListener('touchend', function(e) {
+                            // Don't prevent default to allow click events to work
+                            setTimeout(() => {
+                                this.style.transform = '';
+                            }, 150);
+                        }, { passive: true });
+                        
+                        button.addEventListener('touchcancel', function(e) {
+                            this.style.transform = '';
+                        }, { passive: true });
+                    });
+                    
+                    // Improve advanced toggle interaction
+                    const advancedToggles = document.querySelectorAll('.advanced-toggle');
+                    advancedToggles.forEach(toggle => {
+                        toggle.addEventListener('touchstart', function(e) {
+                            this.style.background = 'rgba(0, 212, 255, 0.1)';
+                        });
+                        
+                        toggle.addEventListener('touchend', function(e) {
+                            setTimeout(() => {
+                                this.style.background = '';
+                            }, 200);
+                        });
+                        
+                        toggle.addEventListener('touchcancel', function(e) {
+                            this.style.background = '';
+                        });
+                    });
+                }
+                
+                // Auto-resize textarea functionality
+                function setupAutoResizeTextarea() {
+                    const textarea = document.getElementById('promptInput');
+                    if (textarea) {
+                        // Function to adjust textarea height
+                        function adjustHeight() {
+                            textarea.style.height = 'auto';
+                            const scrollHeight = textarea.scrollHeight;
+                            const minHeight = isMobile ? 44 : 40;
+                            const maxHeight = isMobile ? 140 : 120;
+                            
+                            if (scrollHeight > maxHeight) {
+                                textarea.style.height = maxHeight + 'px';
+                                textarea.style.overflowY = 'auto';
+                            } else if (scrollHeight < minHeight) {
+                                textarea.style.height = minHeight + 'px';
+                                textarea.style.overflowY = 'hidden';
+                            } else {
+                                textarea.style.height = scrollHeight + 'px';
+                                textarea.style.overflowY = 'hidden';
+                            }
+                        }
+                        
+                        // Initial adjustment
+                        adjustHeight();
+                        
+                        // Adjust on input
+                        textarea.addEventListener('input', adjustHeight);
+                        
+                        // Adjust on focus (in case content was set programmatically)
+                        textarea.addEventListener('focus', () => {
+                            setTimeout(adjustHeight, 0);
+                        });
+                        
+                        // Adjust when preset prompts are loaded
+                        const originalSetPrompt = window.setPrompt;
+                        if (originalSetPrompt) {
+                            window.setPrompt = function(promptText) {
+                                originalSetPrompt(promptText);
+                                setTimeout(adjustHeight, 0);
+                            };
+                        }
+                    }
+                }
+                
+                // Initialize auto-resize functionality
+                setupAutoResizeTextarea();
+            });
+        </script>
+
+    </body>
 </html>

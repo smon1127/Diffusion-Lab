@@ -38,7 +38,7 @@ let config = {
     SIM_RESOLUTION: 256,        // Fixed simulation resolution for better performance
     DYE_RESOLUTION: 1024,       // High quality by default
     CAPTURE_RESOLUTION: 512,
-    DENSITY_DISSIPATION: 0.15,  // Much lower for longer-lasting fluid colors
+    DENSITY_DISSIPATION: 0.5,   // Default fade level for balanced fluid persistence
     VELOCITY_DISSIPATION: 0.6,  // Much lower for longer-lasting fluid motion
     PRESSURE: 0.37,             // Updated default from screenshot
     PRESSURE_ITERATIONS: 20,
@@ -64,17 +64,17 @@ let config = {
     // StreamDiffusion parameters
     INFERENCE_STEPS: 50,
     SEED: 42,
-    CONTROLNET_POSE_SCALE: 0.56,
-    CONTROLNET_HED_SCALE: 0.53,
-    CONTROLNET_CANNY_SCALE: 0.27,
-    CONTROLNET_DEPTH_SCALE: 0.34,
-    CONTROLNET_COLOR_SCALE: 0.66,
+    CONTROLNET_POSE_SCALE: 0.65,  // Balanced preset default
+    CONTROLNET_HED_SCALE: 0.60,   // Balanced preset default
+    CONTROLNET_CANNY_SCALE: 0.50, // Balanced preset default
+    CONTROLNET_DEPTH_SCALE: 0.45, // Balanced preset default
+    CONTROLNET_COLOR_SCALE: 0.55, // Balanced preset default
     GUIDANCE_SCALE: 7.5,
     DELTA: 0.5,
-    // Denoise controls (t_index_list values)
-    DENOISE_X: 2,
-    DENOISE_Y: 4, 
-    DENOISE_Z: 6,
+    // Denoise controls (t_index_list values) - Balanced preset default
+    DENOISE_X: 3,
+    DENOISE_Y: 6, 
+    DENOISE_Z: 9,
     // Animation Parameters - Redesigned with intuitive 0-1 ranges
     ANIMATE: true,
     LIVELINESS: 0.62,   // 0=gentle (1 splat), 1=energetic (8 splats) - Default: moderate-high energy
@@ -82,6 +82,8 @@ let config = {
     BREATHING: 0.5,     // 0=consistent, 1=dramatic pulsing - Default: moderate rhythm  
     COLOR_LIFE: 0.22,   // 0=static color, 1=rainbow evolution - Default: subtle color shifts
     ANIMATION_INTERVAL: 0.1, // 0-1 range - Controls animation speed (0 = slow, 1 = fast) - Default: 10%
+    // Background Image Parameters
+    BACKGROUND_IMAGE_SCALE: 1.0, // 0.1-2.0 range - Controls background image size (1.0 = fit to viewport)
 }
 
 // Idle Animation System
@@ -252,7 +254,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -404,6 +406,7 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         'breathing': { min: 0, max: 1, prop: 'BREATHING', decimals: 2 },
         'colorLife': { min: 0, max: 1, prop: 'COLOR_LIFE', decimals: 2 },
         'animationInterval': { min: 0, max: 1, prop: 'ANIMATION_INTERVAL', decimals: 2 },
+        'backgroundImageScale': { min: 0.1, max: 2.0, prop: 'BACKGROUND_IMAGE_SCALE', decimals: 2 },
         'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true }
     };
     
@@ -420,6 +423,12 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         config[slider.prop] = [0, middleIndex, Math.min(middleIndex * 2, 50)];
     } else {
         config[slider.prop] = value;
+    }
+    
+    // Special handling for background image scale - regenerate image
+    if (sliderName === 'backgroundImageScale' && backgroundImage.loaded && backgroundImage.originalDataURL) {
+        // Regenerate the entire image with the new scale
+        loadBackgroundImage(backgroundImage.originalDataURL);
     }
     
     // Update UI
@@ -474,6 +483,7 @@ function updateSliderPositions() {
         'breathing': { prop: 'BREATHING', min: 0, max: 1 },
         'colorLife': { prop: 'COLOR_LIFE', min: 0, max: 1 },
         'animationInterval': { prop: 'ANIMATION_INTERVAL', min: 0, max: 1 },
+        'backgroundImageScale': { prop: 'BACKGROUND_IMAGE_SCALE', min: 0.1, max: 2.0 },
         'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true }
     };
     
@@ -715,6 +725,100 @@ function setPrompt(promptText) {
     }
 }
 
+// ControlNet Presets based on Stable Diffusion Art best practices
+function setControlNetPreset(presetName, event) {
+    // Remove active class from all buttons
+    document.querySelectorAll('.preset-button').forEach(btn => btn.classList.remove('active'));
+    
+    // Add active class to clicked button
+    if (event && event.target) {
+        event.target.classList.add('active');
+    } else {
+        // Fallback: find button by preset name
+        const buttons = document.querySelectorAll('.preset-button');
+        buttons.forEach(btn => {
+            if (btn.textContent.toLowerCase() === presetName.toLowerCase()) {
+                btn.classList.add('active');
+            }
+        });
+    }
+    
+    let presetConfig = {};
+    
+    switch(presetName) {
+        case 'balanced':
+            // Balanced preset: Good for general use with moderate control
+            presetConfig = {
+                CONTROLNET_POSE_SCALE: 0.65,
+                CONTROLNET_HED_SCALE: 0.60,
+                CONTROLNET_CANNY_SCALE: 0.50,
+                CONTROLNET_DEPTH_SCALE: 0.45,
+                CONTROLNET_COLOR_SCALE: 0.55,
+                DENOISE_X: 3,
+                DENOISE_Y: 6,
+                DENOISE_Z: 9
+            };
+            break;
+            
+        case 'portrait':
+            // Portrait preset: Optimized for human subjects with strong pose control
+            presetConfig = {
+                CONTROLNET_POSE_SCALE: 0.85,  // Strong pose control for human figures
+                CONTROLNET_HED_SCALE: 0.70,   // Good edge detection for faces
+                CONTROLNET_CANNY_SCALE: 0.40, // Moderate edge detection
+                CONTROLNET_DEPTH_SCALE: 0.60, // Good depth for facial features
+                CONTROLNET_COLOR_SCALE: 0.75, // Strong color preservation for skin tones
+                DENOISE_X: 2,
+                DENOISE_Y: 4,
+                DENOISE_Z: 6
+            };
+            break;
+            
+        case 'composition':
+            // Composition preset: Strong structural control with Canny and Depth
+            presetConfig = {
+                CONTROLNET_POSE_SCALE: 0.40,  // Less pose control
+                CONTROLNET_HED_SCALE: 0.45,   // Moderate soft edges
+                CONTROLNET_CANNY_SCALE: 0.80, // Strong edge detection for composition
+                CONTROLNET_DEPTH_SCALE: 0.75, // Strong depth control
+                CONTROLNET_COLOR_SCALE: 0.35, // Lower color control for more creativity
+                DENOISE_X: 4,
+                DENOISE_Y: 8,
+                DENOISE_Z: 12
+            };
+            break;
+            
+        case 'artistic':
+            // Artistic preset: More creative freedom with subtle controls
+            presetConfig = {
+                CONTROLNET_POSE_SCALE: 0.30,  // Loose pose control
+                CONTROLNET_HED_SCALE: 0.75,   // Strong soft edge detection
+                CONTROLNET_CANNY_SCALE: 0.25, // Minimal hard edges
+                CONTROLNET_DEPTH_SCALE: 0.35, // Subtle depth guidance
+                CONTROLNET_COLOR_SCALE: 0.40, // Moderate color influence
+                DENOISE_X: 6,
+                DENOISE_Y: 12,
+                DENOISE_Z: 18
+            };
+            break;
+    }
+    
+    // Apply the preset configuration
+    Object.keys(presetConfig).forEach(key => {
+        if (config.hasOwnProperty(key)) {
+            config[key] = presetConfig[key];
+        }
+    });
+    
+    // Update all slider positions and values
+    updateSliderPositions();
+    
+    // Save configuration
+    saveConfig();
+    
+    console.log(`Applied ControlNet preset: ${presetName}`);
+}
+
 function toggleFluidControls() {
     const content = document.getElementById('fluidControlsContent');
     const toggle = document.getElementById('fluidControlsIcon');
@@ -924,6 +1028,8 @@ function handleImageUpload(event) {
 
     const reader = new FileReader();
     reader.onload = function(e) {
+        // Store original data URL for scale changes
+        backgroundImage.originalDataURL = e.target.result;
         loadBackgroundImage(e.target.result);
     };
     reader.readAsDataURL(file);
@@ -1000,7 +1106,11 @@ function loadBackgroundImage(dataURL) {
             canvas.height / img.height,
             2.0 // Allow up to 2x upscaling for small images
         );
-        const scale = Math.min(maxScale, Math.min(drawWidth / img.width, drawHeight / img.height));
+        const baseScale = Math.min(maxScale, Math.min(drawWidth / img.width, drawHeight / img.height));
+        
+        // Apply user scale setting (stored in config.BACKGROUND_IMAGE_SCALE)
+        const userScale = config.BACKGROUND_IMAGE_SCALE || 1.0;
+        const scale = baseScale * userScale;
         drawWidth = img.width * scale;
         drawHeight = img.height * scale;
         drawX = (canvas.width - drawWidth) / 2;
@@ -1068,6 +1178,12 @@ function showClearButton(show) {
     if (clearButton) {
         clearButton.style.display = show ? 'inline-block' : 'none';
     }
+    
+    // Also show/hide the scale slider
+    const scaleControl = document.getElementById('backgroundScaleControl');
+    if (scaleControl) {
+        scaleControl.style.display = show ? 'block' : 'none';
+    }
 }
 
 function clearBackgroundImage() {
@@ -1082,6 +1198,7 @@ function clearBackgroundImage() {
     backgroundImage.canvas = null;
     backgroundImage.width = 0;
     backgroundImage.height = 0;
+    backgroundImage.originalDataURL = null;
     
     // Clear UI
     const preview = document.getElementById('imagePreview');
@@ -3558,6 +3675,7 @@ function saveConfig() {
         BREATHING: config.BREATHING,
         COLOR_LIFE: config.COLOR_LIFE,
         ANIMATION_INTERVAL: config.ANIMATION_INTERVAL,
+        BACKGROUND_IMAGE_SCALE: config.BACKGROUND_IMAGE_SCALE,
         BLOOM: config.BLOOM,
         SUNRAYS: config.SUNRAYS,
         STATIC_COLOR: config.STATIC_COLOR,
