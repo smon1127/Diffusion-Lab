@@ -38,8 +38,8 @@ let config = {
     SIM_RESOLUTION: 256,        // Fixed simulation resolution for better performance
     DYE_RESOLUTION: 1024,       // High quality by default
     CAPTURE_RESOLUTION: 512,
-    DENSITY_DISSIPATION: 0.38,  // Updated default from screenshot
-    VELOCITY_DISSIPATION: 1.18, // Updated default from screenshot
+    DENSITY_DISSIPATION: 0.15,  // Much lower for longer-lasting fluid colors
+    VELOCITY_DISSIPATION: 0.6,  // Much lower for longer-lasting fluid motion
     PRESSURE: 0.37,             // Updated default from screenshot
     PRESSURE_ITERATIONS: 20,
     CURL: 4,                    // Updated default from screenshot (Vorticity)
@@ -55,12 +55,12 @@ let config = {
     BLOOM: true,
     BLOOM_ITERATIONS: 8,
     BLOOM_RESOLUTION: 256,
-    BLOOM_INTENSITY: 0.24,      // Updated default from screenshot
+    BLOOM_INTENSITY: 0.4,       // Default glow level
     BLOOM_THRESHOLD: 0.6,
     BLOOM_SOFT_KNEE: 0.7,
     SUNRAYS: true,
     SUNRAYS_RESOLUTION: 196,
-    SUNRAYS_WEIGHT: 0.47,       // Updated default from screenshot
+    SUNRAYS_WEIGHT: 0.4,        // Default rays level
     // StreamDiffusion parameters
     INFERENCE_STEPS: 50,
     SEED: 42,
@@ -75,7 +75,22 @@ let config = {
     DENOISE_X: 2,
     DENOISE_Y: 4, 
     DENOISE_Z: 6,
+    // Animation Parameters - Redesigned with intuitive 0-1 ranges
+    ANIMATE: true,
+    LIVELINESS: 0.62,   // 0=gentle (1 splat), 1=energetic (8 splats) - Default: moderate-high energy
+    CHAOS: 0.73,        // 0=ordered streams, 1=full chaos - Default: high chaos
+    BREATHING: 0.5,     // 0=consistent, 1=dramatic pulsing - Default: moderate rhythm  
+    COLOR_LIFE: 0.22,   // 0=static color, 1=rainbow evolution - Default: subtle color shifts
+    ANIMATION_INTERVAL: 0.1, // 0-1 range - Controls animation speed (0 = slow, 1 = fast) - Default: 10%
 }
+
+// Idle Animation System
+let idleAnimationEnabled = true;
+let lastActivityTime = Date.now();
+let idleAnimationTimer = null;
+const IDLE_TIMEOUT = 5000; // 5 seconds
+const IDLE_SPARK_MIN_INTERVAL = 1500; // 1.5 seconds
+const IDLE_SPARK_MAX_INTERVAL = 4000; // 4 seconds
 
 function pointerPrototype () {
     this.id = -1;
@@ -109,6 +124,12 @@ if (!ext.supportLinearFiltering) {
 // Wait for DOM to be ready before initializing UI
 document.addEventListener('DOMContentLoaded', () => {
     startGUI();
+    // Start idle animation immediately on page load
+    setTimeout(() => {
+        if (Date.now() - lastActivityTime >= IDLE_TIMEOUT) {
+            startIdleAnimation();
+        }
+    }, IDLE_TIMEOUT);
 });
 
 function getWebGLContext (canvas) {
@@ -358,6 +379,11 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         'controlnetColor': { min: 0, max: 1, prop: 'CONTROLNET_COLOR_SCALE', decimals: 2 },
         'guidanceScale': { min: 1, max: 20, prop: 'GUIDANCE_SCALE', decimals: 1 },
         'delta': { min: 0, max: 1, prop: 'DELTA', decimals: 2 },
+        'liveliness': { min: 0, max: 1, prop: 'LIVELINESS', decimals: 2 },
+        'chaos': { min: 0, max: 1, prop: 'CHAOS', decimals: 2 },
+        'breathing': { min: 0, max: 1, prop: 'BREATHING', decimals: 2 },
+        'colorLife': { min: 0, max: 1, prop: 'COLOR_LIFE', decimals: 2 },
+        'animationInterval': { min: 0, max: 1, prop: 'ANIMATION_INTERVAL', decimals: 2 },
         'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true }
     };
     
@@ -423,6 +449,11 @@ function updateSliderPositions() {
         'controlnetColor': { prop: 'CONTROLNET_COLOR_SCALE', min: 0, max: 1 },
         'guidanceScale': { prop: 'GUIDANCE_SCALE', min: 1, max: 20 },
         'delta': { prop: 'DELTA', min: 0, max: 1 },
+        'liveliness': { prop: 'LIVELINESS', min: 0, max: 1 },
+        'chaos': { prop: 'CHAOS', min: 0, max: 1 },
+        'breathing': { prop: 'BREATHING', min: 0, max: 1 },
+        'colorLife': { prop: 'COLOR_LIFE', min: 0, max: 1 },
+        'animationInterval': { prop: 'ANIMATION_INTERVAL', min: 0, max: 1 },
         'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true }
     };
     
@@ -445,6 +476,7 @@ function updateSliderPositions() {
 function updateToggleStates() {
     updateToggle('colorfulToggle', config.COLORFUL);
     updateToggle('pausedToggle', config.PAUSED);
+    updateToggle('animateToggle', config.ANIMATE);
     updateToggle('bloomToggle', config.BLOOM);
     updateToggle('sunraysToggle', config.SUNRAYS);
 }
@@ -563,6 +595,22 @@ function togglePaused() {
     saveConfig();
 }
 
+function toggleAnimate() {
+    config.ANIMATE = !config.ANIMATE;
+    updateToggle('animateToggle', config.ANIMATE);
+    saveConfig();
+    
+    // Start or stop animation based on state
+    if (config.ANIMATE && !config.PAUSED) {
+        startIdleAnimation();
+    } else if (idleAnimationTimer) {
+        clearTimeout(idleAnimationTimer);
+        idleAnimationTimer = null;
+    }
+}
+
+
+
 function toggleBloom() {
     config.BLOOM = !config.BLOOM;
     updateToggle('bloomToggle', config.BLOOM);
@@ -579,7 +627,8 @@ function toggleSunrays() {
 
 function toggleAdvanced() {
     const content = document.getElementById('advancedContent');
-    const toggle = document.querySelector('.advanced-toggle span:first-child');
+    const advancedSection = content.parentElement;
+    const toggle = advancedSection.querySelector('.advanced-toggle span:first-child');
     
     if (content.classList.contains('expanded')) {
         content.classList.remove('expanded');
@@ -607,11 +656,24 @@ function togglePromptPresets() {
     const content = document.getElementById('promptPresetsContent');
     const toggle = document.getElementById('promptPresetsIcon');
     
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        toggle.textContent = '▲';
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.textContent = '▶';
     } else {
-        content.style.display = 'none';
+        content.classList.add('expanded');
+        toggle.textContent = '▼';
+    }
+}
+
+function toggleNegativePrompt() {
+    const content = document.getElementById('negativePromptContent');
+    const toggle = document.getElementById('negativePromptIcon');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
         toggle.textContent = '▼';
     }
 }
@@ -672,6 +734,140 @@ function captureScreenshot () {
     let datauri = captureCanvas.toDataURL();
     downloadURI('fluid.png', datauri);
     URL.revokeObjectURL(datauri);
+}
+
+// Video recording functionality
+let videoRecorder = {
+    mediaRecorder: null,
+    recordedChunks: [],
+    isRecording: false,
+    displayStream: null
+};
+
+async function toggleVideoRecording() {
+    if (videoRecorder.isRecording) {
+        stopVideoRecording();
+    } else {
+        await startVideoRecording();
+    }
+}
+
+async function startVideoRecording() {
+    try {
+        // Check if there's an active stream
+        if (!streamState.playbackId) {
+            alert('Please start a stream first before recording.');
+            return;
+        }
+
+        // Request screen capture with audio
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                mediaSource: 'screen',
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                frameRate: { ideal: 30 }
+            },
+            audio: {
+                mediaSource: 'screen',
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+            }
+        });
+
+        videoRecorder.displayStream = displayStream;
+        videoRecorder.recordedChunks = [];
+
+        // Create MediaRecorder with MP4 support
+        const options = {
+            mimeType: 'video/webm;codecs=vp9,opus' // WebM with VP9 for better compatibility
+        };
+        
+        // Fallback to other formats if VP9 not supported
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options.mimeType = 'video/webm;codecs=vp8,opus';
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                options.mimeType = 'video/webm';
+            }
+        }
+
+        videoRecorder.mediaRecorder = new MediaRecorder(displayStream, options);
+
+        videoRecorder.mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                videoRecorder.recordedChunks.push(event.data);
+            }
+        };
+
+        videoRecorder.mediaRecorder.onstop = () => {
+            downloadRecording();
+            cleanup();
+        };
+
+        // Handle when user stops screen sharing
+        displayStream.getVideoTracks()[0].onended = () => {
+            if (videoRecorder.isRecording) {
+                stopVideoRecording();
+            }
+        };
+
+        videoRecorder.mediaRecorder.start(1000); // Collect data every second
+        videoRecorder.isRecording = true;
+        
+        updateRecordButton(true);
+        
+        alert('Recording started! Please select the stream window to record. Click "Stop Recording" when done.');
+
+    } catch (error) {
+        console.error('Error starting video recording:', error);
+        alert('Failed to start recording. Please make sure you grant screen capture permission and select the stream window.');
+        cleanup();
+    }
+}
+
+function stopVideoRecording() {
+    if (videoRecorder.mediaRecorder && videoRecorder.isRecording) {
+        videoRecorder.mediaRecorder.stop();
+        videoRecorder.isRecording = false;
+        updateRecordButton(false);
+    }
+}
+
+function downloadRecording() {
+    if (videoRecorder.recordedChunks.length === 0) {
+        console.warn('No recorded data available');
+        return;
+    }
+
+    const blob = new Blob(videoRecorder.recordedChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `fluid-stream-${timestamp}.webm`;
+    
+    downloadURI(filename, url);
+    URL.revokeObjectURL(url);
+}
+
+function updateRecordButton(isRecording) {
+    const button = document.getElementById('recordButton');
+    if (button) {
+        button.textContent = isRecording ? 'Stop Recording' : 'Record Video';
+        button.className = isRecording ? 'modern-button streaming' : 'modern-button';
+    }
+}
+
+function cleanup() {
+    if (videoRecorder.displayStream) {
+        videoRecorder.displayStream.getTracks().forEach(track => track.stop());
+        videoRecorder.displayStream = null;
+    }
+    videoRecorder.mediaRecorder = null;
+    videoRecorder.recordedChunks = [];
+    videoRecorder.isRecording = false;
+    updateRecordButton(false);
 }
 
 function framebufferToTexture (target) {
@@ -1887,8 +2083,9 @@ function multipleSplats (amount) {
         color.b *= 10.0;
         const x = Math.random();
         const y = Math.random();
-        const dx = 1000 * (Math.random() - 0.5);
-        const dy = 1000 * (Math.random() - 0.5);
+        // Increased force for longer movements (from 1000 to 2500)
+        const dx = 2500 * (Math.random() - 0.5);
+        const dy = 2500 * (Math.random() - 0.5);
         splat(x, y, dx, dy, color);
     }
 }
@@ -2077,6 +2274,184 @@ function generateColor () {
             g: config.STATIC_COLOR.g * 0.15,
             b: config.STATIC_COLOR.b * 0.15
         };
+    }
+}
+
+// Organic Animation Functions
+function resetActivityTimer() {
+    lastActivityTime = Date.now();
+    
+    // Only reset animation if Animate toggle is OFF
+    if (!config.ANIMATE) {
+        if (idleAnimationTimer) {
+            clearTimeout(idleAnimationTimer);
+            idleAnimationTimer = null;
+        }
+        scheduleIdleAnimation();
+    }
+    // When Animate is ON, don't interrupt the continuous animation
+}
+
+function scheduleIdleAnimation() {
+    if (!idleAnimationEnabled || !config.ANIMATE) return;
+    
+    idleAnimationTimer = setTimeout(() => {
+        if (Date.now() - lastActivityTime >= IDLE_TIMEOUT) {
+            startIdleAnimation();
+        } else {
+            scheduleIdleAnimation();
+        }
+    }, IDLE_TIMEOUT);
+}
+
+function startIdleAnimation() {
+    if (!idleAnimationEnabled || config.PAUSED || !config.ANIMATE) return;
+    
+    // Create organic fluid animation
+    createOrganicSplat();
+    
+    // Use interval and breathing to determine timing
+    const interval = config.ANIMATION_INTERVAL; // 0-1 range, flipped logic
+    const breathing = config.BREATHING;
+    
+    // Breathing affects timing variation
+    const breathingPhase = Math.sin(Date.now() * 0.003 * (breathing + 0.1)) * 0.5 + 0.5;
+    
+    // Flipped interval logic: 0 = slow (1000ms), 1 = moderate (512ms)
+    // Current 50% speed becomes new 100% maximum
+    // At 10% slider (0.1): default comfortable speed
+    const minInterval = 512;  // 0.512 seconds (moderate speed, was 50%)
+    const maxInterval = 1000; // 1.0 seconds (slow)
+    const baseInterval = maxInterval - (interval * (maxInterval - minInterval)); // Flipped
+    
+    // Breathing creates natural rhythm variations
+    const breathingVariation = 0.8 + (breathing * breathingPhase * 0.4); // 0.8-1.2 variation
+    const finalInterval = baseInterval * breathingVariation;
+    
+    idleAnimationTimer = setTimeout(() => {
+        if (config.ANIMATE) {
+            // When Animate toggle is ON, continue regardless of user activity
+            startIdleAnimation(); // Continue organic animation
+        } else if (Date.now() - lastActivityTime >= IDLE_TIMEOUT || liveliness > 0.1) {
+            // When Animate toggle is OFF, only animate during idle periods
+            startIdleAnimation(); // Continue organic animation
+        } else {
+            scheduleIdleAnimation(); // User became active, wait again
+        }
+    }, finalInterval);
+}
+
+function createOrganicSplat() {
+    // Redesigned animation parameters with intuitive 0-1 ranges and Ctrl+B intensity
+    const interval = config.ANIMATION_INTERVAL; // Now controls splat count instead of liveliness
+    const chaos = config.CHAOS;
+    const breathing = config.BREATHING;
+    const colorLife = config.COLOR_LIFE;
+    
+    // Enhanced breathing effect with more dramatic timing variations
+    const time = Date.now() * 0.001;
+    const breathingSpeed = 0.5 + (breathing * 1.5); // 0.5-2.0 speed range
+    const breathingPhase = Math.sin(time * breathingSpeed) * 0.5 + 0.5;
+    
+    // INTERVAL: Controls splat count (0 = few splats, 1 = many splats)
+    const baseSplatCount = Math.floor(interval * 7 + 1); // Clean 1-8 range
+    const breathingPulse = 0.7 + (breathing * breathingPhase * 0.6); // 0.7-1.3 multiplier
+    const finalSplatCount = Math.max(1, Math.floor(baseSplatCount * breathingPulse));
+    
+    // Create organic splats with redesigned logic
+    for (let i = 0; i < finalSplatCount; i++) {
+        const color = generateOrganicColor(colorLife);
+        
+        // CHAOS: Intuitive position spreading (0 = tight cluster, 1 = full screen chaos)
+        const clusterCenter = chaos < 0.5 ? 0.5 : Math.random(); // Low chaos = center, high chaos = anywhere
+        const spreadRadius = chaos * 0.8; // 0-0.8 spread range
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * spreadRadius;
+        
+        const x = Math.max(0, Math.min(1, clusterCenter + Math.cos(angle) * distance));
+        const y = Math.max(0, Math.min(1, clusterCenter + Math.sin(angle) * distance));
+        
+        // CHAOS: Flow direction (0 = coherent streams, 1 = random directions)
+        const coherentFlow = (1 - chaos) * (Math.PI * 0.25 + time * 0.1); // Slow rotating flow
+        const randomChaos = chaos * Math.PI * 2 * Math.random();
+        const flowWeight = 1 - chaos;
+        const finalAngle = coherentFlow * flowWeight + randomChaos * chaos;
+        
+        // INTERVAL: Force strength (0 = gentle, 1 = powerful like Ctrl+B)
+        const baseForce = 3000 + (interval * 15000); // 3k-18k range (matches Ctrl+B intensity)
+        const breathingForce = 0.8 + (breathing * breathingPhase * 0.4); // 0.8-1.2 breathing boost
+        const forceStrength = baseForce * breathingForce;
+        
+        const dx = forceStrength * Math.cos(finalAngle);
+        const dy = forceStrength * Math.sin(finalAngle);
+        
+        // BREATHING: Size variation (0 = consistent size, 1 = dramatic pulsing)
+        const sizeBase = 1.0 + (breathing * 0.5); // 1.0-1.5 base size
+        const sizePulse = 1.0 + (breathing * breathingPhase * 0.8); // 1.0-1.8 pulse range
+        const originalRadius = config.SPLAT_RADIUS;
+        config.SPLAT_RADIUS *= sizeBase * sizePulse;
+        
+        splat(x, y, dx, dy, color);
+        
+        // Restore original radius
+        config.SPLAT_RADIUS = originalRadius;
+    }
+}
+
+function generateOrganicColor(colorLife) {
+    const time = Date.now() * 0.001;
+    
+    // COLOR LIFE: Intuitive 0-1 range (0 = static color, 1 = full rainbow evolution)
+    const colorfulOverride = config.COLORFUL;
+    const dynamicColorStrength = Math.max(colorLife, colorfulOverride ? 1.0 : 0);
+    
+    if (dynamicColorStrength > 0.1) {
+        // Dynamic rainbow colors - strength based on Color Life value
+        const evolutionSpeed = dynamicColorStrength * 0.2; // 0-0.2 evolution speed
+        const hueShift = dynamicColorStrength * Math.sin(time * 0.15) * 0.4; // Hue variation
+        const baseHue = (time * evolutionSpeed) % 1.0;
+        const finalHue = (baseHue + hueShift + 1) % 1.0;
+        
+        // Color Life affects saturation and brightness variation
+        const saturation = 0.7 + (dynamicColorStrength * 0.3); // 0.7-1.0 saturation
+        const brightness = 0.8 + Math.sin(time * 0.3) * dynamicColorStrength * 0.2; // Brightness pulse
+        
+        let c = HSVtoRGB(finalHue, saturation, brightness);
+        c.r *= 10.0; // Match Ctrl+B intensity
+        c.g *= 10.0;
+        c.b *= 10.0;
+        return c;
+    } else {
+        // Static color with subtle Color Life variations
+        const pulsation = Math.sin(time * 0.4) * colorLife * 0.3; // Gentle pulsing
+        const baseIntensity = 1.0 + pulsation; // 0.7-1.3 intensity range
+        const ctrlBMultiplier = 10.0; // Match Ctrl+B intensity
+        
+        return {
+            r: config.STATIC_COLOR.r * baseIntensity * ctrlBMultiplier,
+            g: config.STATIC_COLOR.g * baseIntensity * ctrlBMultiplier,
+            b: config.STATIC_COLOR.b * baseIntensity * ctrlBMultiplier
+        };
+    }
+}
+
+function initializeIdleAnimation() {
+    // Start the idle animation system
+    resetActivityTimer();
+    
+    // Only track canvas interactions to reset idle timer
+    // UI interactions (sliders, buttons) won't stop the animation
+    canvas.addEventListener('mousedown', resetActivityTimer, { passive: true });
+    canvas.addEventListener('mousemove', resetActivityTimer, { passive: true });
+    canvas.addEventListener('touchstart', resetActivityTimer, { passive: true });
+    canvas.addEventListener('touchmove', resetActivityTimer, { passive: true });
+    
+    // Start animation immediately if ANIMATE toggle is on
+    if (config.ANIMATE) {
+        startIdleAnimation();
+    } else {
+        // Otherwise wait for idle timeout
+        scheduleIdleAnimation();
     }
 }
 
@@ -2915,6 +3290,12 @@ function saveConfig() {
         DENOISE_Z: config.DENOISE_Z,
         COLORFUL: config.COLORFUL,
         PAUSED: config.PAUSED,
+        ANIMATE: config.ANIMATE,
+        LIVELINESS: config.LIVELINESS,
+        CHAOS: config.CHAOS,
+        BREATHING: config.BREATHING,
+        COLOR_LIFE: config.COLOR_LIFE,
+        ANIMATION_INTERVAL: config.ANIMATION_INTERVAL,
         BLOOM: config.BLOOM,
         SUNRAYS: config.SUNRAYS,
         STATIC_COLOR: config.STATIC_COLOR,
@@ -3009,6 +3390,50 @@ function loadApiKey() {
     }
 }
 
+function resetValues() {
+    if (confirm('Are you sure you want to reset all slider values to defaults? This will not affect your prompt, API key, or other input fields.')) {
+        // Reset config values to defaults (keeping input fields unchanged)
+        config.DENSITY_DISSIPATION = 0.15;
+        config.VELOCITY_DISSIPATION = 0.6;
+        config.PRESSURE = 0.37;
+        config.CURL = 4;
+        config.SPLAT_RADIUS = 0.19;
+        config.BLOOM_INTENSITY = 0.4;
+        config.SUNRAYS_WEIGHT = 0.4;
+        config.INFERENCE_STEPS = 50;
+        config.SEED = 42;
+        config.CONTROLNET_POSE_SCALE = 0.56;
+        config.CONTROLNET_HED_SCALE = 0.53;
+        config.CONTROLNET_CANNY_SCALE = 0.27;
+        config.CONTROLNET_DEPTH_SCALE = 0.34;
+        config.CONTROLNET_COLOR_SCALE = 0.66;
+        config.GUIDANCE_SCALE = 7.5;
+        config.DELTA = 0.5;
+        config.DENOISE_X = 2;
+        config.DENOISE_Y = 4;
+        config.DENOISE_Z = 6;
+        config.COLORFUL = false;
+        config.PAUSED = false;
+        config.ANIMATE = true;
+        config.CHAOS = 0.73;
+        config.BREATHING = 0.5;
+        config.COLOR_LIFE = 0.22;
+        config.ANIMATION_INTERVAL = 0.1;
+        config.BLOOM = true;
+        config.SUNRAYS = true;
+        config.STATIC_COLOR = { r: 0, g: 0.831, b: 1 }; // Default cyan color
+        config.BACK_COLOR = { r: 0, g: 0, b: 0 }; // Default black background
+        
+        // Update UI to reflect new values
+        updateSliderPositions();
+        updateToggleStates();
+        initializeColorPickers();
+        
+        // Save the reset values to localStorage
+        saveConfig();
+    }
+}
+
 function clearAllSettings() {
     if (confirm('Are you sure you want to clear all saved settings? This will reset all sliders, prompts, API key, and saved stream data to defaults.')) {
         clearLocalStorage();
@@ -3019,14 +3444,14 @@ function clearAllSettings() {
         streamState.whipUrl = null;
         updateStreamButton(false);
         
-        // Reset to default values
-        config.DENSITY_DISSIPATION = 0.38;
-        config.VELOCITY_DISSIPATION = 1.18;
+        // Reset to default values - optimized for slower, longer-lasting animations
+        config.DENSITY_DISSIPATION = 0.15;
+        config.VELOCITY_DISSIPATION = 0.6;
         config.PRESSURE = 0.37;
         config.CURL = 4;
         config.SPLAT_RADIUS = 0.19;
-        config.BLOOM_INTENSITY = 0.24;
-        config.SUNRAYS_WEIGHT = 0.47;
+        config.BLOOM_INTENSITY = 0.4;
+        config.SUNRAYS_WEIGHT = 0.4;
         config.INFERENCE_STEPS = 50;
         config.SEED = 42;
         config.CONTROLNET_POSE_SCALE = 0.56;
@@ -3172,6 +3597,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeLocalStorage();
         initializeColoris();
         initializeMobilePanelGestures();
+        initializeIdleAnimation();
     } catch (err) {
         console.error('Initialization error:', err);
     }
@@ -3283,5 +3709,12 @@ window.addEventListener('orientationchange', () => {
         setTimeout(() => {
             resizeCanvas();
         }, 300); // Longer delay for orientation change
+    }
+});
+
+// Cleanup video recording when page is closed
+window.addEventListener('beforeunload', () => {
+    if (videoRecorder.isRecording) {
+        cleanup();
     }
 });
