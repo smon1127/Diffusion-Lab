@@ -256,17 +256,17 @@ function addSliderDragHandlers() {
                 e.preventDefault();
                 // Immediately update slider position on touch start
                 updateSliderFromTouch(e, slider);
-            });
+            }, { passive: false }); // Need preventDefault for slider
             
             document.addEventListener('touchmove', (e) => {
                 if (isDragging) {
                     updateSliderFromTouch(e, slider);
                 }
-            });
+            }, { passive: true });
             
             document.addEventListener('touchend', () => {
                 isDragging = false;
-            });
+            }, { passive: true });
             
             // Add immediate response on container click/touch
             sliderContainer.addEventListener('mousedown', (e) => {
@@ -283,7 +283,7 @@ function addSliderDragHandlers() {
                     e.preventDefault();
                     updateSliderFromTouch(e, slider);
                 }
-            });
+            }, { passive: false }); // Need preventDefault for slider
         }
     });
 }
@@ -443,6 +443,91 @@ function updateToggle(toggleId, state) {
 function togglePanel() {
     const panel = document.getElementById('controlPanel');
     panel.classList.toggle('collapsed');
+}
+
+// Mobile pull-down gesture to close control panel
+function initializeMobilePanelGestures() {
+    // Skip if not mobile or already initialized
+    if (!isMobile()) return;
+    
+    try {
+        const panel = document.getElementById('controlPanel');
+        const panelHeader = document.querySelector('.panel-header');
+        const panelContent = document.querySelector('.panel-content');
+        
+        if (!panel || !panelHeader) return;
+        
+        let startY = 0;
+        let startTime = 0;
+        let isDragging = false;
+        let startScrollTop = 0;
+        
+        // Only add gesture to header to avoid conflicts with content scrolling
+        setupGestureHandlers(panelHeader, panel, true);
+        
+        function setupGestureHandlers(element, panel, isHeader) {
+            // Use AbortController for proper cleanup
+            const controller = new AbortController();
+            const signal = controller.signal;
+            
+            element.addEventListener('touchstart', (e) => {
+                try {
+                    // Only handle if panel is expanded (not collapsed)
+                    if (!e.touches || e.touches.length === 0 || panel.classList.contains('collapsed')) return;
+                    
+                    startY = e.touches[0].clientY;
+                    startTime = Date.now();
+                    isDragging = false;
+                } catch (err) {
+                    console.warn('Touch start error:', err);
+                }
+            }, { passive: true, signal });
+            
+            element.addEventListener('touchmove', (e) => {
+                try {
+                    if (!e.touches || e.touches.length === 0 || panel.classList.contains('collapsed')) return;
+                    
+                    const currentY = e.touches[0].clientY;
+                    const deltaY = currentY - startY;
+                    
+                    // Only track significant downward movement
+                    if (deltaY > 15) {
+                        isDragging = true;
+                    }
+                } catch (err) {
+                    console.warn('Touch move error:', err);
+                }
+            }, { passive: true, signal });
+            
+            element.addEventListener('touchend', (e) => {
+                try {
+                    if (!e.changedTouches || e.changedTouches.length === 0 || panel.classList.contains('collapsed')) return;
+                    
+                    const endTime = Date.now();
+                    const duration = endTime - startTime;
+                    const endY = e.changedTouches[0].clientY;
+                    const deltaY = endY - startY;
+                    
+                    // Close panel if dragged down significantly
+                    const isValidPull = deltaY > 40 && duration < 500;
+                    
+                    if (isDragging && isValidPull) {
+                        // Animate the collapse
+                        panel.classList.add('collapsed');
+                        // Prevent the click event from firing
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                    
+                    isDragging = false;
+                } catch (err) {
+                    console.warn('Touch end error:', err);
+                }
+            }, { passive: false, signal }); // passive: false to allow preventDefault
+        }
+    } catch (err) {
+        console.error('Failed to initialize mobile panel gestures:', err);
+    }
 }
 
 function toggleColorful() {
@@ -1197,7 +1282,8 @@ let bloomFramebuffers = [];
 let sunrays;
 let sunraysTemp;
 
-let ditheringTexture = createTextureAsync('LDR_LLL1_0.png');
+// Create a simple noise texture for dithering instead of loading external file
+let ditheringTexture = createNoiseTexture();
 
 const blurProgram            = new Program(blurVertexShader, blurShader);
 const copyProgram            = new Program(baseVertexShader, copyShader);
@@ -1395,6 +1481,40 @@ function createTextureAsync (url) {
     image.src = url;
 
     return obj;
+}
+
+function createNoiseTexture() {
+    let texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    
+    // Create a 256x256 noise texture for dithering (ultra fine)
+    const size = 256;
+    const data = new Uint8Array(size * size * 3);
+    
+    for (let i = 0; i < data.length; i += 3) {
+        // Generate subtle noise pattern (reduced contrast for less visibility)
+        const noise = 128 + (Math.random() - 0.5) * 64; // Range: 96-160 instead of 0-255
+        data[i] = noise;     // R
+        data[i + 1] = noise; // G
+        data[i + 2] = noise; // B
+    }
+    
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, size, size, 0, gl.RGB, gl.UNSIGNED_BYTE, data);
+    
+    return {
+        texture,
+        width: size,
+        height: size,
+        attach (id) {
+            gl.activeTexture(gl.TEXTURE0 + id);
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            return id;
+        }
+    };
 }
 
 function updateKeywords () {
@@ -1792,7 +1912,7 @@ canvas.addEventListener('touchstart', e => {
         let posY = touches[i].clientY - rect.top;
         updatePointerDownData(pointers[i + 1], touches[i].identifier, posX, posY);
     }
-});
+}, { passive: false }); // Need preventDefault for fluid interaction
 
 canvas.addEventListener('touchmove', e => {
     e.preventDefault();
@@ -1825,7 +1945,7 @@ window.addEventListener('touchend', e => {
         if (pointer == null) continue;
         updatePointerUpData(pointer);
     }
-});
+}, { passive: true }); // No preventDefault needed for touchend
 
 window.addEventListener('keydown', e => {
     // Skip shortcuts if user is typing in an input field
@@ -2069,15 +2189,15 @@ async function copyStreamUrlToClipboard(forceShare = false) {
     const streamUrl = `https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force`;
     const copyButton = document.getElementById('copyStreamUrlButton');
     
-    // Prepare share data
+    // Prepare share data with URL as text
     const shareData = {
         title: 'AI Fluid Simulation Stream',
-        text: 'Check out this AI-powered fluid simulation stream!',
+        text: `Check out this AI-powered fluid simulation stream: ${streamUrl}`,
         url: streamUrl
     };
     
-    // If forceShare is true (right-click/long press), try Web Share API first
-    if (forceShare && navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+    // Primary action: Try Web Share API first (share sheet priority)
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
         try {
             await navigator.share(shareData);
             showShareFeedback(copyButton, 'Shared!');
@@ -2090,7 +2210,7 @@ async function copyStreamUrlToClipboard(forceShare = false) {
         }
     }
     
-    // Primary action: Copy to clipboard (more reliable on Mac)
+    // Fallback action: Copy to clipboard if sharing fails or isn't available
     if (navigator.clipboard && navigator.clipboard.writeText) {
         try {
             await navigator.clipboard.writeText(streamUrl);
@@ -2903,9 +3023,25 @@ function setupInputSaveHandlers() {
 
 // Initialize parameter listeners when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    initializeStreamParameterListeners();
-    initializeLocalStorage();
-    initializeColoris();
+    try {
+        initializeStreamParameterListeners();
+        initializeLocalStorage();
+        initializeColoris();
+        initializeMobilePanelGestures();
+    } catch (err) {
+        console.error('Initialization error:', err);
+    }
+});
+
+// Global error handler to prevent page crashes
+window.addEventListener('error', (e) => {
+    console.error('Global error caught:', e.error);
+    return true; // Prevent default browser error handling
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+    console.error('Unhandled promise rejection:', e.reason);
+    e.preventDefault(); // Prevent default browser error handling
 });
 
 // Initialize Coloris color picker
@@ -2972,7 +3108,7 @@ function initializeColoris() {
             // Don't prevent default - let the touch turn into a click
             // Just ensure no text selection happens
             e.target.blur();
-        });
+        }, { passive: true });
         
         // Prevent keyboard input but allow Coloris shortcuts
         picker.addEventListener('keydown', (e) => {
