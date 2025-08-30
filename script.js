@@ -409,7 +409,8 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         'backgroundImageScale': { min: 0.1, max: 2.0, prop: 'BACKGROUND_IMAGE_SCALE', decimals: 2 },
         'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true },
         'audioReactivity': { min: 0.1, max: 3.0, prop: 'AUDIO_REACTIVITY', decimals: 1, handler: updateAudioReactivity },
-        'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay }
+        'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay },
+        'audioOpacity': { min: 0, max: 1, prop: 'AUDIO_OPACITY', decimals: 2, handler: updateAudioOpacity }
     };
     
     const slider = sliderMap[sliderName];
@@ -3441,6 +3442,7 @@ let audioBlobState = {
     trebleLevel: 0,
     reactivity: 1.0,
     delay: 0,
+    opacity: 0.8,
     color: { r: 0, g: 0.831, b: 1 },
     selectedDeviceId: null,
     audioStream: null,
@@ -4153,6 +4155,7 @@ function initAudioBlobGL() {
         uniform float u_trebleLevel;
         uniform vec2 u_resolution;
         uniform vec3 u_baseColor;
+        uniform float u_opacity;
         
         // Enhanced noise functions for organic blob shape
         float hash(vec2 p) {
@@ -4268,7 +4271,7 @@ function initAudioBlobGL() {
             color += vec3(innerGlow) * (baseColor + audioColor * 0.5);
             color += vec3(outerGlow) * bassColor;
             
-            gl_FragColor = vec4(color, edge * 0.7);
+            gl_FragColor = vec4(color, edge * u_opacity);
         }
     `;
     
@@ -4286,7 +4289,8 @@ function initAudioBlobGL() {
         midLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_midLevel'),
         trebleLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_trebleLevel'),
         resolution: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_resolution'),
-        baseColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_baseColor')
+        baseColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_baseColor'),
+        opacity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_opacity')
     };
     
     // Create vertex buffer for full-screen quad
@@ -4416,6 +4420,7 @@ function renderAudioBlob() {
     gl.uniform1f(audioBlobState.uniforms.trebleLevel, audioBlobState.trebleLevel);
     gl.uniform2f(audioBlobState.uniforms.resolution, audioBlobState.canvas.width, audioBlobState.canvas.height);
     gl.uniform3f(audioBlobState.uniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
+    gl.uniform1f(audioBlobState.uniforms.opacity, audioBlobState.opacity);
     
     // Set up vertex attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
@@ -4601,6 +4606,11 @@ function updateAudioDelay(value) {
         trebleLevel: 0
     });
     audioBlobState.delayIndex = 0;
+}
+
+function updateAudioOpacity(value) {
+    audioBlobState.opacity = value;
+    document.getElementById('audioOpacityValue').textContent = value.toFixed(2);
 }
 
 function updateAudioBlobColor(color) {
