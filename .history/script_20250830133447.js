@@ -4380,7 +4380,7 @@ function showWelcomeOverlay() {
                 apiDescription.style.display = 'none';
             }
             if (startButton) {
-                startButton.textContent = 'Start Creating';
+                startButton.textContent = '🚀 Start Creating';
             }
             if (apiKeyInput) {
                 apiKeyInput.value = '';

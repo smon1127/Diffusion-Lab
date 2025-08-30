@@ -4356,10 +4356,10 @@ function showWelcomeOverlay() {
                 apiSection.textContent = '🔑 Your API Key';
             }
             if (apiDescription) {
-                apiDescription.style.display = 'none';
+                apiDescription.textContent = 'Your API key is saved and ready to use. You can update it below if needed:';
             }
             if (startButton) {
-                startButton.textContent = 'Continue';
+                startButton.textContent = '✅ Continue';
             }
             
             // Show obfuscated version: show first 3 chars + dots + last 4 chars
@@ -4374,13 +4374,13 @@ function showWelcomeOverlay() {
         } else {
             // Reset content for new users
             if (apiSection) {
-                apiSection.textContent = '🔑 Your API Key';
+                apiSection.textContent = '🔑 Get Started';
             }
             if (apiDescription) {
-                apiDescription.style.display = 'none';
+                apiDescription.textContent = 'To use AI features: First get the passcode from Discord, then get your API key:';
             }
             if (startButton) {
-                startButton.textContent = 'Start Creating';
+                startButton.textContent = '🚀 Start Creating';
             }
             if (apiKeyInput) {
                 apiKeyInput.value = '';

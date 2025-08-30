@@ -658,9 +658,23 @@ function toggleSunrays() {
     saveConfig();
 }
 
-function toggleSettings() {
-    const content = document.getElementById('settingsContent');
-    const toggle = document.getElementById('settingsIcon');
+function toggleAdvanced() {
+    const content = document.getElementById('advancedContent');
+    const advancedSection = content.parentElement;
+    const toggle = advancedSection.querySelector('.advanced-toggle span:first-child');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
+        toggle.textContent = '▼';
+    }
+}
+
+function toggleStreamDiffusion() {
+    const content = document.getElementById('streamDiffusionContent');
+    const toggle = document.getElementById('streamDiffusionIcon');
     
     if (content.classList.contains('expanded')) {
         content.classList.remove('expanded');
@@ -4346,48 +4360,14 @@ function showWelcomeOverlay() {
         const savedApiKey = getApiKey();
         const apiKeyInput = document.getElementById('welcomeApiKey');
         const consentCheckbox = document.getElementById('welcomeApiConsent');
-        const startButton = document.getElementById('welcomeStartButton');
-        const apiSection = document.querySelector('.welcome-api-section h3');
-        const apiDescription = document.querySelector('.welcome-api-section p');
         
-        if (savedApiKey) {
-            // Update content for existing users
-            if (apiSection) {
-                apiSection.textContent = '🔑 Your API Key';
-            }
-            if (apiDescription) {
-                apiDescription.style.display = 'none';
-            }
-            if (startButton) {
-                startButton.textContent = 'Continue';
-            }
-            
+        if (savedApiKey && apiKeyInput) {
             // Show obfuscated version: show first 3 chars + dots + last 4 chars
-            if (apiKeyInput) {
-                const obfuscated = savedApiKey.substring(0, 3) + '•'.repeat(20) + savedApiKey.substring(savedApiKey.length - 4);
-                apiKeyInput.value = obfuscated;
-                apiKeyInput.setAttribute('data-original', savedApiKey);
-            }
+            const obfuscated = savedApiKey.substring(0, 3) + '•'.repeat(20) + savedApiKey.substring(savedApiKey.length - 4);
+            apiKeyInput.value = obfuscated;
+            apiKeyInput.setAttribute('data-original', savedApiKey);
             if (consentCheckbox) {
                 consentCheckbox.checked = true;
-            }
-        } else {
-            // Reset content for new users
-            if (apiSection) {
-                apiSection.textContent = '🔑 Your API Key';
-            }
-            if (apiDescription) {
-                apiDescription.style.display = 'none';
-            }
-            if (startButton) {
-                startButton.textContent = 'Start Creating';
-            }
-            if (apiKeyInput) {
-                apiKeyInput.value = '';
-                apiKeyInput.removeAttribute('data-original');
-            }
-            if (consentCheckbox) {
-                consentCheckbox.checked = false;
             }
         }
         
@@ -4465,27 +4445,12 @@ function initializeWelcomeOverlay() {
         });
     }
     
-    // Allow Enter key to trigger start button and handle obfuscated key clearing
+    // Allow Enter key to trigger start button
     const apiKeyInput = document.getElementById('welcomeApiKey');
     if (apiKeyInput) {
         apiKeyInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 startButton.click();
-            }
-        });
-        
-        // Clear obfuscated key when user starts typing
-        apiKeyInput.addEventListener('focus', function() {
-            if (this.value.includes('•')) {
-                this.value = '';
-                this.removeAttribute('data-original');
-            }
-        });
-        
-        // Clear obfuscated key on first keypress
-        apiKeyInput.addEventListener('input', function() {
-            if (this.getAttribute('data-original') && !this.value.includes('•')) {
-                this.removeAttribute('data-original');
             }
         });
     }

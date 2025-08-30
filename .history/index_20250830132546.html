@@ -12,12 +12,12 @@
         <!-- Favicon removed - logo.png file not available -->
         <link rel="stylesheet" href="coloris.min.css">
 
-        <title>Fluid Diffusion Lab</title>
-        <meta name="description" content="Transform fluid dynamics into stunning generative art with real-time AI processing.">
+        <title>WebGL Fluid Simulation</title>
+        <meta name="description" content="A WebGL fluid simulation that works in mobile browsers.">
 
         <meta property="og:type" content="website">
-        <meta property="og:title" content="Fluid Diffusion Lab">
-        <meta property="og:description" content="Transform fluid dynamics into stunning generative art with real-time AI processing.">
+        <meta property="og:title" content="Webgl Fluid Simulation">
+        <meta property="og:description" content="A WebGL fluid simulation that works in mobile browsers.">
         <meta property="og:url" content="https://paveldogreat.github.io/WebGL-Fluid-Simulation/">
         <!-- Open Graph image removed - logo.png file not available -->
 
@@ -1289,9 +1289,8 @@
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0, 0, 0, 0.3);
-                backdrop-filter: blur(25px);
-                -webkit-backdrop-filter: blur(25px);
+                background: linear-gradient(135deg, rgba(10, 10, 10, 0.95) 0%, rgba(20, 20, 30, 0.98) 100%);
+                backdrop-filter: blur(20px);
                 z-index: 10000;
                 display: flex;
                 align-items: center;
@@ -1311,13 +1310,6 @@
                 box-shadow: var(--shadow);
                 border: 1px solid var(--border-color);
                 text-align: center;
-                /* Hide scrollbar */
-                scrollbar-width: none; /* Firefox */
-                -ms-overflow-style: none; /* Internet Explorer 10+ */
-            }
-
-            .welcome-content::-webkit-scrollbar {
-                display: none; /* Safari and Chrome */
             }
 
             .welcome-header h1 {
@@ -1427,7 +1419,7 @@
 
             .welcome-api-input {
                 text-align: left;
-                max-width: 300px;
+                max-width: 400px;
                 margin: 0 auto;
             }
 
@@ -1464,23 +1456,22 @@
             }
 
             .welcome-start-btn {
-                background: var(--accent-color);
+                background: linear-gradient(135deg, var(--accent-color), #ff6b6b);
                 color: white;
-                border: 1px solid var(--accent-color);
-                padding: 12px 24px;
+                border: none;
+                padding: 16px 32px;
                 border-radius: var(--radius);
-                font-size: 1rem;
-                font-weight: 500;
+                font-size: 1.1rem;
+                font-weight: 600;
                 cursor: pointer;
                 transition: var(--transition);
                 margin-bottom: 15px;
-                min-width: 180px;
+                min-width: 200px;
             }
 
             .welcome-start-btn:hover {
-                background: var(--accent-hover);
-                border-color: var(--accent-hover);
-                transform: translateY(-1px);
+                transform: translateY(-2px);
+                box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
             }
 
             .welcome-note {
@@ -1556,8 +1547,8 @@
         <div id="welcomeOverlay" class="welcome-overlay" style="display: none;">
             <div class="welcome-content">
                 <div class="welcome-header">
-                    <h1>🌊 Fluid Diffusion Lab</h1>
-                    <p class="welcome-subtitle">Transform fluid dynamics into stunning generative art with real-time AI processing</p>
+                    <h1>🌊 Interactive Fluid Simulation</h1>
+                    <p class="welcome-subtitle">Create beautiful fluid effects with AI-powered stream diffusion</p>
                 </div>
                 
                 <div class="welcome-features">
@@ -1586,7 +1577,8 @@
                 </div>
                 
                 <div class="welcome-api-section">
-                    <h3>🔑 Your API Key</h3>
+                    <h3>🔑 Get Started</h3>
+                    <p>To use AI features: First get the passcode from Discord, then get your API key:</p>
                     
                     <div class="api-links">
                         <a href="https://discord.com/channels/1368975848123666553/1399823418240663592/1410359887950516224" target="_blank" class="api-link">
@@ -1609,7 +1601,7 @@
                 
                 <div class="welcome-actions">
                     <button id="welcomeStartButton" class="welcome-start-btn">
-                        Start Creating
+                        🚀 Start Creating
                     </button>
                     <p class="welcome-note">You can also start without an API key and add it later in settings</p>
                 </div>
@@ -2090,15 +2082,70 @@
                     </div>
                 </div>
                 
-                <!-- Settings Section -->
-                <div class="advanced-section">
-                    <div class="advanced-toggle" onclick="toggleSettings()">
-                        <span id="settingsIcon">▶</span>
-                        <span>Settings</span>
-                    </div>
-                    
-                    <div class="advanced-content" id="settingsContent">
-                        <!-- API Key at top -->
+                <!-- StreamDiffusion Advanced Section -->
+                        <div class="advanced-section">
+                    <div class="advanced-toggle" onclick="toggleStreamDiffusion()">
+                        <span id="streamDiffusionIcon">▶</span>
+                        <span>StreamDiffusion AI</span>
+                            </div>
+                            
+                    <div class="advanced-content" id="streamDiffusionContent">
+                                <div class="control-item">
+                            <div class="control-label">
+                                <span>Inference Steps <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Denoising steps. Higher = better quality</span>
+                                </div></span>
+                                <span class="control-value" id="inferenceStepsValue">50</span>
+                                        </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'inferenceSteps', 1, 100)">
+                                <div class="slider-fill" id="inferenceStepsFill" style="width: 49%">
+                                    <div class="slider-handle" id="inferenceStepsHandle"></div>
+                                </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                <span>Seed <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Random seed. Same seed = same result</span>
+                                </div></span>
+                                <span class="control-value" id="seedValue">42</span>
+                                    </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'seed', 0, 1000)">
+                                <div class="slider-fill" id="seedFill" style="width: 4.2%">
+                                    <div class="slider-handle" id="seedHandle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                            <div class="control-label">
+                                <span>Guidance Scale <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Prompt adherence. Higher = less creativity</span>
+                                </div></span>
+                                <span class="control-value" id="guidanceScaleValue">7.5</span>
+                                        </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'guidanceScale', 1, 20)">
+                                <div class="slider-fill" id="guidanceScaleFill" style="width: 34.2%">
+                                    <div class="slider-handle" id="guidanceScaleHandle"></div>
+                                </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                <span>Delta <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Denoising strength. Higher = more changes</span>
+                                </div></span>
+                                <span class="control-value" id="deltaValue">0.50</span>
+                                    </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'delta', 0, 1)">
+                                <div class="slider-fill" id="deltaFill" style="width: 50%">
+                                    <div class="slider-handle" id="deltaHandle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                         <div class="control-item">
                             <div class="control-label">
                                 <span>API Key</span>
@@ -2109,104 +2156,54 @@
                                 <label for="apiKeyConsent" class="checkbox-label">Remember API key (stored locally)</label>
                             </div>
                         </div>
-                        
-                        <!-- Buttons below API key -->
-                        <div class="control-item">
-                            <button class="modern-button" onclick="captureScreenshot()">
-                                Take Screenshot
-                            </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <button class="modern-button" id="recordButton" onclick="toggleVideoRecording()">
-                                Record Video
-                            </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <button class="modern-button secondary" onclick="resetValues()">
-                                Reset Values
-                            </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <button class="modern-button secondary" onclick="showWelcomeOverlay()">
-                                About
-                            </button>
-                        </div>
-                        
-                        <!-- Sliders at bottom -->
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Inference Steps <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Denoising steps. Higher = better quality</span>
-                                </div></span>
-                                <span class="control-value" id="inferenceStepsValue">50</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'inferenceSteps', 1, 100)">
-                                <div class="slider-fill" id="inferenceStepsFill" style="width: 49%">
-                                    <div class="slider-handle" id="inferenceStepsHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Seed <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Random seed. Same seed = same result</span>
-                                </div></span>
-                                <span class="control-value" id="seedValue">42</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'seed', 0, 1000)">
-                                <div class="slider-fill" id="seedFill" style="width: 4.2%">
-                                    <div class="slider-handle" id="seedHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Guidance Scale <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Prompt adherence. Higher = less creativity</span>
-                                </div></span>
-                                <span class="control-value" id="guidanceScaleValue">7.5</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'guidanceScale', 1, 20)">
-                                <div class="slider-fill" id="guidanceScaleFill" style="width: 34.2%">
-                                    <div class="slider-handle" id="guidanceScaleHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Delta <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Denoising strength. Higher = more changes</span>
-                                </div></span>
-                                <span class="control-value" id="deltaValue">0.50</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'delta', 0, 1)">
-                                <div class="slider-fill" id="deltaFill" style="width: 50%">
-                                    <div class="slider-handle" id="deltaHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Keyboard shortcuts info -->
-                        <div class="control-item">
-                            <div class="keyboard-shortcuts-info">
-                                <div class="group-title">Keyboard Shortcuts</div>
-                                <div class="shortcut-item">
-                                    <span>Ctrl+P:</span> Toggle Pause
-                                </div>
-                                <div class="shortcut-item">
-                                    <span>Ctrl+B:</span> Random Splats
-                                </div>
-                            </div>
-                        </div>
                     </div>
-                </div>
-
+                        </div>
+                        
+                        <!-- Advanced Section -->
+                        <div class="advanced-section">
+                            <div class="advanced-toggle" onclick="toggleAdvanced()">
+                                <span>▶</span>
+                                <span>More</span>
+                            </div>
+                            
+                            <div class="advanced-content" id="advancedContent">
+                                <div class="control-item">
+                                    <button class="modern-button" onclick="captureScreenshot()">
+                                        Take Screenshot
+                                    </button>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <button class="modern-button" id="recordButton" onclick="toggleVideoRecording()">
+                                        Record Video
+                                    </button>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <button class="modern-button secondary" onclick="resetValues()">
+                                        Reset Values
+                                    </button>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <button class="modern-button secondary" onclick="showWelcomeOverlay()">
+                                        About
+                                    </button>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="keyboard-shortcuts-info">
+                                        <div class="group-title">Keyboard Shortcuts</div>
+                                        <div class="shortcut-item">
+                                            <span>Ctrl+P:</span> Toggle Pause
+                                        </div>
+                                        <div class="shortcut-item">
+                                            <span>Ctrl+B:</span> Random Splats
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
             </div>
         </div>
 

@@ -4359,7 +4359,7 @@ function showWelcomeOverlay() {
                 apiDescription.style.display = 'none';
             }
             if (startButton) {
-                startButton.textContent = 'Continue';
+                startButton.textContent = '✅ Continue';
             }
             
             // Show obfuscated version: show first 3 chars + dots + last 4 chars
@@ -4380,7 +4380,7 @@ function showWelcomeOverlay() {
                 apiDescription.style.display = 'none';
             }
             if (startButton) {
-                startButton.textContent = 'Start Creating';
+                startButton.textContent = '🚀 Start Creating';
             }
             if (apiKeyInput) {
                 apiKeyInput.value = '';

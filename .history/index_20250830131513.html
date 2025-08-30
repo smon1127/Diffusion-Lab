@@ -12,12 +12,12 @@
         <!-- Favicon removed - logo.png file not available -->
         <link rel="stylesheet" href="coloris.min.css">
 
-        <title>Fluid Diffusion Lab</title>
-        <meta name="description" content="Transform fluid dynamics into stunning generative art with real-time AI processing.">
+        <title>WebGL Fluid Simulation</title>
+        <meta name="description" content="A WebGL fluid simulation that works in mobile browsers.">
 
         <meta property="og:type" content="website">
-        <meta property="og:title" content="Fluid Diffusion Lab">
-        <meta property="og:description" content="Transform fluid dynamics into stunning generative art with real-time AI processing.">
+        <meta property="og:title" content="Webgl Fluid Simulation">
+        <meta property="og:description" content="A WebGL fluid simulation that works in mobile browsers.">
         <meta property="og:url" content="https://paveldogreat.github.io/WebGL-Fluid-Simulation/">
         <!-- Open Graph image removed - logo.png file not available -->
 
@@ -1289,9 +1289,8 @@
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0, 0, 0, 0.3);
-                backdrop-filter: blur(25px);
-                -webkit-backdrop-filter: blur(25px);
+                background: linear-gradient(135deg, rgba(10, 10, 10, 0.95) 0%, rgba(20, 20, 30, 0.98) 100%);
+                backdrop-filter: blur(20px);
                 z-index: 10000;
                 display: flex;
                 align-items: center;
@@ -1303,27 +1302,20 @@
             .welcome-content {
                 background: var(--secondary-bg);
                 border-radius: var(--radius);
-                padding: 30px;
-                max-width: 750px;
+                padding: 40px;
+                max-width: 800px;
                 width: 100%;
-                max-height: 95vh;
+                max-height: 90vh;
                 overflow-y: auto;
                 box-shadow: var(--shadow);
                 border: 1px solid var(--border-color);
                 text-align: center;
-                /* Hide scrollbar */
-                scrollbar-width: none; /* Firefox */
-                -ms-overflow-style: none; /* Internet Explorer 10+ */
-            }
-
-            .welcome-content::-webkit-scrollbar {
-                display: none; /* Safari and Chrome */
             }
 
             .welcome-header h1 {
                 color: var(--text-primary);
-                font-size: 2rem;
-                margin-bottom: 8px;
+                font-size: 2.5rem;
+                margin-bottom: 10px;
                 background: linear-gradient(135deg, var(--accent-color), #ff6b6b);
                 -webkit-background-clip: text;
                 -webkit-text-fill-color: transparent;
@@ -1332,22 +1324,22 @@
 
             .welcome-subtitle {
                 color: var(--text-secondary);
-                font-size: 1rem;
-                margin-bottom: 25px;
-                line-height: 1.4;
+                font-size: 1.2rem;
+                margin-bottom: 40px;
+                line-height: 1.5;
             }
 
             .feature-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-                gap: 15px;
-                margin-bottom: 25px;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 20px;
+                margin-bottom: 40px;
             }
 
             .feature-item {
                 background: var(--control-bg);
                 border-radius: var(--radius);
-                padding: 15px;
+                padding: 20px;
                 border: 1px solid var(--border-color);
                 transition: var(--transition);
             }
@@ -1358,76 +1350,72 @@
             }
 
             .feature-icon {
-                font-size: 1.5rem;
-                margin-bottom: 8px;
+                font-size: 2rem;
+                margin-bottom: 10px;
             }
 
             .feature-item h3 {
                 color: var(--text-primary);
-                font-size: 1rem;
-                margin-bottom: 6px;
+                font-size: 1.1rem;
+                margin-bottom: 8px;
             }
 
             .feature-item p {
                 color: var(--text-secondary);
-                font-size: 0.85rem;
-                line-height: 1.3;
+                font-size: 0.9rem;
+                line-height: 1.4;
             }
 
             .welcome-api-section {
                 background: var(--control-bg);
                 border-radius: var(--radius);
-                padding: 20px;
-                margin: 20px 0;
+                padding: 30px;
+                margin: 30px 0;
                 border: 1px solid var(--border-color);
             }
 
             .welcome-api-section h3 {
                 color: var(--text-primary);
-                margin-bottom: 12px;
-                font-size: 1.2rem;
+                margin-bottom: 15px;
+                font-size: 1.3rem;
             }
 
             .welcome-api-section p {
                 color: var(--text-secondary);
-                margin-bottom: 15px;
-                line-height: 1.4;
-                font-size: 0.95rem;
+                margin-bottom: 20px;
+                line-height: 1.5;
             }
 
             .api-links {
                 display: flex;
-                gap: 12px;
+                gap: 15px;
                 justify-content: center;
-                margin-bottom: 18px;
+                margin-bottom: 25px;
                 flex-wrap: wrap;
             }
 
             .api-link {
                 display: inline-flex;
                 align-items: center;
-                gap: 6px;
-                padding: 10px 16px;
-                background: var(--control-bg);
-                color: var(--text-primary);
+                gap: 8px;
+                padding: 12px 20px;
+                background: var(--accent-color);
+                color: white;
                 text-decoration: none;
                 border-radius: var(--radius);
-                border: 1px solid var(--border-color);
                 font-weight: 500;
                 transition: var(--transition);
-                font-size: 0.9rem;
+                font-size: 0.95rem;
             }
 
             .api-link:hover {
-                background: var(--accent-color);
-                color: white;
-                border-color: var(--accent-color);
+                background: var(--accent-hover);
                 transform: translateY(-1px);
             }
 
             .welcome-api-input {
                 text-align: left;
-                max-width: 300px;
+                max-width: 400px;
                 margin: 0 auto;
             }
 
@@ -1464,23 +1452,22 @@
             }
 
             .welcome-start-btn {
-                background: var(--accent-color);
+                background: linear-gradient(135deg, var(--accent-color), #ff6b6b);
                 color: white;
-                border: 1px solid var(--accent-color);
-                padding: 12px 24px;
+                border: none;
+                padding: 16px 32px;
                 border-radius: var(--radius);
-                font-size: 1rem;
-                font-weight: 500;
+                font-size: 1.1rem;
+                font-weight: 600;
                 cursor: pointer;
                 transition: var(--transition);
                 margin-bottom: 15px;
-                min-width: 180px;
+                min-width: 200px;
             }
 
             .welcome-start-btn:hover {
-                background: var(--accent-hover);
-                border-color: var(--accent-hover);
-                transform: translateY(-1px);
+                transform: translateY(-2px);
+                box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
             }
 
             .welcome-note {
@@ -1503,43 +1490,27 @@
             /* Mobile responsiveness for welcome overlay */
             @media (max-width: 768px) {
                 .welcome-content {
-                    padding: 15px;
-                    margin: 5px;
+                    padding: 20px;
+                    margin: 10px;
                 }
 
                 .welcome-header h1 {
-                    font-size: 1.8rem;
-                }
-
-                .welcome-subtitle {
-                    font-size: 0.9rem;
-                    margin-bottom: 20px;
+                    font-size: 2rem;
                 }
 
                 .feature-grid {
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 12px;
-                    margin-bottom: 20px;
-                }
-
-                .feature-item {
-                    padding: 12px;
-                }
-
-                .welcome-api-section {
-                    padding: 15px;
-                    margin: 15px 0;
+                    grid-template-columns: 1fr;
+                    gap: 15px;
                 }
 
                 .api-links {
                     flex-direction: column;
                     align-items: center;
-                    gap: 10px;
                 }
 
                 .api-link {
                     width: 100%;
-                    max-width: 250px;
+                    max-width: 280px;
                     justify-content: center;
                 }
             }
@@ -1556,8 +1527,8 @@
         <div id="welcomeOverlay" class="welcome-overlay" style="display: none;">
             <div class="welcome-content">
                 <div class="welcome-header">
-                    <h1>🌊 Fluid Diffusion Lab</h1>
-                    <p class="welcome-subtitle">Transform fluid dynamics into stunning generative art with real-time AI processing</p>
+                    <h1>🌊 Interactive Fluid Simulation</h1>
+                    <p class="welcome-subtitle">Create beautiful fluid effects with AI-powered stream diffusion</p>
                 </div>
                 
                 <div class="welcome-features">
@@ -1586,14 +1557,15 @@
                 </div>
                 
                 <div class="welcome-api-section">
-                    <h3>🔑 Your API Key</h3>
+                    <h3>🔑 Get Started</h3>
+                    <p>To use AI features, you'll need a Daydream API key:</p>
                     
                     <div class="api-links">
-                        <a href="https://discord.com/channels/1368975848123666553/1399823418240663592/1410359887950516224" target="_blank" class="api-link">
-                            💬 Get Passcode from Discord
-                        </a>
                         <a href="https://app.daydream.live/StreamDiffusionTD/api-key" target="_blank" class="api-link">
                             🔗 Get API Key
+                        </a>
+                        <a href="https://discord.com/channels/1368975848123666553/1399823418240663592/1410359887950516224" target="_blank" class="api-link">
+                            💬 Get Passcode from Discord
                         </a>
                     </div>
                     
@@ -1609,7 +1581,7 @@
                 
                 <div class="welcome-actions">
                     <button id="welcomeStartButton" class="welcome-start-btn">
-                        Start Creating
+                        🚀 Start Creating
                     </button>
                     <p class="welcome-note">You can also start without an API key and add it later in settings</p>
                 </div>
@@ -2090,15 +2062,70 @@
                     </div>
                 </div>
                 
-                <!-- Settings Section -->
-                <div class="advanced-section">
-                    <div class="advanced-toggle" onclick="toggleSettings()">
-                        <span id="settingsIcon">▶</span>
-                        <span>Settings</span>
-                    </div>
-                    
-                    <div class="advanced-content" id="settingsContent">
-                        <!-- API Key at top -->
+                <!-- StreamDiffusion Advanced Section -->
+                        <div class="advanced-section">
+                    <div class="advanced-toggle" onclick="toggleStreamDiffusion()">
+                        <span id="streamDiffusionIcon">▶</span>
+                        <span>StreamDiffusion AI</span>
+                            </div>
+                            
+                    <div class="advanced-content" id="streamDiffusionContent">
+                                <div class="control-item">
+                            <div class="control-label">
+                                <span>Inference Steps <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Denoising steps. Higher = better quality</span>
+                                </div></span>
+                                <span class="control-value" id="inferenceStepsValue">50</span>
+                                        </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'inferenceSteps', 1, 100)">
+                                <div class="slider-fill" id="inferenceStepsFill" style="width: 49%">
+                                    <div class="slider-handle" id="inferenceStepsHandle"></div>
+                                </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                <span>Seed <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Random seed. Same seed = same result</span>
+                                </div></span>
+                                <span class="control-value" id="seedValue">42</span>
+                                    </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'seed', 0, 1000)">
+                                <div class="slider-fill" id="seedFill" style="width: 4.2%">
+                                    <div class="slider-handle" id="seedHandle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                            <div class="control-label">
+                                <span>Guidance Scale <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Prompt adherence. Higher = less creativity</span>
+                                </div></span>
+                                <span class="control-value" id="guidanceScaleValue">7.5</span>
+                                        </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'guidanceScale', 1, 20)">
+                                <div class="slider-fill" id="guidanceScaleFill" style="width: 34.2%">
+                                    <div class="slider-handle" id="guidanceScaleHandle"></div>
+                                </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                <span>Delta <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Denoising strength. Higher = more changes</span>
+                                </div></span>
+                                <span class="control-value" id="deltaValue">0.50</span>
+                                    </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'delta', 0, 1)">
+                                <div class="slider-fill" id="deltaFill" style="width: 50%">
+                                    <div class="slider-handle" id="deltaHandle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                         <div class="control-item">
                             <div class="control-label">
                                 <span>API Key</span>
@@ -2109,104 +2136,48 @@
                                 <label for="apiKeyConsent" class="checkbox-label">Remember API key (stored locally)</label>
                             </div>
                         </div>
-                        
-                        <!-- Buttons below API key -->
-                        <div class="control-item">
-                            <button class="modern-button" onclick="captureScreenshot()">
-                                Take Screenshot
-                            </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <button class="modern-button" id="recordButton" onclick="toggleVideoRecording()">
-                                Record Video
-                            </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <button class="modern-button secondary" onclick="resetValues()">
-                                Reset Values
-                            </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <button class="modern-button secondary" onclick="showWelcomeOverlay()">
-                                About
-                            </button>
-                        </div>
-                        
-                        <!-- Sliders at bottom -->
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Inference Steps <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Denoising steps. Higher = better quality</span>
-                                </div></span>
-                                <span class="control-value" id="inferenceStepsValue">50</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'inferenceSteps', 1, 100)">
-                                <div class="slider-fill" id="inferenceStepsFill" style="width: 49%">
-                                    <div class="slider-handle" id="inferenceStepsHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Seed <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Random seed. Same seed = same result</span>
-                                </div></span>
-                                <span class="control-value" id="seedValue">42</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'seed', 0, 1000)">
-                                <div class="slider-fill" id="seedFill" style="width: 4.2%">
-                                    <div class="slider-handle" id="seedHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Guidance Scale <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Prompt adherence. Higher = less creativity</span>
-                                </div></span>
-                                <span class="control-value" id="guidanceScaleValue">7.5</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'guidanceScale', 1, 20)">
-                                <div class="slider-fill" id="guidanceScaleFill" style="width: 34.2%">
-                                    <div class="slider-handle" id="guidanceScaleHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Delta <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Denoising strength. Higher = more changes</span>
-                                </div></span>
-                                <span class="control-value" id="deltaValue">0.50</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'delta', 0, 1)">
-                                <div class="slider-fill" id="deltaFill" style="width: 50%">
-                                    <div class="slider-handle" id="deltaHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Keyboard shortcuts info -->
-                        <div class="control-item">
-                            <div class="keyboard-shortcuts-info">
-                                <div class="group-title">Keyboard Shortcuts</div>
-                                <div class="shortcut-item">
-                                    <span>Ctrl+P:</span> Toggle Pause
-                                </div>
-                                <div class="shortcut-item">
-                                    <span>Ctrl+B:</span> Random Splats
-                                </div>
-                            </div>
-                        </div>
                     </div>
-                </div>
-
+                        </div>
+                        
+                        <!-- Advanced Section -->
+                        <div class="advanced-section">
+                            <div class="advanced-toggle" onclick="toggleAdvanced()">
+                                <span>▶</span>
+                                <span>Advanced</span>
+                            </div>
+                            
+                            <div class="advanced-content" id="advancedContent">
+                                <div class="control-item">
+                                    <button class="modern-button" onclick="captureScreenshot()">
+                                        Take Screenshot
+                                    </button>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <button class="modern-button" id="recordButton" onclick="toggleVideoRecording()">
+                                        Record Video
+                                    </button>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <button class="modern-button secondary" onclick="resetValues()">
+                                        Reset Values
+                                    </button>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="keyboard-shortcuts-info">
+                                        <div class="group-title">Keyboard Shortcuts</div>
+                                        <div class="shortcut-item">
+                                            <span>Ctrl+P:</span> Toggle Pause
+                                        </div>
+                                        <div class="shortcut-item">
+                                            <span>Ctrl+B:</span> Random Splats
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
             </div>
         </div>
 

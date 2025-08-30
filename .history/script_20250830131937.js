@@ -658,9 +658,23 @@ function toggleSunrays() {
     saveConfig();
 }
 
-function toggleSettings() {
-    const content = document.getElementById('settingsContent');
-    const toggle = document.getElementById('settingsIcon');
+function toggleAdvanced() {
+    const content = document.getElementById('advancedContent');
+    const advancedSection = content.parentElement;
+    const toggle = advancedSection.querySelector('.advanced-toggle span:first-child');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
+        toggle.textContent = '▼';
+    }
+}
+
+function toggleStreamDiffusion() {
+    const content = document.getElementById('streamDiffusionContent');
+    const toggle = document.getElementById('streamDiffusionIcon');
     
     if (content.classList.contains('expanded')) {
         content.classList.remove('expanded');
@@ -4356,10 +4370,10 @@ function showWelcomeOverlay() {
                 apiSection.textContent = '🔑 Your API Key';
             }
             if (apiDescription) {
-                apiDescription.style.display = 'none';
+                apiDescription.textContent = 'Your API key is saved and ready to use. You can update it below if needed:';
             }
             if (startButton) {
-                startButton.textContent = 'Continue';
+                startButton.textContent = '✅ Continue';
             }
             
             // Show obfuscated version: show first 3 chars + dots + last 4 chars
@@ -4374,13 +4388,13 @@ function showWelcomeOverlay() {
         } else {
             // Reset content for new users
             if (apiSection) {
-                apiSection.textContent = '🔑 Your API Key';
+                apiSection.textContent = '🔑 Get Started';
             }
             if (apiDescription) {
-                apiDescription.style.display = 'none';
+                apiDescription.textContent = 'To use AI features, you\'ll need a Daydream API key:';
             }
             if (startButton) {
-                startButton.textContent = 'Start Creating';
+                startButton.textContent = '🚀 Start Creating';
             }
             if (apiKeyInput) {
                 apiKeyInput.value = '';
