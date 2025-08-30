@@ -3446,6 +3446,7 @@ let audioBlobState = {
     opacity: 0.8,
     colorful: 0.3,
     color: { r: 0, g: 0.831, b: 1 },
+    baseColor: { r: 0, g: 0.831, b: 1 }, // Store original color for reference
     selectedDeviceId: null,
     audioStream: null,
     delayBuffer: [],
@@ -4304,47 +4305,8 @@ function initAudioBlobGL() {
             vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel; // Blue for treble
             vec3 audioColor = bassColor + midColor + trebleColor;
             
-            // Simple color cycling controlled by u_colorful slider
-            vec3 finalColor;
-            
-            if (u_colorful == 0.0) {
-                // Show base color only when slider is at 0
-                finalColor = baseColor;
-            } else {
-                // Cycle through colors when slider > 0, speed controlled by slider value
-                float cyclingSpeed = u_colorful * 4.0; // Scale speed (0-4x)
-                float cycleTime = time * cyclingSpeed;
-                float colorIndex = floor(cycleTime);
-                
-                // Generate vibrant random colors with better variation
-                // Use different large offsets to ensure variety
-                float r = hash(vec2(colorIndex * 0.1, 123.456));
-                float g = hash(vec2(colorIndex * 0.1 + 789.012, 345.678));
-                float b = hash(vec2(colorIndex * 0.1 + 456.789, 901.234));
-                
-                // Ensure colors are vibrant by boosting saturation
-                vec3 cyclingColor = vec3(r, g, b);
-                
-                // Convert to HSV-like space for better color distribution
-                float maxVal = max(max(r, g), b);
-                float minVal = min(min(r, g), b);
-                
-                // Boost saturation to make colors more vibrant
-                if (maxVal > minVal) {
-                    vec3 normalized = (cyclingColor - minVal) / (maxVal - minVal);
-                    cyclingColor = normalized * 0.8 + 0.2; // Ensure minimum brightness
-                } else {
-                    // Fallback for grayscale - create a pure color
-                    float hue = hash(vec2(colorIndex * 0.05, 567.890)) * 6.283;
-                    cyclingColor = vec3(
-                        sin(hue) * 0.5 + 0.5,
-                        sin(hue + 2.094) * 0.5 + 0.5,
-                        sin(hue + 4.188) * 0.5 + 0.5
-                    );
-                }
-                
-                finalColor = cyclingColor;
-            }
+            // Use base color (will be animated by JavaScript)
+            vec3 finalColor = baseColor;
             
             // Create pulsing effect synchronized with audio
             float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
@@ -4506,10 +4468,48 @@ function analyzeAudio() {
     }
 }
 
+function animateAudioBlobColor() {
+    if (audioBlobState.colorful === 0.0) {
+        // When colorful is 0, use the base color
+        audioBlobState.color = { ...audioBlobState.baseColor };
+    } else {
+        // Animate color based on time and colorful slider
+        const time = Date.now() * 0.001;
+        const speed = audioBlobState.colorful * 2.0; // Speed multiplier
+        const hue = (time * speed) % (Math.PI * 2); // Full rotation every 2π/speed seconds
+        
+        // Generate vibrant colors using HSV-like approach
+        const r = Math.sin(hue) * 0.5 + 0.5;
+        const g = Math.sin(hue + (Math.PI * 2 / 3)) * 0.5 + 0.5;
+        const b = Math.sin(hue + (Math.PI * 4 / 3)) * 0.5 + 0.5;
+        
+        audioBlobState.color = { r, g, b };
+        
+        // Update the color picker display
+        updateColorPickerDisplay();
+    }
+}
+
+function updateColorPickerDisplay() {
+    const colorPicker = document.getElementById('audioBlobColorPicker');
+    if (colorPicker) {
+        const r = Math.round(audioBlobState.color.r * 255);
+        const g = Math.round(audioBlobState.color.g * 255);
+        const b = Math.round(audioBlobState.color.b * 255);
+        const hexColor = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        
+        colorPicker.value = hexColor;
+        colorPicker.style.backgroundColor = hexColor;
+    }
+}
+
 function renderAudioBlob() {
     if (!audioBlobState.active || !audioBlobState.gl) return;
     
     const gl = audioBlobState.gl;
+    
+    // Animate color based on colorful slider
+    animateAudioBlobColor();
     
     // Analyze audio
     analyzeAudio();
@@ -4800,7 +4800,10 @@ function updateAudioBlobColor(color) {
     const g = parseInt(hex.substr(2, 2), 16) / 255;
     const b = parseInt(hex.substr(4, 2), 16) / 255;
     
-    audioBlobState.color = { r, g, b };
+    // Update both current color and base color
+    const newColor = { r, g, b };
+    audioBlobState.color = newColor;
+    audioBlobState.baseColor = { ...newColor }; // Store as new base color
 }
 
 // Add parameter change listeners with debouncing
