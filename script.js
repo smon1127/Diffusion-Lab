@@ -4504,6 +4504,13 @@ function renderAudioBlobOverlay() {
     // Analyze audio
     analyzeAudio();
     
+    // Save current WebGL state to restore later
+    const previousProgram = gl.getParameter(gl.CURRENT_PROGRAM);
+    const previousBuffer = gl.getParameter(gl.ARRAY_BUFFER_BINDING);
+    const previousBlend = gl.getParameter(gl.BLEND);
+    const previousBlendSrc = gl.getParameter(gl.BLEND_SRC_ALPHA);
+    const previousBlendDst = gl.getParameter(gl.BLEND_DST_ALPHA);
+    
     // Enable blending for overlay
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -4540,6 +4547,19 @@ function renderAudioBlobOverlay() {
         // Draw audio blob overlay
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
+    
+    // Restore previous WebGL state
+    gl.useProgram(previousProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, previousBuffer);
+    if (!previousBlend) {
+        gl.disable(gl.BLEND);
+    }
+    if (previousBlendSrc !== gl.SRC_ALPHA || previousBlendDst !== gl.ONE_MINUS_SRC_ALPHA) {
+        gl.blendFunc(previousBlendSrc, previousBlendDst);
+    }
+    
+    // Disable the vertex attribute array we enabled to prevent interference
+    gl.disableVertexAttribArray(audioBlobState.mainPositionAttributeLocation);
 }
 
 // Legacy function for separate canvas (still used for preview)
