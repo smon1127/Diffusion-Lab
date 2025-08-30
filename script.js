@@ -4351,9 +4351,9 @@ function initAudioBlobGL() {
             
             // Composite blob over background color
             float blobAlpha = edge * u_opacity;
-            vec3 finalColor = mix(u_backgroundColor, color, blobAlpha);
+            vec3 compositeColor = mix(u_backgroundColor, color, blobAlpha);
             
-            gl_FragColor = vec4(finalColor, 1.0);
+            gl_FragColor = vec4(compositeColor, 1.0);
         }
     `;
     
