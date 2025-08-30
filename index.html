@@ -1740,18 +1740,24 @@
                     </div>
                     
                     <div class="audio-controls" id="audioControls" style="display: none; margin-top: 12px;">
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Audio Input <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Select microphone or audio input device</span>
-                                </div></span>
+                                                    <div class="control-item">
+                                <div class="control-label">
+                                    <span>Audio Input <div class="tooltip"><span class="info-icon">i</span>
+                                        <span class="tooltiptext">Select microphone or audio input device</span>
+                                    </div></span>
+                                </div>
+                                <select id="audioInputSelect" class="audio-select" style="width: 100%; padding: 8px 12px; background: var(--control-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 13px;">
+                                    <option value="">Default Microphone</option>
+                                </select>
                             </div>
-                            <select id="audioInputSelect" class="audio-select" style="width: 100%; padding: 8px 12px; background: var(--control-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 13px;">
-                                <option value="">Default Microphone</option>
-                            </select>
-                        </div>
-                        
-                        <div class="control-item">
+
+                            <div class="control-item">
+                                <button class="modern-button secondary" id="previewAudioButton" onclick="toggleAudioPreview()" style="display: none;">
+                                    🔊 Preview Audio
+                                </button>
+                            </div>
+                            
+                            <div class="control-item">
                             <div class="control-label">
                                 <span>Reactivity <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Audio sensitivity: higher values make blob more responsive to quiet sounds</span>

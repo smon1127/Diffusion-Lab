@@ -4025,15 +4025,34 @@ async function startAudioBlob() {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         audioBlobState.audioStream = stream;
         
+        // Store the stream for direct audio access
+        audioBlobState.audioStream = stream;
+        
         // Initialize Web Audio API
         audioBlobState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         audioBlobState.analyser = audioBlobState.audioContext.createAnalyser();
         audioBlobState.microphone = audioBlobState.audioContext.createMediaStreamSource(stream);
         
+        // Create gain node for preview control (starts muted)
+        audioBlobState.previewGain = audioBlobState.audioContext.createGain();
+        audioBlobState.previewGain.gain.value = 0;
+        
         // Configure analyser
         audioBlobState.analyser.fftSize = 512;
         audioBlobState.analyser.smoothingTimeConstant = 0.8;
+        
+        // Connect audio graph:
+        // microphone -> analyser (for visuals)
+        //           -> previewGain -> destination (for preview)
         audioBlobState.microphone.connect(audioBlobState.analyser);
+        audioBlobState.microphone.connect(audioBlobState.previewGain);
+        audioBlobState.previewGain.connect(audioBlobState.audioContext.destination);
+        
+        console.log('🎵 Audio initialized:', {
+            streamActive: stream.active,
+            audioTracks: stream.getAudioTracks().length,
+            analyzerConnected: audioBlobState.analyser !== null
+        });
         
         // Get canvas and WebGL context
         audioBlobState.canvas = document.getElementById('audioBlobCanvas');
@@ -4048,10 +4067,14 @@ async function startAudioBlob() {
         button.textContent = '🎵 Stop Audio';
         button.classList.add('streaming');
         
-        // Show audio controls
+        // Show audio controls and preview button
         const audioControls = document.getElementById('audioControls');
+        const previewButton = document.getElementById('previewAudioButton');
         if (audioControls) {
             audioControls.style.display = 'block';
+        }
+        if (previewButton) {
+            previewButton.style.display = 'block';
         }
         
         // Initialize delay buffer
@@ -4088,6 +4111,18 @@ function stopAudioBlob() {
     // Clean up audio resources
     if (audioBlobState.microphone) {
         audioBlobState.microphone.disconnect();
+    }
+    if (audioBlobState.previewGain) {
+        audioBlobState.previewGain.disconnect();
+        audioBlobState.previewGain.gain.value = 0;
+    }
+    
+    // Hide and reset preview button
+    const previewButton = document.getElementById('previewAudioButton');
+    if (previewButton) {
+        previewButton.style.display = 'none';
+        previewButton.textContent = '🔊 Preview Audio';
+        previewButton.classList.remove('streaming');
     }
     if (audioBlobState.audioContext) {
         audioBlobState.audioContext.close();
@@ -4562,6 +4597,11 @@ window.addEventListener('resize', () => {
 // Audio input device management
 async function populateAudioInputs() {
     try {
+        // Request permissions first on iOS
+        if (navigator.userAgent.match(/iPad|iPhone|iPod/)) {
+            await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioInputs = devices.filter(device => device.kind === 'audioinput');
         
@@ -4571,17 +4611,62 @@ async function populateAudioInputs() {
         // Store current selection to preserve it
         const currentSelection = select.value;
         
-        // Clear existing options except default
-        select.innerHTML = '<option value="">Default Microphone</option>';
-        
-        // Add available audio inputs
+        // Group devices by type
+        const deviceGroups = {
+            default: [{ id: '', label: 'Default Microphone', icon: '🎤' }],
+            builtin: [],
+            usb: [],
+            other: []
+        };
+
+        // Categorize devices
         audioInputs.forEach(device => {
-            const option = document.createElement('option');
-            option.value = device.deviceId;
-            option.textContent = device.label || `Microphone ${device.deviceId.slice(0, 8)}`;
-            select.appendChild(option);
+            const label = device.label || `Microphone ${device.deviceId.slice(0, 8)}`;
+            const deviceInfo = {
+                id: device.deviceId,
+                label: label,
+                icon: '🎤'
+            };
+
+            // Categorize based on label (case-insensitive)
+            const lowerLabel = label.toLowerCase();
+            if (lowerLabel.includes('usb') || lowerLabel.includes('external')) {
+                deviceInfo.icon = '🔌';
+                deviceGroups.usb.push(deviceInfo);
+            } else if (lowerLabel.includes('built') || lowerLabel.includes('internal') || 
+                      lowerLabel.includes('macbook') || lowerLabel.includes('iphone') || 
+                      lowerLabel.includes('ipad')) {
+                deviceInfo.icon = '💻';
+                deviceGroups.builtin.push(deviceInfo);
+            } else {
+                deviceGroups.other.push(deviceInfo);
+            }
         });
-        
+
+        // Clear and rebuild select element
+        select.innerHTML = '';
+
+        // Add devices by group
+        const addDeviceGroup = (devices, groupLabel) => {
+            if (devices.length > 0) {
+                const group = document.createElement('optgroup');
+                group.label = groupLabel;
+                devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.id;
+                    option.textContent = `${device.icon} ${device.label}`;
+                    group.appendChild(option);
+                });
+                select.appendChild(group);
+            }
+        };
+
+        // Add groups in specific order
+        addDeviceGroup(deviceGroups.default, 'System Default');
+        addDeviceGroup(deviceGroups.builtin, 'Built-in Devices');
+        addDeviceGroup(deviceGroups.usb, 'USB Devices');
+        addDeviceGroup(deviceGroups.other, 'Other Devices');
+
         // Restore previous selection if it still exists
         if (audioBlobState.selectedDeviceId) {
             select.value = audioBlobState.selectedDeviceId;
@@ -4589,14 +4674,26 @@ async function populateAudioInputs() {
             select.value = currentSelection;
         }
         
-        // Only add event listener once
+        // Only add event listeners once
         if (!select.hasAttribute('data-listener-added')) {
             select.addEventListener('change', switchAudioDevice);
+            
+            // Add device change monitoring
+            navigator.mediaDevices.addEventListener('devicechange', async () => {
+                await populateAudioInputs();
+                console.log('🔄 Audio devices updated');
+            });
+            
             select.setAttribute('data-listener-added', 'true');
         }
         
     } catch (error) {
         console.warn('Could not enumerate audio devices:', error);
+        // Show user-friendly error message
+        const errorMessage = error.name === 'NotAllowedError' 
+            ? 'Please allow microphone access to use audio features.'
+            : 'Could not access audio devices. Please check your browser settings.';
+        alert(errorMessage);
     }
 }
 
@@ -4627,15 +4724,48 @@ async function switchAudioDevice(e) {
             audioBlobState.audioStream.getTracks().forEach(track => track.stop());
         }
         
+        // Store current preview state before cleanup
+        const wasPreviewOn = audioBlobState.previewGain && audioBlobState.previewGain.gain.value > 0;
+        
         // Clean up old audio context connections
         if (audioBlobState.microphone) {
             audioBlobState.microphone.disconnect();
+        }
+        if (audioBlobState.previewGain) {
+            audioBlobState.previewGain.disconnect();
         }
         
         // Update with new stream
         audioBlobState.audioStream = newStream;
         audioBlobState.microphone = audioBlobState.audioContext.createMediaStreamSource(newStream);
+        
+        // Reconnect audio graph
         audioBlobState.microphone.connect(audioBlobState.analyser);
+        audioBlobState.microphone.connect(audioBlobState.previewGain);
+        audioBlobState.previewGain.connect(audioBlobState.audioContext.destination);
+        
+        // Restore preview state if it was on
+        if (wasPreviewOn) {
+            audioBlobState.previewGain.gain.value = 1;
+            const previewButton = document.getElementById('previewAudioButton');
+            if (previewButton) {
+                previewButton.textContent = '🔇 Stop Preview';
+                previewButton.classList.add('streaming');
+            }
+        }
+        
+        console.log('🔄 Audio device switch complete:', {
+            deviceId: newDeviceId || 'default',
+            streamActive: newStream.active,
+            audioTracks: newStream.getAudioTracks().length,
+            previewState: wasPreviewOn ? 'restored' : 'muted',
+            connections: {
+                microphone: true,
+                analyser: true,
+                previewGain: true,
+                destination: true
+            }
+        });
         
         // Update streaming if active
         await integrateAudioWithStream();
@@ -4644,9 +4774,75 @@ async function switchAudioDevice(e) {
         
     } catch (error) {
         console.error('Failed to switch audio device:', error);
-        // Revert selection on error
-        e.target.value = audioBlobState.selectedDeviceId || '';
-        alert('Failed to switch audio device. Please check device permissions.');
+        
+        // Handle specific error cases
+        let errorMessage = 'Failed to switch audio device.';
+        let shouldRestart = false;
+        
+        if (error.name === 'NotAllowedError') {
+            errorMessage = 'Microphone access was denied. Please allow access in your browser settings.';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage = 'The selected audio device is no longer available.';
+            shouldRestart = true;
+        } else if (error.name === 'NotReadableError') {
+            errorMessage = 'Cannot access the audio device. It might be in use by another application.';
+            shouldRestart = true;
+        }
+        
+        // Special handling for iOS/iPadOS
+        if (navigator.userAgent.match(/iPad|iPhone|iPod/)) {
+            errorMessage += ' On iOS, you may need to reload the page to switch audio devices.';
+            shouldRestart = true;
+        }
+        
+        // Alert user about the error
+        alert(errorMessage);
+        
+        if (shouldRestart) {
+            console.log('🔄 Attempting to restart audio with default device...');
+            
+            // Stop current audio
+            await stopAudioBlob();
+            
+            // Clear device selection
+            audioBlobState.selectedDeviceId = null;
+            e.target.value = '';
+            
+            try {
+                // Restart with default device
+                await startAudioBlob();
+                console.log('✅ Successfully restarted audio with default device');
+            } catch (restartError) {
+                console.error('Failed to restart audio:', restartError);
+                alert('Could not restart audio. Please refresh the page and try again.');
+            }
+        } else {
+            // Just revert selection if no restart needed
+            e.target.value = audioBlobState.selectedDeviceId || '';
+        }
+        
+        // Refresh device list
+        await populateAudioInputs();
+    }
+}
+
+// Audio preview functionality
+function toggleAudioPreview() {
+    if (!audioBlobState.previewGain) return;
+    
+    const button = document.getElementById('previewAudioButton');
+    const isPreviewOn = audioBlobState.previewGain.gain.value > 0;
+    
+    if (isPreviewOn) {
+        // Turn off preview
+        audioBlobState.previewGain.gain.value = 0;
+        button.textContent = '🔊 Preview Audio';
+        button.classList.remove('streaming');
+    } else {
+        // Turn on preview
+        audioBlobState.previewGain.gain.value = 1;
+        button.textContent = '🔇 Stop Preview';
+        button.classList.add('streaming');
     }
 }
 
@@ -4658,8 +4854,8 @@ async function integrateAudioWithStream() {
         // Get current video tracks from canvas stream
         const videoTracks = streamState.mediaStream.getVideoTracks();
         
-        // Get audio tracks from audio stream
-        const audioTracks = audioBlobState.audioStream.getAudioTracks();
+                 // Get raw audio tracks from the microphone stream
+         const audioTracks = audioBlobState.audioStream.getAudioTracks();
         
         if (audioTracks.length > 0) {
             // Create new stream with both video and audio
