@@ -1143,9 +1143,9 @@ function loadBackgroundImage(dataURL) {
         );
         const baseScale = Math.min(maxScale, Math.min(drawWidth / img.width, drawHeight / img.height));
         
-        // Apply user scale setting (stored in config.BACKGROUND_IMAGE_SCALE) - inverted
+        // Apply user scale setting (stored in config.BACKGROUND_IMAGE_SCALE)
         const userScale = config.BACKGROUND_IMAGE_SCALE || 1.0;
-        const scale = baseScale / userScale;
+        const scale = baseScale * userScale;
         drawWidth = img.width * scale;
         drawHeight = img.height * scale;
         drawX = (canvas.width - drawWidth) / 2;
@@ -1353,10 +1353,6 @@ function clearBackgroundMedia() {
     // Clean up video element if it exists
     if (backgroundMedia.type === 'video' && backgroundMedia.element) {
         backgroundMedia.element.pause();
-        // Remove event listeners before clearing src to prevent error alerts
-        backgroundMedia.element.onerror = null;
-        backgroundMedia.element.oncanplaythrough = null;
-        backgroundMedia.element.onloadedmetadata = null;
         backgroundMedia.element.src = '';
         backgroundMedia.element = null;
     }

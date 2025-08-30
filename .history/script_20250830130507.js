@@ -1143,9 +1143,9 @@ function loadBackgroundImage(dataURL) {
         );
         const baseScale = Math.min(maxScale, Math.min(drawWidth / img.width, drawHeight / img.height));
         
-        // Apply user scale setting (stored in config.BACKGROUND_IMAGE_SCALE) - inverted
+        // Apply user scale setting (stored in config.BACKGROUND_IMAGE_SCALE)
         const userScale = config.BACKGROUND_IMAGE_SCALE || 1.0;
-        const scale = baseScale / userScale;
+        const scale = baseScale * userScale;
         drawWidth = img.width * scale;
         drawHeight = img.height * scale;
         drawX = (canvas.width - drawWidth) / 2;
@@ -1353,10 +1353,6 @@ function clearBackgroundMedia() {
     // Clean up video element if it exists
     if (backgroundMedia.type === 'video' && backgroundMedia.element) {
         backgroundMedia.element.pause();
-        // Remove event listeners before clearing src to prevent error alerts
-        backgroundMedia.element.onerror = null;
-        backgroundMedia.element.oncanplaythrough = null;
-        backgroundMedia.element.onloadedmetadata = null;
         backgroundMedia.element.src = '';
         backgroundMedia.element = null;
     }
@@ -1509,7 +1505,7 @@ function updateBackgroundControls() {
     
     // Show scale control for both images and videos, not camera
     if (scaleControl) {
-        const showScale = backgroundMedia.loaded && (backgroundMedia.type === 'image' || backgroundMedia.type === 'video') && !cameraFeed.active;
+        const showScale = backgroundMedia.loaded && (backgroundMedia.type === 'image' || backgroundMedia.type === 'video');
         scaleControl.style.display = showScale ? 'block' : 'none';
     }
 }
@@ -1826,8 +1822,8 @@ const backgroundVideoShader = compileShader(gl.FRAGMENT_SHADER, `
             offset.x = (1.0 - scale.x) * 0.5;
         }
         
-        // Apply user scale factor (inverted: higher slider value = smaller scale)
-        scale /= uScale;
+        // Apply user scale factor
+        scale *= uScale;
         offset = (vec2(1.0) - scale) * 0.5;
         
         // Apply scaling and offset

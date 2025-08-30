@@ -1353,10 +1353,6 @@ function clearBackgroundMedia() {
     // Clean up video element if it exists
     if (backgroundMedia.type === 'video' && backgroundMedia.element) {
         backgroundMedia.element.pause();
-        // Remove event listeners before clearing src to prevent error alerts
-        backgroundMedia.element.onerror = null;
-        backgroundMedia.element.oncanplaythrough = null;
-        backgroundMedia.element.onloadedmetadata = null;
         backgroundMedia.element.src = '';
         backgroundMedia.element = null;
     }

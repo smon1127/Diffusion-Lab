@@ -425,13 +425,10 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         config[slider.prop] = value;
     }
     
-    // Special handling for background media scale
-    if (sliderName === 'backgroundImageScale' && backgroundMedia.loaded) {
-        if (backgroundMedia.type === 'image' && backgroundMedia.originalDataURL) {
-            // Regenerate the entire image with the new scale
-            loadBackgroundImage(backgroundMedia.originalDataURL);
-        }
-        // For videos, scaling is handled in the shader via uniforms - no action needed here
+    // Special handling for background image scale - regenerate image
+    if (sliderName === 'backgroundImageScale' && backgroundImage.loaded && backgroundImage.originalDataURL) {
+        // Regenerate the entire image with the new scale
+        loadBackgroundImage(backgroundImage.originalDataURL);
     }
     
     // Update UI
@@ -1035,9 +1032,7 @@ function handleMediaUpload(event) {
 
     // Validate file type
     const isImage = file.type.match(/^image\/(png|jpeg|jpg)$/);
-    const isVideo = file.type.match(/^video\/(mp4|webm|mov|quicktime)$/); // Added quicktime for .mov files
-    
-    console.log(`📁 File selected: ${file.name}, type: ${file.type}, size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+    const isVideo = file.type.match(/^video\/(mp4|webm|mov)$/);
     
     if (!isImage && !isVideo) {
         alert('Please select a PNG, JPG, JPEG image file or MP4, WebM, MOV video file.');
@@ -1143,9 +1138,9 @@ function loadBackgroundImage(dataURL) {
         );
         const baseScale = Math.min(maxScale, Math.min(drawWidth / img.width, drawHeight / img.height));
         
-        // Apply user scale setting (stored in config.BACKGROUND_IMAGE_SCALE) - inverted
+        // Apply user scale setting (stored in config.BACKGROUND_IMAGE_SCALE)
         const userScale = config.BACKGROUND_IMAGE_SCALE || 1.0;
-        const scale = baseScale / userScale;
+        const scale = baseScale * userScale;
         drawWidth = img.width * scale;
         drawHeight = img.height * scale;
         drawX = (canvas.width - drawWidth) / 2;
@@ -1185,11 +1180,9 @@ function loadBackgroundVideo(url) {
     video.loop = true; // Auto-loop as required
     video.muted = true; // Muted to allow autoplay
     video.crossOrigin = 'anonymous';
-    video.preload = 'auto'; // Changed from 'metadata' to 'auto' to ensure video data is loaded
-    video.playsInline = true; // Ensure inline playback on mobile
+    video.preload = 'metadata';
     
-    // Wait for video to be ready with data
-    video.oncanplaythrough = function() {
+    video.onloadedmetadata = function() {
         // Store video element and metadata
         backgroundMedia.element = video;
         backgroundMedia.type = 'video';
@@ -1197,31 +1190,21 @@ function loadBackgroundVideo(url) {
         backgroundMedia.height = video.videoHeight;
         backgroundMedia.loaded = true;
         
-        // Create initial texture for the video
-        updateBackgroundVideoTexture();
-        
         // Start playing the video
-        video.play().then(() => {
-            console.log(`📹 Background video playing: ${video.videoWidth}x${video.videoHeight}`);
-            
-            // Update UI
-            updateMediaPreview(url, 'video');
-            showClearButton(true);
-        }).catch(e => {
+        video.play().catch(e => {
             console.warn('Video autoplay failed:', e);
-            // Even if autoplay fails, the video is loaded and can be used
-            updateMediaPreview(url, 'video');
-            showClearButton(true);
         });
-    };
-    
-    video.onloadedmetadata = function() {
-        console.log(`📹 Video metadata loaded: ${video.videoWidth}x${video.videoHeight}`);
+        
+        // Update UI
+        updateMediaPreview(url, 'video');
+        showClearButton(true);
+        
+        console.log(`📹 Background video loaded: ${video.videoWidth}x${video.videoHeight}`);
     };
     
     video.onerror = function(e) {
         console.error('Error loading background video:', e);
-        alert('Failed to load video. Please try a different video file or ensure it\'s in a supported format (MP4, WebM, MOV).');
+        alert('Failed to load video. Please try a different video file.');
         clearBackgroundMedia();
     };
 }
@@ -1256,9 +1239,6 @@ function updateBackgroundVideoTexture() {
     
     const video = backgroundMedia.element;
     
-    // Check if video has data to render
-    if (video.readyState < video.HAVE_CURRENT_DATA) return;
-    
     // Create texture if it doesn't exist
     if (!backgroundMedia.texture) {
         backgroundMedia.texture = gl.createTexture();
@@ -1274,13 +1254,11 @@ function updateBackgroundVideoTexture() {
     
     // Upload video frame to texture
     try {
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
-            backgroundMedia.width = video.videoWidth;
-            backgroundMedia.height = video.videoHeight;
-        }
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+        backgroundMedia.width = video.videoWidth;
+        backgroundMedia.height = video.videoHeight;
     } catch (e) {
-        // Video might not be ready yet or have codec issues
+        // Video might not be ready yet
         console.warn('Failed to update background video texture:', e);
     }
     
@@ -1322,8 +1300,37 @@ function updateImagePreview(dataURL) {
 }
 
 function updateMediaPreview(url, type) {
-    // Preview removed - no longer showing thumbnails in control panel
-    console.log(`📁 Media loaded: ${type} - ${url.substring(0, 50)}...`);
+    const preview = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('previewImg');
+    
+    if (preview && previewImg) {
+        if (type === 'image') {
+            previewImg.src = url;
+            preview.style.display = 'block';
+        } else if (type === 'video') {
+            // For video, we'll show a video thumbnail or placeholder
+            // Create a canvas to show first frame
+            const video = backgroundMedia.element;
+            if (video) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 120;
+                canvas.height = 80;
+                
+                // Wait for video to have some data
+                const drawFrame = () => {
+                    if (video.readyState >= video.HAVE_CURRENT_DATA) {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        previewImg.src = canvas.toDataURL();
+                        preview.style.display = 'block';
+                    } else {
+                        setTimeout(drawFrame, 100);
+                    }
+                };
+                drawFrame();
+            }
+        }
+    }
 }
 
 function showClearButton(show) {
@@ -1353,10 +1360,6 @@ function clearBackgroundMedia() {
     // Clean up video element if it exists
     if (backgroundMedia.type === 'video' && backgroundMedia.element) {
         backgroundMedia.element.pause();
-        // Remove event listeners before clearing src to prevent error alerts
-        backgroundMedia.element.onerror = null;
-        backgroundMedia.element.oncanplaythrough = null;
-        backgroundMedia.element.onloadedmetadata = null;
         backgroundMedia.element.src = '';
         backgroundMedia.element = null;
     }
@@ -1371,7 +1374,10 @@ function clearBackgroundMedia() {
     backgroundMedia.element = null;
     
     // Clear UI
+    const preview = document.getElementById('imagePreview');
     const mediaUpload = document.getElementById('mediaUpload');
+    
+    if (preview) preview.style.display = 'none';
     if (mediaUpload) mediaUpload.value = '';
     
     updateBackgroundControls();
@@ -1507,9 +1513,9 @@ function updateBackgroundControls() {
         clearButton.style.display = hasBackground ? 'inline-block' : 'none';
     }
     
-    // Show scale control for both images and videos, not camera
+    // Only show scale control for images, not videos or camera
     if (scaleControl) {
-        const showScale = backgroundMedia.loaded && (backgroundMedia.type === 'image' || backgroundMedia.type === 'video') && !cameraFeed.active;
+        const showScale = backgroundMedia.loaded && backgroundMedia.type === 'image';
         scaleControl.style.display = showScale ? 'block' : 'none';
     }
 }
@@ -1795,50 +1801,6 @@ const cameraShader = compileShader(gl.FRAGMENT_SHADER, `
         correctedUv = clamp(correctedUv, 0.0, 1.0);
         
         gl_FragColor = texture2D(uTexture, correctedUv);
-    }
-`);
-
-const backgroundVideoShader = compileShader(gl.FRAGMENT_SHADER, `
-    precision highp float;
-    precision highp sampler2D;
-
-    varying vec2 vUv;
-    uniform sampler2D uTexture;
-    uniform float uCanvasAspect;
-    uniform float uVideoAspect;
-    uniform float uScale;
-
-    void main () {
-        // Flip Y coordinate for video (videos are upside down in WebGL)
-        vec2 flippedUv = vec2(vUv.x, 1.0 - vUv.y);
-        
-        // Calculate aspect ratio correction for "cover" behavior
-        vec2 scale = vec2(1.0);
-        vec2 offset = vec2(0.0);
-        
-        if (uCanvasAspect > uVideoAspect) {
-            // Canvas is wider than video - scale video to fit width, crop height
-            scale.y = uCanvasAspect / uVideoAspect;
-            offset.y = (1.0 - scale.y) * 0.5;
-        } else {
-            // Canvas is taller than video - scale video to fit height, crop width  
-            scale.x = uVideoAspect / uCanvasAspect;
-            offset.x = (1.0 - scale.x) * 0.5;
-        }
-        
-        // Apply user scale factor (inverted: higher slider value = smaller scale)
-        scale /= uScale;
-        offset = (vec2(1.0) - scale) * 0.5;
-        
-        // Apply scaling and offset
-        vec2 scaledUv = flippedUv * scale + offset;
-        
-        // Sample texture with bounds checking
-        if (scaledUv.x < 0.0 || scaledUv.x > 1.0 || scaledUv.y < 0.0 || scaledUv.y > 1.0) {
-            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-        } else {
-            gl_FragColor = texture2D(uTexture, scaledUv);
-        }
     }
 `);
 
@@ -2280,7 +2242,6 @@ const clearProgram           = new Program(baseVertexShader, clearShader);
 const colorProgram           = new Program(baseVertexShader, colorShader);
 const simpleTextureProgram   = new Program(baseVertexShader, simpleTextureShader);
 const cameraProgram          = new Program(baseVertexShader, cameraShader);
-const backgroundVideoProgram = new Program(baseVertexShader, backgroundVideoShader);
 const checkerboardProgram    = new Program(baseVertexShader, checkerboardShader);
 const bloomPrefilterProgram  = new Program(baseVertexShader, bloomPrefilterShader);
 const bloomBlurProgram       = new Program(baseVertexShader, bloomBlurShader);
@@ -2722,9 +2683,6 @@ function render (target) {
             updateBackgroundVideoTexture();
         }
         drawBackgroundMedia(target);
-    } else if (backgroundMedia.loaded && !backgroundMedia.texture) {
-        // Debug: Media loaded but no texture
-        console.warn('Background media loaded but texture missing:', backgroundMedia.type);
     }
     
     drawDisplay(target);
@@ -2745,29 +2703,13 @@ function drawBackgroundMedia (target) {
     gl.enable(gl.BLEND);
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     
+    // Use the simple texture program for cleaner rendering
+    simpleTextureProgram.bind();
+    
     // Bind the background media texture
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, backgroundMedia.texture);
-    
-    if (backgroundMedia.type === 'video') {
-        // Use background video program for videos with scaling support
-        backgroundVideoProgram.bind();
-        gl.uniform1i(backgroundVideoProgram.uniforms.uTexture, 0);
-        
-        // Calculate aspect ratios for proper video scaling
-        const canvasWidth = target == null ? gl.drawingBufferWidth : target.width;
-        const canvasHeight = target == null ? gl.drawingBufferHeight : target.height;
-        const canvasAspect = canvasWidth / canvasHeight;
-        const videoAspect = backgroundMedia.width / backgroundMedia.height;
-        
-        gl.uniform1f(backgroundVideoProgram.uniforms.uCanvasAspect, canvasAspect);
-        gl.uniform1f(backgroundVideoProgram.uniforms.uVideoAspect, videoAspect);
-        gl.uniform1f(backgroundVideoProgram.uniforms.uScale, config.BACKGROUND_IMAGE_SCALE || 1.0);
-    } else {
-        // Use simple texture program for images (already have proper scaling)
-        simpleTextureProgram.bind();
-        gl.uniform1i(simpleTextureProgram.uniforms.uTexture, 0);
-    }
+    gl.uniform1i(simpleTextureProgram.uniforms.uTexture, 0);
     
     // Draw the background media
     blit(target);

@@ -1143,9 +1143,9 @@ function loadBackgroundImage(dataURL) {
         );
         const baseScale = Math.min(maxScale, Math.min(drawWidth / img.width, drawHeight / img.height));
         
-        // Apply user scale setting (stored in config.BACKGROUND_IMAGE_SCALE) - inverted
+        // Apply user scale setting (stored in config.BACKGROUND_IMAGE_SCALE)
         const userScale = config.BACKGROUND_IMAGE_SCALE || 1.0;
-        const scale = baseScale / userScale;
+        const scale = baseScale * userScale;
         drawWidth = img.width * scale;
         drawHeight = img.height * scale;
         drawX = (canvas.width - drawWidth) / 2;
@@ -1353,10 +1353,6 @@ function clearBackgroundMedia() {
     // Clean up video element if it exists
     if (backgroundMedia.type === 'video' && backgroundMedia.element) {
         backgroundMedia.element.pause();
-        // Remove event listeners before clearing src to prevent error alerts
-        backgroundMedia.element.onerror = null;
-        backgroundMedia.element.oncanplaythrough = null;
-        backgroundMedia.element.onloadedmetadata = null;
         backgroundMedia.element.src = '';
         backgroundMedia.element = null;
     }
@@ -1509,7 +1505,7 @@ function updateBackgroundControls() {
     
     // Show scale control for both images and videos, not camera
     if (scaleControl) {
-        const showScale = backgroundMedia.loaded && (backgroundMedia.type === 'image' || backgroundMedia.type === 'video') && !cameraFeed.active;
+        const showScale = backgroundMedia.loaded && (backgroundMedia.type === 'image' || backgroundMedia.type === 'video');
         scaleControl.style.display = showScale ? 'block' : 'none';
     }
 }
@@ -1826,8 +1822,8 @@ const backgroundVideoShader = compileShader(gl.FRAGMENT_SHADER, `
             offset.x = (1.0 - scale.x) * 0.5;
         }
         
-        // Apply user scale factor (inverted: higher slider value = smaller scale)
-        scale /= uScale;
+        // Apply user scale factor
+        scale *= uScale;
         offset = (vec2(1.0) - scale) * 0.5;
         
         // Apply scaling and offset
@@ -2280,7 +2276,6 @@ const clearProgram           = new Program(baseVertexShader, clearShader);
 const colorProgram           = new Program(baseVertexShader, colorShader);
 const simpleTextureProgram   = new Program(baseVertexShader, simpleTextureShader);
 const cameraProgram          = new Program(baseVertexShader, cameraShader);
-const backgroundVideoProgram = new Program(baseVertexShader, backgroundVideoShader);
 const checkerboardProgram    = new Program(baseVertexShader, checkerboardShader);
 const bloomPrefilterProgram  = new Program(baseVertexShader, bloomPrefilterShader);
 const bloomBlurProgram       = new Program(baseVertexShader, bloomBlurShader);
@@ -2750,9 +2745,9 @@ function drawBackgroundMedia (target) {
     gl.bindTexture(gl.TEXTURE_2D, backgroundMedia.texture);
     
     if (backgroundMedia.type === 'video') {
-        // Use background video program for videos with scaling support
-        backgroundVideoProgram.bind();
-        gl.uniform1i(backgroundVideoProgram.uniforms.uTexture, 0);
+        // Use camera program for videos to handle aspect ratio properly
+        cameraProgram.bind();
+        gl.uniform1i(cameraProgram.uniforms.uTexture, 0);
         
         // Calculate aspect ratios for proper video scaling
         const canvasWidth = target == null ? gl.drawingBufferWidth : target.width;
@@ -2760,9 +2755,8 @@ function drawBackgroundMedia (target) {
         const canvasAspect = canvasWidth / canvasHeight;
         const videoAspect = backgroundMedia.width / backgroundMedia.height;
         
-        gl.uniform1f(backgroundVideoProgram.uniforms.uCanvasAspect, canvasAspect);
-        gl.uniform1f(backgroundVideoProgram.uniforms.uVideoAspect, videoAspect);
-        gl.uniform1f(backgroundVideoProgram.uniforms.uScale, config.BACKGROUND_IMAGE_SCALE || 1.0);
+        gl.uniform1f(cameraProgram.uniforms.uCanvasAspect, canvasAspect);
+        gl.uniform1f(cameraProgram.uniforms.uVideoAspect, videoAspect);
     } else {
         // Use simple texture program for images (already have proper scaling)
         simpleTextureProgram.bind();

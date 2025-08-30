@@ -1591,7 +1591,7 @@
                     <div class="control-item">
                         <div class="control-label">
                             <span>Background <div class="tooltip"><span class="info-icon">i</span>
-                                <span class="tooltiptext">Upload media as background behind fluid effects. Images: PNG, JPG, JPEG. Videos: MP4, WebM, MOV (max 50MB, auto-loops). Or use camera feed.</span>
+                                <span class="tooltiptext">Upload image or video, or use camera feed as background behind fluid effects</span>
                             </div></span>
                         </div>
                         <div class="image-upload-container">
@@ -1607,7 +1607,9 @@
                                     🗑️ Clear
                                 </button>
                             </div>
-
+                            <div class="image-preview" id="imagePreview" style="display: none;">
+                                <img id="previewImg" alt="Background preview">
+                            </div>
                             <div class="camera-preview" id="cameraPreview" style="display: none;">
                                 <video id="cameraVideo" autoplay muted style="width: 100%; max-height: 80px; border-radius: 4px;"></video>
                             </div>
@@ -1616,7 +1618,7 @@
                         <div class="control-item" id="backgroundScaleControl" style="display: none;">
                             <div class="control-label">
                                 <span>Scale <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Background media size: 0.1 = very large, 1.0 = fit viewport, 2.0 = small</span>
+                                    <span class="tooltiptext">Background image size: 0.1 = very small, 1.0 = fit viewport, 2.0 = 2x larger</span>
                                 </div></span>
                                 <span class="control-value" id="backgroundImageScaleValue">1.00</span>
                             </div>
