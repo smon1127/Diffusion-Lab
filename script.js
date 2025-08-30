@@ -88,6 +88,74 @@ let config = {
     MEDIA_SCALE: 1.0, // 0.1-2.0 range - Controls media size (1.0 = fit to viewport)
 }
 
+// Global State Variables (declared early to avoid initialization order issues)
+let streamState = {
+    isStreaming: false,
+    streamId: null,
+    playbackId: null,
+    whipUrl: null,
+    peerConnection: null,
+    mediaStream: null,
+    popupWindow: null,
+    popupCheckInterval: null,
+    promptUpdateInterval: null,
+    lastParameterUpdate: 0,
+    isUpdatingParameters: false
+};
+
+// Simple Camera System
+let cameraState = {
+    active: false,
+    stream: null,
+    video: null,
+    canvas: null,
+    ctx: null,
+    animationId: null
+};
+
+// Media System
+let mediaState = {
+    active: false,
+    canvas: null,
+    ctx: null,
+    animationId: null,
+    mediaElement: null, // Could be image, video, etc.
+    mediaType: null,    // 'image' or 'video'
+    mediaName: null,    // filename
+    scale: 1.0          // media scale factor (will be synced with config.MEDIA_SCALE)
+};
+
+// Audio Blob System
+let audioBlobState = {
+    active: false,
+    audioContext: null,
+    analyser: null,
+    microphone: null,
+    dataArray: null,
+    frequencyData: null,
+    canvas: null,
+    gl: null,
+    animationId: null,
+    
+    // Visual properties
+    color: { r: 0, g: 0.831, b: 1 }, // Default cyan
+    baseColor: { r: 0, g: 0.831, b: 1 }, // Store original color for cycling
+    
+    // Control properties
+    reactivity: 2.0,     // 0.1-3.0 range - How much audio affects the blob
+    delay: 0,            // 0-500ms range - Audio delay in milliseconds
+    opacity: 0.8,        // 0-1 range - Blob opacity
+    colorful: 0.3,       // 0-1 range - Color cycling intensity
+    
+    // Audio processing nodes
+    delayNode: null,     // DelayNode for audio delay
+    previewGain: null,   // GainNode for audio preview (muted by default)
+    
+    // Shader program
+    shaderProgram: null,
+    uniforms: {}
+};
+
 // Idle Animation System
 let idleAnimationEnabled = true;
 let lastActivityTime = Date.now();
@@ -1020,14 +1088,7 @@ let backgroundMedia = {
     originalDataURL: null // for images only
 };
 
-// Camera feed functionality
-let cameraFeed = {
-    stream: null,
-    video: null,
-    texture: null,
-    active: false,
-    canvas: null
-};
+// Camera feed functionality (moved to line 3416 for WebGL integration)
 
 function initializeMediaUpload() {
     const mediaUpload = document.getElementById('mediaUpload');
@@ -1035,8 +1096,7 @@ function initializeMediaUpload() {
         mediaUpload.addEventListener('change', handleMediaUpload);
     }
     
-    // Initialize camera functionality
-    updateCameraButton();
+    // Initialize camera functionality (now handled by input mode system)
     updateBackgroundControls();
 }
 
@@ -1299,34 +1359,7 @@ function updateBackgroundVideoTexture() {
     gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
-function updateCameraTexture() {
-    if (!cameraFeed.active || !cameraFeed.video) return;
-    
-    // Create texture if it doesn't exist
-    if (!cameraFeed.texture) {
-        cameraFeed.texture = gl.createTexture();
-    }
-    
-    // Bind texture
-    gl.bindTexture(gl.TEXTURE_2D, cameraFeed.texture);
-    
-    // Set texture parameters for real-time video
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    
-    // Upload video frame to texture
-    try {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cameraFeed.video);
-    } catch (e) {
-        // Video might not be ready yet
-        console.warn('Failed to update camera texture:', e);
-    }
-    
-    // Unbind texture
-    gl.bindTexture(gl.TEXTURE_2D, null);
-}
+// updateCameraTexture function removed - using simple canvas instead
 
 function updateImagePreview(dataURL) {
     updateMediaPreview(dataURL, 'image');
@@ -1388,131 +1421,24 @@ function clearBackgroundMedia() {
     updateBackgroundControls();
 }
 
-// Camera feed functionality
-async function toggleCamera() {
-    if (cameraFeed.active) {
-        stopCamera();
-    } else {
-        await startCamera();
-    }
-}
+// Camera feed functionality (old implementation removed - using new input mode system)
 
-async function startCamera() {
-    try {
-        // Request camera access
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                facingMode: 'user' // Front camera by default
-            } 
-        });
-        
-        // Get video element
-        const video = document.getElementById('cameraVideo');
-        if (!video) {
-            throw new Error('Camera video element not found');
-        }
-        
-        // Set up video stream
-        video.srcObject = stream;
-        video.play();
-        
-        // Wait for video to be ready
-        await new Promise((resolve) => {
-            video.addEventListener('loadedmetadata', resolve, { once: true });
-        });
-        
-        // Store references
-        cameraFeed.stream = stream;
-        cameraFeed.video = video;
-        cameraFeed.active = true;
-        
-        // Clear any existing background image
-        clearBackgroundImage();
-        
-        // Show camera preview and update UI
-        const cameraPreview = document.getElementById('cameraPreview');
-        if (cameraPreview) cameraPreview.style.display = 'block';
-        
-        updateCameraButton();
-        updateBackgroundControls();
-        
-        console.log('✅ Camera started successfully');
-        
-    } catch (error) {
-        console.error('❌ Failed to start camera:', error);
-        
-        let errorMessage = 'Failed to access camera';
-        if (error.name === 'NotAllowedError') {
-            errorMessage = 'Camera access denied. Please allow camera permissions.';
-        } else if (error.name === 'NotFoundError') {
-            errorMessage = 'No camera found on this device.';
-        } else if (error.name === 'NotReadableError') {
-            errorMessage = 'Camera is already in use by another application.';
-        }
-        
-        alert(errorMessage);
-        updateCameraButton();
-    }
-}
+// Old startCamera function removed - using new camera system with input modes
 
-function stopCamera() {
-    // Stop camera stream
-    if (cameraFeed.stream) {
-        cameraFeed.stream.getTracks().forEach(track => track.stop());
-        cameraFeed.stream = null;
-    }
-    
-    // Clear video element
-    if (cameraFeed.video) {
-        cameraFeed.video.srcObject = null;
-        cameraFeed.video = null;
-    }
-    
-    // Clear WebGL texture
-    if (cameraFeed.texture) {
-        gl.deleteTexture(cameraFeed.texture);
-        cameraFeed.texture = null;
-    }
-    
-    // Reset state
-    cameraFeed.active = false;
-    cameraFeed.canvas = null;
-    
-    // Hide camera preview
-    const cameraPreview = document.getElementById('cameraPreview');
-    if (cameraPreview) cameraPreview.style.display = 'none';
-    
-    updateCameraButton();
-    updateBackgroundControls();
-    
-    console.log('🔄 Camera stopped');
-}
+// Old stopCamera function removed - using new camera system with input modes
 
-function updateCameraButton() {
-    const button = document.getElementById('cameraButton');
-    if (button) {
-        if (cameraFeed.active) {
-            button.textContent = '📷 Stop Camera';
-            button.classList.add('streaming'); // Use existing streaming style
-        } else {
-            button.textContent = '📷 Camera';
-            button.classList.remove('streaming');
-        }
-    }
-}
+// Simple Camera Implementation - No WebGL complexity!
 
 function clearAllBackground() {
     clearBackgroundMedia();
-    stopCamera();
+    // Camera stopping is now handled by input mode system
 }
 
 function updateBackgroundControls() {
     const clearButton = document.getElementById('clearBackgroundButton');
     const scaleControl = document.getElementById('backgroundScaleControl');
     
-    const hasBackground = backgroundMedia.loaded || cameraFeed.active;
+    const hasBackground = backgroundMedia.loaded || cameraState.active;
     
     if (clearButton) {
         clearButton.style.display = hasBackground ? 'inline-block' : 'none';
@@ -1520,7 +1446,7 @@ function updateBackgroundControls() {
     
     // Show scale control for both images and videos, not camera
     if (scaleControl) {
-        const showScale = backgroundMedia.loaded && (backgroundMedia.type === 'image' || backgroundMedia.type === 'video') && !cameraFeed.active;
+        const showScale = backgroundMedia.loaded && (backgroundMedia.type === 'image' || backgroundMedia.type === 'video') && !cameraState.active;
         scaleControl.style.display = showScale ? 'block' : 'none';
     }
 }
@@ -2732,12 +2658,7 @@ function render (target) {
     if (target == null && config.TRANSPARENT)
         drawCheckerboard(target);
     
-    // Draw camera feed if active (bottom background layer)
-    if (cameraFeed.active && cameraFeed.video) {
-        drawCameraFeed(target);
-    }
-    
-    // Draw background media if loaded (top background layer, over camera)
+    // Draw background media if loaded
     if (backgroundMedia.loaded && backgroundMedia.texture) {
         // Update video texture if it's a video
         if (backgroundMedia.type === 'video') {
@@ -2798,43 +2719,7 @@ function drawBackgroundMedia (target) {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 }
 
-function drawCameraFeed (target) {
-    // Update camera texture with latest video frame
-    updateCameraTexture();
-    
-    if (!cameraFeed.texture || !cameraFeed.video) return;
-    
-    // Enable blending for the camera feed
-    gl.enable(gl.BLEND);
-    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    
-    // Use the camera program for aspect-corrected rendering
-    cameraProgram.bind();
-    
-    // Calculate aspect ratios
-    const canvasWidth = target == null ? gl.drawingBufferWidth : target.width;
-    const canvasHeight = target == null ? gl.drawingBufferHeight : target.height;
-    const canvasAspect = canvasWidth / canvasHeight;
-    
-    const videoWidth = cameraFeed.video.videoWidth || cameraFeed.video.width || 1920;
-    const videoHeight = cameraFeed.video.videoHeight || cameraFeed.video.height || 1080;
-    const videoAspect = videoWidth / videoHeight;
-    
-    // Bind the camera texture
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, cameraFeed.texture);
-    gl.uniform1i(cameraProgram.uniforms.uTexture, 0);
-    
-    // Pass aspect ratios to shader
-    gl.uniform1f(cameraProgram.uniforms.uCanvasAspect, canvasAspect);
-    gl.uniform1f(cameraProgram.uniforms.uVideoAspect, videoAspect);
-    
-    // Draw the camera feed (aspect-corrected, flipped)
-    blit(target);
-    
-    // Restore blending state
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-}
+// drawCameraFeed function removed - using simple canvas overlay instead
 
 function drawCheckerboard (target) {
     checkerboardProgram.bind();
@@ -3428,69 +3313,7 @@ function hashCode (s) {
     return hash;
 };
 
-// StreamDiffusion functionality
-let streamState = {
-    isStreaming: false,
-    streamId: null,
-    playbackId: null,
-    whipUrl: null,
-    peerConnection: null,
-    mediaStream: null,
-    popupWindow: null,
-    popupCheckInterval: null,
-    promptUpdateInterval: null,
-    lastParameterUpdate: 0,
-    isUpdatingParameters: false
-};
-
-// Camera System
-let cameraState = {
-    active: false,
-    stream: null,
-    video: null,
-    canvas: null,
-    ctx: null,
-    animationId: null
-};
-
-// Media System
-let mediaState = {
-    active: false,
-    canvas: null,
-    ctx: null,
-    animationId: null,
-    mediaElement: null, // Could be image, video, etc.
-    mediaType: null,    // 'image' or 'video'
-    mediaName: null,    // filename
-    scale: 1.0          // media scale factor (will be synced with config.MEDIA_SCALE)
-};
-
-// Audio Blob System
-let audioBlobState = {
-    active: false,
-    audioContext: null,
-    analyser: null,
-    microphone: null,
-    dataArray: null,
-    canvas: null,
-    gl: null,
-    animationId: null,
-    frequencyData: new Uint8Array(256),
-    bassLevel: 0,
-    midLevel: 0,
-    trebleLevel: 0,
-    reactivity: 1.0,
-    delay: 0,
-    opacity: 0.8,
-    colorful: 0.3,
-    color: { r: 0, g: 0.831, b: 1 },
-    baseColor: { r: 0, g: 0.831, b: 1 }, // Store original color for reference
-    selectedDeviceId: null,
-    audioStream: null,
-    delayBuffer: [],
-    delayIndex: 0
-};
-
+// StreamDiffusion functionality (state variables moved to top of file)
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
 const PIPELINE_ID = 'pip_qpUgXycjWF6YMeSL';
 
@@ -4088,6 +3911,32 @@ const inputModes = {
 };
 
 function deactivateAllInputModes() {
+    console.log('🛑 Deactivating modes, current states:', {
+        media: mediaState.active,
+        camera: cameraState.active,
+        audio: audioBlobState.active
+    });
+    
+    // Stop all active modes before deactivating UI
+    if (cameraState.active) {
+        console.log('🛑 Stopping camera...');
+        stopCamera();
+    }
+    if (mediaState.active) {
+        console.log('🛑 Stopping media...');
+        stopMedia();
+    }
+    if (audioBlobState.active) {
+        console.log('🛑 Stopping audio blob...');
+        stopAudioBlob();
+    }
+    
+    console.log('✅ All modes stopped, final states:', {
+        media: mediaState.active,
+        camera: cameraState.active,
+        audio: audioBlobState.active
+    });
+    
     Object.values(inputModes).forEach(mode => {
         const button = document.getElementById(mode.buttonId);
         if (button) {
@@ -4107,18 +3956,31 @@ function deactivateAllInputModes() {
         });
     });
     
-    // Hide fluid simulation for performance optimization
+    // Hide fluid canvas and simulation for performance optimization
+    const fluidCanvas = document.getElementById('fluidCanvas');
+    if (fluidCanvas) {
+        fluidCanvas.style.display = 'none';
+    }
+    
     isFluidVisible = false;
     console.log('🎨 Fluid rendering paused for performance');
     console.log(`📊 Performance stats - Rendered: ${performanceStats.renderedFrames}, Skipped: ${performanceStats.skippedFrames}`);
 }
 
 function activateInputMode(modeName) {
+    console.log(`🔄 Activating input mode: ${modeName}`);
     const mode = inputModes[modeName];
     if (!mode) return;
 
     // Deactivate all other modes first
+    console.log('🛑 Deactivating all input modes...');
     deactivateAllInputModes();
+    
+    console.log('✅ All modes deactivated, states:', {
+        media: mediaState.active,
+        camera: cameraState.active,
+        audio: audioBlobState.active
+    });
     
     // Activate this mode
     const button = document.getElementById(mode.buttonId);
@@ -4132,6 +3994,12 @@ function activateInputMode(modeName) {
         
         // Special handling for different input modes
         if (modeName === 'fluid') {
+            // Show fluid canvas for fluid mode
+            const fluidCanvas = document.getElementById('fluidCanvas');
+            if (fluidCanvas) {
+                fluidCanvas.style.display = 'block';
+            }
+            
             // Enable fluid rendering for performance optimization
             isFluidVisible = true;
             
@@ -4161,6 +4029,22 @@ function activateInputMode(modeName) {
                 }
                 window.fluidAnimationFrame = requestAnimationFrame(update);
                 
+                // Simulate animation toggle to ensure proper state refresh
+                // Force animation OFF first to reset state
+                if (config.ANIMATE) {
+                    config.ANIMATE = false;
+                    updateToggle('animateToggle', config.ANIMATE);
+                }
+                
+                // Then trigger animation ON (this calls the full toggle system)
+                toggleAnimate(); // This will turn animation ON and trigger proper initialization
+                
+                // Update pause toggle state
+                updateToggle('pauseToggle', config.PAUSED);
+                
+                // Switch streaming canvas to fluid canvas if streaming is active
+                switchStreamingCanvas(false);
+                
                 console.log('🎨 Fluid simulation reinitialized and rendering enabled');
                 console.log(`📊 Performance stats reset - Starting fresh render cycle`);
             } catch (error) {
@@ -4174,7 +4058,23 @@ function activateInputMode(modeName) {
                 cancelAnimationFrame(window.fluidAnimationFrame);
                 window.fluidAnimationFrame = null;
             }
-            console.log(`🎨 Fluid simulation disabled for ${modeName} mode`);
+            
+            // Hide fluid canvas for separate view
+            const fluidCanvas = document.getElementById('fluidCanvas');
+            if (fluidCanvas) {
+                fluidCanvas.style.display = 'none';
+            }
+            
+            // Start the appropriate mode
+            if (modeName === 'camera') {
+                startCamera();
+                // Camera will switch streaming canvas after it's fully initialized
+            } else if (modeName === 'media') {
+                startMedia();
+                // Media will switch streaming canvas after it's fully initialized
+            }
+            
+            console.log(`🎨 Fluid simulation disabled and hidden for ${modeName} mode`);
         }
     }
     
@@ -4339,126 +4239,338 @@ async function loadVideoMedia(url, filename) {
 
 async function startCamera() {
     try {
-        console.log('📹 Starting camera...');
+        console.log('📹 Starting simple camera...');
+        console.log('🌐 Browser:', navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Safari') ? 'Safari' : 'Other');
+        console.log('🔒 Protocol:', window.location.protocol);
+        console.log('🏠 Host:', window.location.host);
         
-        // Get camera constraints
-        const constraints = {
-            video: {
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                facingMode: 'user' // Front camera by default
-            }
-        };
+        // Check HTTPS requirement for Chrome
+        const isChrome = navigator.userAgent.includes('Chrome');
+        const isHTTPS = window.location.protocol === 'https:';
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         
-        // Request camera permission and stream
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        cameraState.stream = stream;
+        if (isChrome && !isHTTPS && !isLocalhost) {
+            throw new Error('Chrome requires HTTPS for camera access (except localhost). Please use https:// or localhost');
+        }
         
         // Get the camera canvas
         const canvas = document.getElementById('cameraCanvas');
         if (!canvas) {
-            throw new Error('Camera canvas element not found');
+            throw new Error('Camera canvas not found');
         }
         
-        cameraState.canvas = canvas;
-        cameraState.ctx = canvas.getContext('2d');
+        // Check if getUserMedia is supported
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('getUserMedia not supported in this browser');
+        }
         
-        // Ensure canvas is properly sized
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        // Check permissions first
+        try {
+            const permissions = await navigator.permissions.query({ name: 'camera' });
+            console.log('📷 Camera permission state:', permissions.state);
+            if (permissions.state === 'denied') {
+                throw new Error('Camera permission denied. Please allow camera access in browser settings.');
+            }
+        } catch (permError) {
+            console.warn('⚠️ Could not check camera permissions:', permError);
+        }
         
-        // Create video element to receive camera stream
-        cameraState.video = document.createElement('video');
-        cameraState.video.srcObject = stream;
-        cameraState.video.autoplay = true;
-        cameraState.video.playsInline = true; // Important for iOS
-        cameraState.video.muted = true; // Prevent audio feedback
+        console.log('📷 Requesting camera access...');
         
-        // Wait for video to be ready
-        await new Promise((resolve) => {
-            cameraState.video.onloadedmetadata = () => {
-                resolve();
+        // Browser-specific constraints for better Chrome compatibility
+        const constraints = {
+            video: {
+                width: { ideal: 1920, min: 640 },
+                height: { ideal: 1080, min: 480 },
+                facingMode: 'user',
+                frameRate: { ideal: 30, min: 15 }
+            }
+        };
+        
+        // For Chrome, be more lenient with constraints
+        if (navigator.userAgent.includes('Chrome')) {
+            console.log('🔧 Applying Chrome-specific camera settings');
+            constraints.video = {
+                facingMode: 'user'
             };
+        }
+        
+        // Request camera access
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('✅ Camera stream acquired');
+        
+        // Create video element
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = true;
+        
+        console.log('📺 Video element created, waiting for metadata...');
+        
+        // Wait for video to load with timeout
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Video metadata load timeout'));
+            }, 10000); // 10 second timeout
+            
+            video.addEventListener('loadedmetadata', () => {
+                clearTimeout(timeout);
+                console.log('✅ Video metadata loaded');
+                resolve();
+            }, { once: true });
+            
+            video.addEventListener('error', (e) => {
+                clearTimeout(timeout);
+                reject(new Error(`Video error: ${e.message}`));
+            }, { once: true });
         });
         
+        // Set up canvas
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const ctx = canvas.getContext('2d');
+        
+        console.log(`📐 Canvas size: ${canvas.width}x${canvas.height}`);
+        console.log(`📹 Video size: ${video.videoWidth}x${video.videoHeight}`);
+        
+        // Store state
         cameraState.active = true;
+        cameraState.stream = stream;
+        cameraState.video = video;
+        cameraState.canvas = canvas;
+        cameraState.ctx = ctx;
         
-        // Start rendering camera feed to canvas
-        renderCameraFeed();
+        // Show canvas
+        canvas.style.display = 'block';
+        console.log('👁️ Camera canvas visible');
         
-        console.log('📹 Camera started successfully');
-        console.log(`📹 Camera resolution: ${cameraState.video.videoWidth}x${cameraState.video.videoHeight}`);
+        // Test canvas streaming capability
+        try {
+            const testStream = canvas.captureStream(1);
+            console.log('✅ Camera canvas supports streaming:', !!testStream);
+            if (testStream) {
+                testStream.getTracks().forEach(track => track.stop()); // Clean up test stream
+            }
+        } catch (streamError) {
+            console.error('❌ Camera canvas streaming error:', streamError);
+        }
         
-        // Switch streaming canvas to camera if streaming is active
+        // Start simple rendering loop
+        function renderCamera() {
+            if (!cameraState.active) {
+                console.log('🛑 Camera rendering stopped');
+                return;
+            }
+            
+            const isChrome = navigator.userAgent.includes('Chrome');
+            
+            // Verify video is ready
+            if (video.videoWidth === 0 || video.videoHeight === 0) {
+                console.warn('⚠️ Video not ready, skipping frame');
+                cameraState.animationId = requestAnimationFrame(renderCamera);
+                return;
+            }
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Calculate aspect ratio scaling
+            const canvasAspect = canvas.width / canvas.height;
+            const videoAspect = video.videoWidth / video.videoHeight;
+            
+            let drawWidth, drawHeight, drawX, drawY;
+            
+            if (videoAspect > canvasAspect) {
+                // Video is wider - fit to height
+                drawHeight = canvas.height;
+                drawWidth = drawHeight * videoAspect;
+                drawX = (canvas.width - drawWidth) / 2;
+                drawY = 0;
+            } else {
+                // Video is taller - fit to width
+                drawWidth = canvas.width;
+                drawHeight = drawWidth / videoAspect;
+                drawX = 0;
+                drawY = (canvas.height - drawHeight) / 2;
+            }
+            
+            try {
+                // Chrome-specific: Check if video is actually playing
+                if (isChrome && (video.paused || video.ended)) {
+                    console.warn('⚠️ Video not playing in Chrome, attempting to play...');
+                    video.play().catch(playError => {
+                        console.warn('⚠️ Could not play video:', playError);
+                    });
+                }
+                
+                // Draw video to canvas
+                ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+                
+                // Debug: Log first few successful draws
+                if (!cameraState.debugDrawCount) cameraState.debugDrawCount = 0;
+                if (cameraState.debugDrawCount < 5) {
+                    cameraState.debugDrawCount++;
+                    console.log(`🎨 Camera frame drawn ${cameraState.debugDrawCount}/5:`, {
+                        videoSize: `${video.videoWidth}x${video.videoHeight}`,
+                        drawRect: `${drawX},${drawY} ${drawWidth}x${drawHeight}`,
+                        canvasSize: `${canvas.width}x${canvas.height}`
+                    });
+                }
+            } catch (drawError) {
+                console.warn('⚠️ Failed to draw video frame:', drawError);
+                
+                // Chrome fallback: try different rendering approach
+                if (isChrome) {
+                    try {
+                        // Alternative: draw without scaling first
+                        ctx.drawImage(video, 0, 0);
+                        console.log('✅ Chrome fallback draw successful');
+                    } catch (altError) {
+                        console.warn('⚠️ Alternative draw also failed:', altError);
+                    }
+                }
+            }
+            
+            // Continue loop
+            cameraState.animationId = requestAnimationFrame(renderCamera);
+        }
+        
+        // Start rendering
+        renderCamera();
+        console.log('🎬 Camera rendering started');
+        
+        // Switch streaming canvas to camera now that it's fully set up
+        console.log('🔄 Switching streaming to camera canvas...');
         switchStreamingCanvas();
         
-    } catch (error) {
-        console.error('Failed to start camera:', error);
+        console.log('✅ Simple camera started successfully');
+        console.log(`📹 Final camera resolution: ${video.videoWidth}x${video.videoHeight}`);
         
-        // Provide user-friendly error messages
-        let errorMessage = 'Failed to access camera: ';
+    } catch (error) {
+        console.error('❌ Failed to start camera:', error);
+        console.error('📊 Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
+        
+        let errorMessage = 'Failed to access camera';
         if (error.name === 'NotAllowedError') {
-            errorMessage += 'Camera permission denied. Please allow camera access and try again.';
+            errorMessage = 'Camera permission denied. Please allow camera access and refresh the page.';
         } else if (error.name === 'NotFoundError') {
-            errorMessage += 'No camera found on this device.';
+            errorMessage = 'No camera found on this device.';
         } else if (error.name === 'NotReadableError') {
-            errorMessage += 'Camera is already in use by another application.';
+            errorMessage = 'Camera is already in use by another application.';
+        } else if (error.name === 'OverconstrainedError') {
+            errorMessage = 'Camera constraints not supported. Trying with basic settings...';
+            // Try again with minimal constraints
+            console.log('🔄 Retrying with minimal constraints...');
+            setTimeout(() => startCameraFallback(), 1000);
+            return;
+        } else if (error.message.includes('HTTPS') || error.message.includes('secure context')) {
+            errorMessage = 'Chrome requires HTTPS for camera access. Try:\n1. Use https://localhost:8080 instead of http://\n2. Or access via https://your-domain.com';
         } else {
-            errorMessage += error.message || 'Unknown error occurred.';
+            errorMessage += `: ${error.message}`;
+            
+            // Add Chrome-specific troubleshooting tips
+            if (navigator.userAgent.includes('Chrome')) {
+                errorMessage += '\n\n🔧 Chrome Troubleshooting:\n';
+                errorMessage += '1. Check chrome://settings/content/camera\n';
+                errorMessage += '2. Disable hardware acceleration: chrome://settings/system\n';
+                errorMessage += '3. Try Incognito mode\n';
+                errorMessage += '4. Restart Chrome completely';
+            }
         }
         
         alert(errorMessage);
-        
-        // Clean up on error
         stopCamera();
     }
 }
 
-function renderCameraFeed() {
-    if (!cameraState.active || !cameraState.video || !cameraState.canvas || !cameraState.ctx) {
-        return;
-    }
-    
-    const canvas = cameraState.canvas;
-    const ctx = cameraState.ctx;
-    const video = cameraState.video;
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Calculate aspect ratios for proper scaling
-    const canvasAspect = canvas.width / canvas.height;
-    const videoAspect = video.videoWidth / video.videoHeight;
-    
-    let drawWidth, drawHeight, drawX, drawY;
-    
-    if (videoAspect > canvasAspect) {
-        // Video is wider than canvas - fit to height
-        drawHeight = canvas.height;
-        drawWidth = drawHeight * videoAspect;
-        drawX = (canvas.width - drawWidth) / 2;
-        drawY = 0;
-    } else {
-        // Video is taller than canvas - fit to width
-        drawWidth = canvas.width;
-        drawHeight = drawWidth / videoAspect;
-        drawX = 0;
-        drawY = (canvas.height - drawHeight) / 2;
-    }
-    
-    // Draw video frame to canvas
-    ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
-    
-    // Continue animation loop
-    if (cameraState.active) {
-        cameraState.animationId = requestAnimationFrame(renderCameraFeed);
+// Fallback function for Chrome compatibility
+async function startCameraFallback() {
+    try {
+        console.log('🔄 Starting camera with fallback constraints...');
+        
+        const canvas = document.getElementById('cameraCanvas');
+        if (!canvas) return;
+        
+        // Minimal constraints for maximum compatibility
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: true
+        });
+        
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = true;
+        
+        await new Promise((resolve) => {
+            video.addEventListener('loadedmetadata', resolve, { once: true });
+        });
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const ctx = canvas.getContext('2d');
+        
+        cameraState.active = true;
+        cameraState.stream = stream;
+        cameraState.video = video;
+        cameraState.canvas = canvas;
+        cameraState.ctx = ctx;
+        
+        canvas.style.display = 'block';
+        
+        function renderCamera() {
+            if (!cameraState.active) return;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+                const canvasAspect = canvas.width / canvas.height;
+                const videoAspect = video.videoWidth / video.videoHeight;
+                
+                let drawWidth, drawHeight, drawX, drawY;
+                
+                if (videoAspect > canvasAspect) {
+                    drawHeight = canvas.height;
+                    drawWidth = drawHeight * videoAspect;
+                    drawX = (canvas.width - drawWidth) / 2;
+                    drawY = 0;
+                } else {
+                    drawWidth = canvas.width;
+                    drawHeight = drawWidth / videoAspect;
+                    drawX = 0;
+                    drawY = (canvas.height - drawHeight) / 2;
+                }
+                
+                ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+            }
+            
+            cameraState.animationId = requestAnimationFrame(renderCamera);
+        }
+        
+        renderCamera();
+        
+        // Switch streaming canvas to camera now that it's set up
+        console.log('🔄 Switching streaming to camera canvas (fallback)...');
+        switchStreamingCanvas();
+        
+        console.log('✅ Camera fallback successful');
+        
+    } catch (fallbackError) {
+        console.error('❌ Camera fallback also failed:', fallbackError);
+        alert('Camera access failed completely. Please check your browser settings.');
+        stopCamera();
     }
 }
 
+// renderCameraFeed function removed - now using WebGL texture integration
+
 function stopCamera() {
-    console.log('📹 Camera stopped');
-    
-    cameraState.active = false;
+    console.log('📹 Stopping simple camera...');
     
     // Stop animation loop
     if (cameraState.animationId) {
@@ -4472,20 +4584,26 @@ function stopCamera() {
         cameraState.stream = null;
     }
     
-    // Clean up video element
+    // Clear video element
     if (cameraState.video) {
         cameraState.video.srcObject = null;
         cameraState.video = null;
     }
     
-    // Clear canvas
-    if (cameraState.canvas && cameraState.ctx) {
-        cameraState.ctx.clearRect(0, 0, cameraState.canvas.width, cameraState.canvas.height);
+    // Hide and clear canvas
+    if (cameraState.canvas) {
+        cameraState.canvas.style.display = 'none';
+        if (cameraState.ctx) {
+            cameraState.ctx.clearRect(0, 0, cameraState.canvas.width, cameraState.canvas.height);
+        }
+        cameraState.canvas = null;
+        cameraState.ctx = null;
     }
     
     // Reset state
-    cameraState.canvas = null;
-    cameraState.ctx = null;
+    cameraState.active = false;
+    
+    console.log('🔄 Simple camera stopped');
 }
 
 async function startMedia() {
@@ -4743,6 +4861,9 @@ async function startAudioBlob() {
         audioBlobState.analyser.fftSize = 512;
         audioBlobState.analyser.smoothingTimeConstant = 0.8;
         
+        // Initialize frequency data array
+        audioBlobState.frequencyData = new Uint8Array(audioBlobState.analyser.frequencyBinCount);
+        
         // Connect audio graph:
         // microphone -> analyser (for visuals)
         //           -> delayNode -> previewGain -> destination (for preview)
@@ -4849,6 +4970,9 @@ function stopAudioBlob() {
         audioBlobState.audioStream.getTracks().forEach(track => track.stop());
         audioBlobState.audioStream = null;
     }
+    
+    // Clean up frequency data array
+    audioBlobState.frequencyData = null;
     
     // Hide canvas and controls
     if (audioBlobState.canvas) {
@@ -5635,16 +5759,30 @@ function removeAudioFromStream() {
 }
 
 function getStreamingCanvas() {
-    // Return active input canvas in priority order: camera > media > audio > fluid
-    if (cameraState.active && cameraState.canvas) {
-        return cameraState.canvas;
-    }
+    // Return active input canvas based on current input mode
+    // Priority: media > camera > audio > fluid (media gets highest priority when active)
+    console.log('🔍 Checking streaming canvas states:', {
+        media: mediaState.active,
+        camera: cameraState.active,
+        audio: audioBlobState.active,
+        mediaCanvas: !!mediaState.canvas,
+        cameraCanvas: !!cameraState.canvas,
+        audioCanvas: !!audioBlobState.canvas
+    });
+    
     if (mediaState.active && mediaState.canvas) {
+        console.log('📺 Streaming media canvas');
         return mediaState.canvas;
     }
+    if (cameraState.active && cameraState.canvas) {
+        console.log('📹 Streaming camera canvas');
+        return cameraState.canvas;
+    }
     if (audioBlobState.active && audioBlobState.canvas) {
+        console.log('🎵 Streaming audio canvas');
         return audioBlobState.canvas;
     }
+    console.log('🌊 Streaming fluid canvas (default)');
     return canvas; // Default to fluid canvas
 }
 
@@ -5664,11 +5802,24 @@ function switchStreamingCanvas(useAudioBlob = null) {
         }
         
         // Create new media stream from target canvas
+        console.log('🎥 Attempting to capture stream from canvas:', {
+            canvas: targetCanvas,
+            id: targetCanvas.id,
+            width: targetCanvas.width,
+            height: targetCanvas.height,
+            isConnected: targetCanvas.isConnected
+        });
+        
         const newMediaStream = targetCanvas.captureStream(30);
         if (!newMediaStream) {
-            console.error('Failed to capture stream from target canvas');
+            console.error('❌ Failed to capture stream from target canvas');
             return;
         }
+        
+        console.log('✅ Successfully captured stream from canvas:', {
+            streamId: newMediaStream.id,
+            tracks: newMediaStream.getTracks().length
+        });
         
         // Get video tracks from new stream
         const newVideoTracks = newMediaStream.getVideoTracks();
@@ -6969,7 +7120,7 @@ window.addEventListener('beforeunload', () => {
     }
     
     // Stop camera if active
-    if (cameraFeed.active) {
+    if (cameraState.active) {
         stopCamera();
     }
 });
