@@ -4316,12 +4316,32 @@ function initAudioBlobGL() {
                 float cycleTime = time * cyclingSpeed;
                 float colorIndex = floor(cycleTime);
                 
-                // Generate random cycling color based on current time step
-                vec3 cyclingColor = vec3(
-                    hash(vec2(colorIndex, 1.0)),
-                    hash(vec2(colorIndex, 2.0)),
-                    hash(vec2(colorIndex, 3.0))
-                );
+                // Generate vibrant random colors with better variation
+                // Use different large offsets to ensure variety
+                float r = hash(vec2(colorIndex * 0.1, 123.456));
+                float g = hash(vec2(colorIndex * 0.1 + 789.012, 345.678));
+                float b = hash(vec2(colorIndex * 0.1 + 456.789, 901.234));
+                
+                // Ensure colors are vibrant by boosting saturation
+                vec3 cyclingColor = vec3(r, g, b);
+                
+                // Convert to HSV-like space for better color distribution
+                float maxVal = max(max(r, g), b);
+                float minVal = min(min(r, g), b);
+                
+                // Boost saturation to make colors more vibrant
+                if (maxVal > minVal) {
+                    vec3 normalized = (cyclingColor - minVal) / (maxVal - minVal);
+                    cyclingColor = normalized * 0.8 + 0.2; // Ensure minimum brightness
+                } else {
+                    // Fallback for grayscale - create a pure color
+                    float hue = hash(vec2(colorIndex * 0.05, 567.890)) * 6.283;
+                    cyclingColor = vec3(
+                        sin(hue) * 0.5 + 0.5,
+                        sin(hue + 2.094) * 0.5 + 0.5,
+                        sin(hue + 4.188) * 0.5 + 0.5
+                    );
+                }
                 
                 finalColor = cyclingColor;
             }
