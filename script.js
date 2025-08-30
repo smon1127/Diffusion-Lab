@@ -4557,7 +4557,8 @@ function stopCompositeAnimation() {
 }
 
 function resizeCompositeCanvas() {
-    if (!compositeState.canvas) return;
+    // Guard against early calls before compositeState is initialized
+    if (typeof compositeState === 'undefined' || !compositeState || !compositeState.canvas) return;
     
     compositeState.canvas.width = canvas.width;
     compositeState.canvas.height = canvas.height;
