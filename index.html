@@ -1661,6 +1661,7 @@
         </div>
 
         <canvas></canvas>
+        <canvas id="audioBlobCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; display: none;"></canvas>
 
         <!-- Modern Control Panel -->
         <div class="control-panel" id="controlPanel">
@@ -1724,6 +1725,9 @@
                                 oncontextmenu="event.preventDefault(); copyStreamUrlToClipboard(true);"
                                 style="display: none;">
                             📋 Copy Stream URL
+                        </button>
+                        <button class="modern-button secondary" id="audioBlobButton" onclick="toggleAudioBlob()">
+                            🎵 Audio Blob
                         </button>
                     </div>
                 </div>

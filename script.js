@@ -3959,6 +3959,325 @@ function toggleStream() {
     }
 }
 
+// Audio Blob System
+let audioBlobState = {
+    active: false,
+    audioContext: null,
+    analyser: null,
+    microphone: null,
+    dataArray: null,
+    canvas: null,
+    gl: null,
+    animationId: null,
+    frequencyData: new Uint8Array(256),
+    bassLevel: 0,
+    midLevel: 0,
+    trebleLevel: 0
+};
+
+async function toggleAudioBlob() {
+    if (audioBlobState.active) {
+        stopAudioBlob();
+    } else {
+        await startAudioBlob();
+    }
+}
+
+async function startAudioBlob() {
+    try {
+        // Request microphone permission
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Initialize Web Audio API
+        audioBlobState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioBlobState.analyser = audioBlobState.audioContext.createAnalyser();
+        audioBlobState.microphone = audioBlobState.audioContext.createMediaStreamSource(stream);
+        
+        // Configure analyser
+        audioBlobState.analyser.fftSize = 512;
+        audioBlobState.analyser.smoothingTimeConstant = 0.8;
+        audioBlobState.microphone.connect(audioBlobState.analyser);
+        
+        // Get canvas and WebGL context
+        audioBlobState.canvas = document.getElementById('audioBlobCanvas');
+        audioBlobState.canvas.style.display = 'block';
+        resizeAudioCanvas();
+        
+        // Initialize WebGL for audio blob
+        initAudioBlobGL();
+        
+        // Update button state
+        const button = document.getElementById('audioBlobButton');
+        button.textContent = '🎵 Stop Audio';
+        button.classList.add('streaming');
+        
+        audioBlobState.active = true;
+        
+        // Start rendering loop
+        renderAudioBlob();
+        
+        console.log('Audio blob started successfully');
+        
+    } catch (error) {
+        console.error('Failed to start audio blob:', error);
+        alert('Failed to access microphone. Please check permissions.');
+    }
+}
+
+function stopAudioBlob() {
+    audioBlobState.active = false;
+    
+    // Stop animation
+    if (audioBlobState.animationId) {
+        cancelAnimationFrame(audioBlobState.animationId);
+    }
+    
+    // Clean up audio resources
+    if (audioBlobState.microphone) {
+        audioBlobState.microphone.disconnect();
+    }
+    if (audioBlobState.audioContext) {
+        audioBlobState.audioContext.close();
+    }
+    
+    // Hide canvas
+    if (audioBlobState.canvas) {
+        audioBlobState.canvas.style.display = 'none';
+    }
+    
+    // Update button state
+    const button = document.getElementById('audioBlobButton');
+    button.textContent = '🎵 Audio Blob';
+    button.classList.remove('streaming');
+    
+    console.log('Audio blob stopped');
+}
+
+function resizeAudioCanvas() {
+    if (!audioBlobState.canvas) return;
+    
+    audioBlobState.canvas.width = window.innerWidth;
+    audioBlobState.canvas.height = window.innerHeight;
+    
+    if (audioBlobState.gl) {
+        audioBlobState.gl.viewport(0, 0, audioBlobState.canvas.width, audioBlobState.canvas.height);
+    }
+}
+
+function initAudioBlobGL() {
+    const canvas = audioBlobState.canvas;
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    
+    if (!gl) {
+        console.error('WebGL not supported for audio blob');
+        return;
+    }
+    
+    audioBlobState.gl = gl;
+    
+    // Enable blending for transparency
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    
+    // Create shader program for audio blob
+    const vertexShaderSource = `
+        attribute vec2 a_position;
+        varying vec2 v_position;
+        
+        void main() {
+            v_position = a_position;
+            gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+    `;
+    
+    const fragmentShaderSource = `
+        precision mediump float;
+        varying vec2 v_position;
+        
+        uniform float u_time;
+        uniform float u_bassLevel;
+        uniform float u_midLevel;
+        uniform float u_trebleLevel;
+        uniform vec2 u_resolution;
+        
+        // Noise function for organic blob shape
+        float noise(vec2 p) {
+            return sin(p.x * 12.9898 + p.y * 78.233) * 43758.5453;
+        }
+        
+        float fbm(vec2 p) {
+            float f = 0.0;
+            f += 0.5 * sin(noise(p));
+            f += 0.25 * sin(noise(p * 2.0));
+            f += 0.125 * sin(noise(p * 4.0));
+            return f;
+        }
+        
+        void main() {
+            vec2 uv = (v_position + 1.0) * 0.5;
+            vec2 center = vec2(0.5, 0.5);
+            vec2 pos = uv - center;
+            
+            float dist = length(pos);
+            float angle = atan(pos.y, pos.x);
+            
+            // Audio-reactive blob parameters
+            float baseSize = 0.15 + u_bassLevel * 0.3;
+            float wobble = fbm(vec2(angle * 3.0, u_time * 2.0)) * 0.05;
+            float midWobble = sin(angle * 5.0 + u_time * 3.0) * u_midLevel * 0.02;
+            float trebleSpikes = sin(angle * 12.0 + u_time * 8.0) * u_trebleLevel * 0.015;
+            
+            float blobRadius = baseSize + wobble + midWobble + trebleSpikes;
+            
+            // Create soft blob edge
+            float edge = smoothstep(blobRadius + 0.05, blobRadius - 0.05, dist);
+            
+            // Audio-reactive colors
+            vec3 color = vec3(
+                0.0 + u_bassLevel * 0.8,
+                0.4 + u_midLevel * 0.6,
+                0.8 + u_trebleLevel * 0.2
+            );
+            
+            // Add glow effect
+            float glow = exp(-dist * 3.0) * 0.3;
+            color += vec3(glow * u_bassLevel);
+            
+            gl_FragColor = vec4(color, edge * 0.7);
+        }
+    `;
+    
+    // Create and compile shaders
+    const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+    const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+    
+    // Create shader program
+    audioBlobState.shaderProgram = createProgram(gl, vertexShader, fragmentShader);
+    
+    // Get uniform locations
+    audioBlobState.uniforms = {
+        time: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_time'),
+        bassLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bassLevel'),
+        midLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_midLevel'),
+        trebleLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_trebleLevel'),
+        resolution: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_resolution')
+    };
+    
+    // Create vertex buffer for full-screen quad
+    const positions = new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+         1,  1
+    ]);
+    
+    audioBlobState.positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+    
+    // Get attribute location
+    audioBlobState.positionAttributeLocation = gl.getAttribLocation(audioBlobState.shaderProgram, 'a_position');
+}
+
+function createShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+    }
+    
+    return shader;
+}
+
+function createProgram(gl, vertexShader, fragmentShader) {
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error('Program linking error:', gl.getProgramInfoLog(program));
+        gl.deleteProgram(program);
+        return null;
+    }
+    
+    return program;
+}
+
+function analyzeAudio() {
+    if (!audioBlobState.analyser) return;
+    
+    audioBlobState.analyser.getByteFrequencyData(audioBlobState.frequencyData);
+    
+    // Analyze frequency bands
+    const bufferLength = audioBlobState.frequencyData.length;
+    const bassEnd = Math.floor(bufferLength * 0.1);
+    const midEnd = Math.floor(bufferLength * 0.4);
+    
+    // Calculate average levels for different frequency ranges
+    let bassSum = 0, midSum = 0, trebleSum = 0;
+    
+    for (let i = 0; i < bassEnd; i++) {
+        bassSum += audioBlobState.frequencyData[i];
+    }
+    for (let i = bassEnd; i < midEnd; i++) {
+        midSum += audioBlobState.frequencyData[i];
+    }
+    for (let i = midEnd; i < bufferLength; i++) {
+        trebleSum += audioBlobState.frequencyData[i];
+    }
+    
+    // Normalize levels (0-1)
+    audioBlobState.bassLevel = (bassSum / bassEnd) / 255;
+    audioBlobState.midLevel = (midSum / (midEnd - bassEnd)) / 255;
+    audioBlobState.trebleLevel = (trebleSum / (bufferLength - midEnd)) / 255;
+}
+
+function renderAudioBlob() {
+    if (!audioBlobState.active || !audioBlobState.gl) return;
+    
+    const gl = audioBlobState.gl;
+    
+    // Analyze audio
+    analyzeAudio();
+    
+    // Clear canvas
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    
+    // Use shader program
+    gl.useProgram(audioBlobState.shaderProgram);
+    
+    // Set uniforms
+    gl.uniform1f(audioBlobState.uniforms.time, Date.now() * 0.001);
+    gl.uniform1f(audioBlobState.uniforms.bassLevel, audioBlobState.bassLevel);
+    gl.uniform1f(audioBlobState.uniforms.midLevel, audioBlobState.midLevel);
+    gl.uniform1f(audioBlobState.uniforms.trebleLevel, audioBlobState.trebleLevel);
+    gl.uniform2f(audioBlobState.uniforms.resolution, audioBlobState.canvas.width, audioBlobState.canvas.height);
+    
+    // Set up vertex attributes
+    gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
+    gl.enableVertexAttribArray(audioBlobState.positionAttributeLocation);
+    gl.vertexAttribPointer(audioBlobState.positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+    
+    // Draw
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    
+    // Continue animation
+    audioBlobState.animationId = requestAnimationFrame(renderAudioBlob);
+}
+
+// Handle window resize for audio blob
+window.addEventListener('resize', () => {
+    if (audioBlobState.active) {
+        resizeAudioCanvas();
+    }
+});
+
 // Add parameter change listeners with debouncing
 function initializeStreamParameterListeners() {
     const promptInput = document.getElementById('promptInput');
