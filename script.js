@@ -86,6 +86,45 @@ let config = {
     BACKGROUND_IMAGE_SCALE: 1.0, // 0.1-2.0 range - Controls background image size (1.0 = fit to viewport)
 }
 
+// Local Storage Keys - Moved to top to avoid hoisting issues
+const STORAGE_PREFIX = 'fluidSim_';
+const STORAGE_KEYS = {
+    CONFIG: STORAGE_PREFIX + 'config',
+    API_KEY: STORAGE_PREFIX + 'apiKey',
+    PROMPTS: STORAGE_PREFIX + 'prompts',
+    API_KEY_CONSENT: STORAGE_PREFIX + 'apiKeyConsent',
+    STREAM_STATE: STORAGE_PREFIX + 'streamState'
+};
+
+// Audio Blob System - Moved to top to avoid hoisting issues
+let audioBlobState = {
+    active: false,
+    audioContext: null,
+    analyser: null,
+    microphone: null,
+    dataArray: null,
+    canvas: null,
+    gl: null,
+    animationId: null,
+    frequencyData: new Uint8Array(256),
+    bassLevel: 0,
+    midLevel: 0,
+    trebleLevel: 0,
+    reactivity: 1.0,
+    delay: 0,
+    opacity: 0.8,
+    colorful: 0.3,
+    color: { r: 0, g: 0.831, b: 1 },
+    selectedDeviceId: null,
+    audioStream: null,
+    delayBuffer: [],
+    delayIndex: 0,
+    mainShaderProgram: null,
+    mainUniforms: null,
+    mainPositionBuffer: null,
+    mainPositionAttributeLocation: null
+};
+
 // Idle Animation System
 let idleAnimationEnabled = true;
 let lastActivityTime = Date.now();
@@ -3432,30 +3471,7 @@ let streamState = {
     isUpdatingParameters: false
 };
 
-// Audio Blob System
-let audioBlobState = {
-    active: false,
-    audioContext: null,
-    analyser: null,
-    microphone: null,
-    dataArray: null,
-    canvas: null,
-    gl: null,
-    animationId: null,
-    frequencyData: new Uint8Array(256),
-    bassLevel: 0,
-    midLevel: 0,
-    trebleLevel: 0,
-    reactivity: 1.0,
-    delay: 0,
-    opacity: 0.8,
-    colorful: 0.3,
-    color: { r: 0, g: 0.831, b: 1 },
-    selectedDeviceId: null,
-    audioStream: null,
-    delayBuffer: [],
-    delayIndex: 0
-};
+
 
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
 const PIPELINE_ID = 'pip_qpUgXycjWF6YMeSL';
@@ -5137,14 +5153,7 @@ function updateSliderPosition(sliderName) {
 }
 
 // Local Storage Management
-const STORAGE_PREFIX = 'fluidSim_';
-const STORAGE_KEYS = {
-    CONFIG: STORAGE_PREFIX + 'config',
-    API_KEY: STORAGE_PREFIX + 'apiKey',
-    PROMPTS: STORAGE_PREFIX + 'prompts',
-    API_KEY_CONSENT: STORAGE_PREFIX + 'apiKeyConsent',
-    STREAM_STATE: STORAGE_PREFIX + 'streamState'
-};
+
 
 function isLocalStorageAvailable() {
     try {
