@@ -125,6 +125,14 @@ let audioBlobState = {
     mainPositionAttributeLocation: null
 };
 
+// Composite Canvas System for Streaming
+let compositeState = {
+    canvas: null,
+    ctx: null,
+    stream: null,
+    animationId: null
+};
+
 // Idle Animation System
 let idleAnimationEnabled = true;
 let lastActivityTime = Date.now();
@@ -2640,6 +2648,10 @@ function resizeCanvas () {
     if (canvas.width != width || canvas.height != height) {
         canvas.width = width;
         canvas.height = height;
+        
+        // Also resize composite canvas if it exists
+        resizeCompositeCanvas();
+        
         return true;
     }
     return false;
@@ -2882,11 +2894,6 @@ function drawDisplay (target) {
     if (config.SUNRAYS)
         gl.uniform1i(displayMaterial.uniforms.uSunrays, sunrays.attach(3));
     blit(target);
-    
-    // Render audio blob overlay if active
-    if (audioBlobState.active && target == null) {
-        renderAudioBlobOverlay();
-    }
 }
 
 function applyBloom (source, destination) {
@@ -3828,11 +3835,17 @@ async function startStream() {
             throw new Error('Please enter your Daydream API key');
         }
         
-        // Create canvas media stream
-        streamState.mediaStream = canvas.captureStream(30);
+        // Initialize composite canvas for dual-canvas streaming
+        initCompositeCanvas();
+        startCompositeAnimation();
+        
+        // Create composite canvas media stream (combines fluid + audio blob)
+        streamState.mediaStream = compositeState.canvas.captureStream(30);
         if (!streamState.mediaStream) {
-            throw new Error('Failed to capture canvas stream');
+            throw new Error('Failed to capture composite canvas stream');
         }
+        
+        console.log('✅ Using composite canvas for streaming (fluid + audio blob)');
         
         // Try to load and validate existing stream first
         savedStream = loadStreamState();
@@ -3976,6 +3989,9 @@ function stopStream() {
         streamState.mediaStream = null;
     }
     
+    // Stop composite canvas animation
+    stopCompositeAnimation();
+    
     // Clean up popup window only if it's closed or we're fully stopping
     if (streamState.popupWindow && streamState.popupWindow.closed) {
         streamState.popupWindow = null;
@@ -4077,9 +4093,6 @@ async function startAudioBlob() {
         
         audioBlobState.active = true;
         
-        // Integrate with media stream if streaming is active
-        await integrateAudioWithStream();
-        
         // Start rendering loop
         renderAudioBlob();
         
@@ -4124,9 +4137,6 @@ function stopAudioBlob() {
     const button = document.getElementById('audioBlobButton');
     button.textContent = '🎵 Audio Blob';
     button.classList.remove('streaming');
-    
-    // Remove audio from media stream if streaming
-    removeAudioFromStream();
     
     console.log('Audio blob stopped');
 }
@@ -4497,61 +4507,60 @@ function analyzeAudio() {
     }
 }
 
-// Render audio blob overlay onto main canvas (for streaming integration)
-function renderAudioBlobOverlay() {
-    if (!audioBlobState.active) return;
+// Composite Canvas System for Streaming Both Canvases Together
+function initCompositeCanvas() {
+    if (!compositeState.canvas) {
+        compositeState.canvas = document.createElement('canvas');
+        compositeState.ctx = compositeState.canvas.getContext('2d');
+        
+        // Match the main canvas dimensions
+        compositeState.canvas.width = canvas.width;
+        compositeState.canvas.height = canvas.height;
+        
+        console.log('✅ Composite canvas initialized for dual-canvas streaming');
+    }
+}
+
+function updateCompositeCanvas() {
+    if (!compositeState.canvas || !compositeState.ctx) return;
     
-    // Analyze audio
-    analyzeAudio();
+    // Clear composite canvas
+    compositeState.ctx.clearRect(0, 0, compositeState.canvas.width, compositeState.canvas.height);
     
-    // Use the main audio blob shader program on main WebGL context
-    if (!audioBlobState.mainShaderProgram) {
-        initMainAudioBlobShader();
+    // Draw main fluid canvas as background
+    compositeState.ctx.drawImage(canvas, 0, 0);
+    
+    // Draw audio blob canvas on top (if active)
+    if (audioBlobState.active && audioBlobState.canvas && audioBlobState.canvas.style.display !== 'none') {
+        compositeState.ctx.drawImage(audioBlobState.canvas, 0, 0);
+    }
+}
+
+function startCompositeAnimation() {
+    if (compositeState.animationId) return; // Already running
+    
+    function animate() {
+        updateCompositeCanvas();
+        compositeState.animationId = requestAnimationFrame(animate);
     }
     
-    if (audioBlobState.mainShaderProgram) {
-        // Save the current buffer binding to restore later
-        const previousBuffer = gl.getParameter(gl.ARRAY_BUFFER_BINDING);
-        
-        // Enable blending for overlay - this should blend with existing content
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        
-        gl.useProgram(audioBlobState.mainShaderProgram);
-        
-        // Set uniforms
-        gl.uniform1f(audioBlobState.mainUniforms.time, Date.now() * 0.001);
-        gl.uniform1f(audioBlobState.mainUniforms.bassLevel, audioBlobState.bassLevel);
-        gl.uniform1f(audioBlobState.mainUniforms.midLevel, audioBlobState.midLevel);
-        gl.uniform1f(audioBlobState.mainUniforms.trebleLevel, audioBlobState.trebleLevel);
-        gl.uniform2f(audioBlobState.mainUniforms.resolution, canvas.width, canvas.height);
-        gl.uniform3f(audioBlobState.mainUniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
-        gl.uniform1f(audioBlobState.mainUniforms.opacity, audioBlobState.opacity);
-        gl.uniform1f(audioBlobState.mainUniforms.colorful, audioBlobState.colorful);
-        
-        // Set bloom and sunrays uniforms based on global config
-        gl.uniform1i(audioBlobState.mainUniforms.bloom, config.BLOOM ? 1 : 0);
-        gl.uniform1i(audioBlobState.mainUniforms.sunrays, config.SUNRAYS ? 1 : 0);
-        gl.uniform1f(audioBlobState.mainUniforms.bloomIntensity, config.BLOOM_INTENSITY);
-        gl.uniform1f(audioBlobState.mainUniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
-        
-        // Set up vertex attributes
-        gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.mainPositionBuffer);
-        gl.enableVertexAttribArray(audioBlobState.mainPositionAttributeLocation);
-        gl.vertexAttribPointer(audioBlobState.mainPositionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
-        
-        // Draw audio blob overlay
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-        
-        // Clean up: disable vertex attribute array and restore fluid blend function
-        gl.disableVertexAttribArray(audioBlobState.mainPositionAttributeLocation);
-        
-        // Restore the blend function that the fluid system expects
-        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-        
-        // Restore the previous buffer binding so blit() works correctly
-        gl.bindBuffer(gl.ARRAY_BUFFER, previousBuffer);
+    animate();
+    console.log('✅ Composite canvas animation started');
+}
+
+function stopCompositeAnimation() {
+    if (compositeState.animationId) {
+        cancelAnimationFrame(compositeState.animationId);
+        compositeState.animationId = null;
+        console.log('🛑 Composite canvas animation stopped');
     }
+}
+
+function resizeCompositeCanvas() {
+    if (!compositeState.canvas) return;
+    
+    compositeState.canvas.width = canvas.width;
+    compositeState.canvas.height = canvas.height;
 }
 
 // Legacy function for separate canvas (still used for preview)
