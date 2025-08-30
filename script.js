@@ -4304,33 +4304,48 @@ function initAudioBlobGL() {
             vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel; // Blue for treble
             vec3 audioColor = bassColor + midColor + trebleColor;
             
-            // Time-based color cycling controlled by u_colorful slider
-            float cyclingSpeed = u_colorful * 2.0; // Speed multiplier (0 = no cycling, 1 = 2x speed)
-            float colorCycleTime = time * cyclingSpeed;
+            // Random color cycling controlled by u_colorful slider
+            float cyclingSpeed = 1.0 + u_colorful * 3.0; // Always cycling, speed increases with colorful
             
-            // HSV color cycling - cycle through full spectrum over time
-            float hue = fract(colorCycleTime * 0.1 + audioIntensity * 0.2); // Slow base cycle with audio influence
-            vec3 cycledColor = vec3(
-                abs(hue * 6.0 - 3.0) - 1.0,
-                2.0 - abs(hue * 6.0 - 2.0),
-                2.0 - abs(hue * 6.0 - 4.0)
-            );
-            cycledColor = clamp(cycledColor, 0.0, 1.0);
+            // Generate random colors using time-based noise
+            float timeSlowCycle = time * 0.3; // Slow color changes
+            float timeFastCycle = time * cyclingSpeed * 0.5; // Faster changes based on colorful
             
-            // Additional rainbow wave that moves around the blob
-            vec3 rainbowWave = vec3(
-                sin(angle * 3.0 + colorCycleTime * 1.5) * 0.5 + 0.5,
-                sin(angle * 3.0 + colorCycleTime * 1.5 + 2.094) * 0.5 + 0.5,  // 2π/3 offset
-                sin(angle * 3.0 + colorCycleTime * 1.5 + 4.188) * 0.5 + 0.5   // 4π/3 offset
+            // Create multiple random color variations using different time seeds
+            vec3 randomColor1 = vec3(
+                hash(vec2(floor(timeFastCycle * 2.0), 1.0)),
+                hash(vec2(floor(timeFastCycle * 2.0), 2.0)),
+                hash(vec2(floor(timeFastCycle * 2.0), 3.0))
             );
+            
+            vec3 randomColor2 = vec3(
+                hash(vec2(floor(timeFastCycle * 1.5 + 10.0), 4.0)),
+                hash(vec2(floor(timeFastCycle * 1.5 + 10.0), 5.0)),
+                hash(vec2(floor(timeFastCycle * 1.5 + 10.0), 6.0))
+            );
+            
+            vec3 randomColor3 = vec3(
+                hash(vec2(floor(timeSlowCycle + 20.0), 7.0)),
+                hash(vec2(floor(timeSlowCycle + 20.0), 8.0)),
+                hash(vec2(floor(timeSlowCycle + 20.0), 9.0))
+            );
+            
+            // Blend random colors for variety
+            float blendNoise = hash(vec2(floor(time * 0.8), 10.0));
+            vec3 randomColor = mix(mix(randomColor1, randomColor2, blendNoise), randomColor3, 0.3);
+            
+            // Probability-based color selection
+            float colorProbability = hash(vec2(floor(time * 2.0), 11.0)); // Random probability each cycle
+            float baseColorChance = 1.0 - u_colorful; // More colorful = less base color chance
+            
+            // Choose between base color and random color based on probability
+            vec3 selectedColor = (colorProbability < baseColorChance) ? baseColor : randomColor;
             
             // Create pulsing effect synchronized with audio
             float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
             
-            // Mix colors based on u_colorful parameter (0 = base color only, 1 = full cycling)
-            vec3 color = baseColor * (1.0 - u_colorful) * colorPulse; // Base color fades as colorful increases
-            color += mix(baseColor, cycledColor, u_colorful) * (0.7 + audioIntensity * 0.3); // Main cycling color
-            color += rainbowWave * u_colorful * audioIntensity * 0.4; // Rainbow wave overlay
+            // Final color mixing - always show some base influence, but random colors dominate as colorful increases
+            vec3 color = selectedColor * colorPulse;
             color += audioColor * (0.3 + u_colorful * 0.2); // Audio-reactive colors
             
             // Enhanced glow effects
