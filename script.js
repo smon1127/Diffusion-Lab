@@ -4304,48 +4304,50 @@ function initAudioBlobGL() {
             vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel; // Blue for treble
             vec3 audioColor = bassColor + midColor + trebleColor;
             
-            // Random color cycling controlled by u_colorful slider
-            float cyclingSpeed = 1.0 + u_colorful * 3.0; // Always cycling, speed increases with colorful
+            // Fast color cycling controlled by u_colorful slider
+            float cyclingFrequency = u_colorful * 3.0; // 0 = no cycling, 1 = 3 Hz (3 colors per second)
+            float cycleTime = time * cyclingFrequency;
             
-            // Generate random colors using time-based noise
-            float timeSlowCycle = time * 0.3; // Slow color changes
-            float timeFastCycle = time * cyclingSpeed * 0.5; // Faster changes based on colorful
+            // Create discrete color steps for flashing effect
+            float colorIndex = floor(cycleTime);
             
-            // Create multiple random color variations using different time seeds
-            vec3 randomColor1 = vec3(
-                hash(vec2(floor(timeFastCycle * 2.0), 1.0)),
-                hash(vec2(floor(timeFastCycle * 2.0), 2.0)),
-                hash(vec2(floor(timeFastCycle * 2.0), 3.0))
+            // Generate 3 different random colors that cycle
+            vec3 color1 = vec3(
+                hash(vec2(colorIndex, 1.0)),
+                hash(vec2(colorIndex, 2.0)),
+                hash(vec2(colorIndex, 3.0))
             );
             
-            vec3 randomColor2 = vec3(
-                hash(vec2(floor(timeFastCycle * 1.5 + 10.0), 4.0)),
-                hash(vec2(floor(timeFastCycle * 1.5 + 10.0), 5.0)),
-                hash(vec2(floor(timeFastCycle * 1.5 + 10.0), 6.0))
+            vec3 color2 = vec3(
+                hash(vec2(colorIndex + 100.0, 4.0)),
+                hash(vec2(colorIndex + 100.0, 5.0)),
+                hash(vec2(colorIndex + 100.0, 6.0))
             );
             
-            vec3 randomColor3 = vec3(
-                hash(vec2(floor(timeSlowCycle + 20.0), 7.0)),
-                hash(vec2(floor(timeSlowCycle + 20.0), 8.0)),
-                hash(vec2(floor(timeSlowCycle + 20.0), 9.0))
+            vec3 color3 = vec3(
+                hash(vec2(colorIndex + 200.0, 7.0)),
+                hash(vec2(colorIndex + 200.0, 8.0)),
+                hash(vec2(colorIndex + 200.0, 9.0))
             );
             
-            // Blend random colors for variety
-            float blendNoise = hash(vec2(floor(time * 0.8), 10.0));
-            vec3 randomColor = mix(mix(randomColor1, randomColor2, blendNoise), randomColor3, 0.3);
+            // Cycle between the 3 colors based on time
+            float cyclePhase = fract(cycleTime / 3.0) * 3.0;
+            vec3 cyclingColor;
             
-            // Probability-based color selection
-            float colorProbability = hash(vec2(floor(time * 2.0), 11.0)); // Random probability each cycle
-            float baseColorChance = 1.0 - u_colorful; // More colorful = less base color chance
-            
-            // Choose between base color and random color based on probability
-            vec3 selectedColor = (colorProbability < baseColorChance) ? baseColor : randomColor;
+            if (cyclePhase < 1.0) {
+                cyclingColor = color1;
+            } else if (cyclePhase < 2.0) {
+                cyclingColor = color2;
+            } else {
+                cyclingColor = color3;
+            }
             
             // Create pulsing effect synchronized with audio
             float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
             
-            // Final color mixing - always show some base influence, but random colors dominate as colorful increases
-            vec3 color = selectedColor * colorPulse;
+            // Mix base color with cycling colors based on u_colorful
+            // colorful = 0: pure base color, colorful = 1: pure cycling colors
+            vec3 color = mix(baseColor, cyclingColor, u_colorful) * colorPulse;
             color += audioColor * (0.3 + u_colorful * 0.2); // Audio-reactive colors
             
             // Enhanced glow effects
