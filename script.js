@@ -4295,43 +4295,43 @@ function initAudioBlobGL() {
             // Create soft blob edge
             float edge = smoothstep(blobRadius + 0.05, blobRadius - 0.05, dist);
             
-            // Enhanced audio-reactive colors with colorful control
+            // Enhanced audio-reactive colors with time-based cycling control
             vec3 baseColor = u_baseColor;
             
             // Create color variations based on frequency bands
             vec3 bassColor = vec3(1.0, 0.3, 0.1) * u_bassLevel; // Warm red/orange for bass
             vec3 midColor = vec3(0.1, 1.0, 0.3) * u_midLevel;   // Green for mids
             vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel; // Blue for treble
+            vec3 audioColor = bassColor + midColor + trebleColor;
             
-            // Rainbow spectrum colors that shift with time and position
-            vec3 rainbowColor = vec3(
-                sin(angle * 2.0 + time * 1.5) * 0.5 + 0.5,
-                sin(angle * 2.0 + time * 1.5 + 2.094) * 0.5 + 0.5,  // 2π/3 offset
-                sin(angle * 2.0 + time * 1.5 + 4.188) * 0.5 + 0.5   // 4π/3 offset
-            );
+            // Time-based color cycling controlled by u_colorful slider
+            float cyclingSpeed = u_colorful * 2.0; // Speed multiplier (0 = no cycling, 1 = 2x speed)
+            float colorCycleTime = time * cyclingSpeed;
             
-            // HSV-style color cycling
-            float hue = fract(angle / 6.283 + time * 0.1 + audioIntensity * 0.3);
-            vec3 hsvColor = vec3(
+            // HSV color cycling - cycle through full spectrum over time
+            float hue = fract(colorCycleTime * 0.1 + audioIntensity * 0.2); // Slow base cycle with audio influence
+            vec3 cycledColor = vec3(
                 abs(hue * 6.0 - 3.0) - 1.0,
                 2.0 - abs(hue * 6.0 - 2.0),
                 2.0 - abs(hue * 6.0 - 4.0)
             );
-            hsvColor = clamp(hsvColor, 0.0, 1.0);
+            cycledColor = clamp(cycledColor, 0.0, 1.0);
             
-            // Blend different color sources based on colorful parameter
-            vec3 audioColor = bassColor + midColor + trebleColor;
-            vec3 spectrumColor = mix(rainbowColor, hsvColor, 0.5) * audioIntensity;
+            // Additional rainbow wave that moves around the blob
+            vec3 rainbowWave = vec3(
+                sin(angle * 3.0 + colorCycleTime * 1.5) * 0.5 + 0.5,
+                sin(angle * 3.0 + colorCycleTime * 1.5 + 2.094) * 0.5 + 0.5,  // 2π/3 offset
+                sin(angle * 3.0 + colorCycleTime * 1.5 + 4.188) * 0.5 + 0.5   // 4π/3 offset
+            );
             
-            // Create color waves that move with the music
-            float colorWave = sin(angle * 3.0 + time * 2.0) * 0.5 + 0.5;
+            // Create pulsing effect synchronized with audio
             float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
             
-            // Mix base color with colorful effects based on u_colorful parameter
-            vec3 color = baseColor * (1.0 - u_colorful * 0.7) * colorPulse;
-            color += audioColor * (0.4 + u_colorful * 0.4);
-            color += spectrumColor * u_colorful * 0.6;
-            color += baseColor * colorWave * audioIntensity * 0.2 * (1.0 - u_colorful * 0.5);
+            // Mix colors based on u_colorful parameter (0 = base color only, 1 = full cycling)
+            vec3 color = baseColor * (1.0 - u_colorful) * colorPulse; // Base color fades as colorful increases
+            color += mix(baseColor, cycledColor, u_colorful) * (0.7 + audioIntensity * 0.3); // Main cycling color
+            color += rainbowWave * u_colorful * audioIntensity * 0.4; // Rainbow wave overlay
+            color += audioColor * (0.3 + u_colorful * 0.2); // Audio-reactive colors
             
             // Enhanced glow effects
             float innerGlow = exp(-dist * 4.0) * 0.4 * audioIntensity;
