@@ -4355,16 +4355,6 @@ function loadApiKey() {
     updateApiInstructions();
 }
 
-function updateApiInstructions() {
-    const apiKeyInput = document.getElementById('apiKeyInput');
-    const apiInstructions = document.getElementById('apiInstructions');
-    
-    if (apiKeyInput && apiInstructions) {
-        const hasApiKey = apiKeyInput.value.trim().length > 0;
-        apiInstructions.style.display = hasApiKey ? 'none' : 'block';
-    }
-}
-
 // Welcome overlay functions
 function showWelcomeOverlay() {
     const overlay = document.getElementById('welcomeOverlay');
@@ -4626,7 +4616,7 @@ function clearAllSettings() {
         const apiKeyInput = document.getElementById('apiKeyInput');
         const consentCheckbox = document.getElementById('apiKeyConsent');
         
-        if (promptInput) promptInput.value = 'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere';
+        if (promptInput) promptInput.value = 'superman';
         if (negativePromptInput) negativePromptInput.value = 'blurry, low quality, flat, 2d';
         if (apiKeyInput) apiKeyInput.value = '';
         if (consentCheckbox) consentCheckbox.checked = false;
@@ -4727,7 +4717,6 @@ function setupInputSaveHandlers() {
         apiKeyInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') saveApiKey();
         });
-        apiKeyInput.addEventListener('input', updateApiInstructions);
     }
     
     if (consentCheckbox) {

@@ -705,17 +705,6 @@ function setPrompt(promptText) {
         // Save the new prompt
         savePrompts();
         
-        // Update active state for preset buttons
-        const presetButtons = document.querySelectorAll('.preset-btn');
-        presetButtons.forEach(button => {
-            button.classList.remove('active');
-            // Check if this button's prompt matches the current prompt
-            const buttonPrompt = button.getAttribute('onclick').match(/setPrompt\('([^']+)'\)/);
-            if (buttonPrompt && buttonPrompt[1] === promptText) {
-                button.classList.add('active');
-            }
-        });
-        
         // Trigger parameter update if stream is active
         if (streamState.streamId) {
             debouncedParameterUpdate();
@@ -4310,7 +4299,7 @@ function loadPrompts() {
 function saveApiKey() {
     const apiKeyInput = document.getElementById('apiKeyInput');
     const consentCheckbox = document.getElementById('apiKeyConsent');
-
+    
     if (apiKeyInput && consentCheckbox && consentCheckbox.checked) {
         const apiKey = apiKeyInput.value.trim();
         if (apiKey) {
@@ -4318,9 +4307,6 @@ function saveApiKey() {
             saveToLocalStorage(STORAGE_KEYS.API_KEY_CONSENT, true);
         }
     }
-    
-    // Update API instructions visibility
-    updateApiInstructions();
 }
 
 function getApiKey() {
@@ -4349,19 +4335,6 @@ function loadApiKey() {
                 consentCheckbox.checked = true;
             }
         }
-    }
-    
-    // Update API instructions visibility
-    updateApiInstructions();
-}
-
-function updateApiInstructions() {
-    const apiKeyInput = document.getElementById('apiKeyInput');
-    const apiInstructions = document.getElementById('apiInstructions');
-    
-    if (apiKeyInput && apiInstructions) {
-        const hasApiKey = apiKeyInput.value.trim().length > 0;
-        apiInstructions.style.display = hasApiKey ? 'none' : 'block';
     }
 }
 
@@ -4626,7 +4599,7 @@ function clearAllSettings() {
         const apiKeyInput = document.getElementById('apiKeyInput');
         const consentCheckbox = document.getElementById('apiKeyConsent');
         
-        if (promptInput) promptInput.value = 'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere';
+        if (promptInput) promptInput.value = 'superman';
         if (negativePromptInput) negativePromptInput.value = 'blurry, low quality, flat, 2d';
         if (apiKeyInput) apiKeyInput.value = '';
         if (consentCheckbox) consentCheckbox.checked = false;
@@ -4727,7 +4700,6 @@ function setupInputSaveHandlers() {
         apiKeyInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') saveApiKey();
         });
-        apiKeyInput.addEventListener('input', updateApiInstructions);
     }
     
     if (consentCheckbox) {

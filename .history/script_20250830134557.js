@@ -4626,7 +4626,7 @@ function clearAllSettings() {
         const apiKeyInput = document.getElementById('apiKeyInput');
         const consentCheckbox = document.getElementById('apiKeyConsent');
         
-        if (promptInput) promptInput.value = 'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere';
+        if (promptInput) promptInput.value = 'superman';
         if (negativePromptInput) negativePromptInput.value = 'blurry, low quality, flat, 2d';
         if (apiKeyInput) apiKeyInput.value = '';
         if (consentCheckbox) consentCheckbox.checked = false;
