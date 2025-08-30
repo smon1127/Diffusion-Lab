@@ -2037,6 +2037,20 @@
                                 </div>
                                 
                                 <div class="control-item">
+                                    <div class="control-label">
+                                        <span>Colorful <div class="tooltip"><span class="info-icon">i</span>
+                                            <span class="tooltiptext">Color vibrancy: 0 = base color only, 1 = full rainbow spectrum</span>
+                                        </div></span>
+                                        <span class="control-value" id="audioColorfulValue">0.3</span>
+                                    </div>
+                                    <div class="slider-container" onclick="handleSliderClick(event, 'audioColorful', 0, 1)">
+                                        <div class="slider-fill" id="audioColorfulFill" style="width: 30%">
+                                            <div class="slider-handle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
                                     <div class="color-container full">
                                         <span class="color-label">Blob Color</span>
                                         <input type="text" id="audioBlobColorPicker" class="color-input" value="#00d4ff" data-coloris readonly inputmode="none">

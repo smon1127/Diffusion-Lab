@@ -410,7 +410,8 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true },
         'audioReactivity': { min: 0.1, max: 3.0, prop: 'AUDIO_REACTIVITY', decimals: 1, handler: updateAudioReactivity },
         'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay },
-        'audioOpacity': { min: 0, max: 1, prop: 'AUDIO_OPACITY', decimals: 2, handler: updateAudioOpacity }
+        'audioOpacity': { min: 0, max: 1, prop: 'AUDIO_OPACITY', decimals: 2, handler: updateAudioOpacity },
+        'audioColorful': { min: 0, max: 1, prop: 'AUDIO_COLORFUL', decimals: 1, handler: updateAudioColorful }
     };
     
     const slider = sliderMap[sliderName];
@@ -3443,6 +3444,7 @@ let audioBlobState = {
     reactivity: 1.0,
     delay: 0,
     opacity: 0.8,
+    colorful: 0.3,
     color: { r: 0, g: 0.831, b: 1 },
     selectedDeviceId: null,
     audioStream: null,
@@ -4156,6 +4158,7 @@ function initAudioBlobGL() {
         uniform vec2 u_resolution;
         uniform vec3 u_baseColor;
         uniform float u_opacity;
+        uniform float u_colorful;
         
         // Enhanced noise functions for organic blob shape
         float hash(vec2 p) {
@@ -4246,7 +4249,7 @@ function initAudioBlobGL() {
             // Create soft blob edge
             float edge = smoothstep(blobRadius + 0.05, blobRadius - 0.05, dist);
             
-            // Enhanced audio-reactive colors
+            // Enhanced audio-reactive colors with colorful control
             vec3 baseColor = u_baseColor;
             
             // Create color variations based on frequency bands
@@ -4254,16 +4257,35 @@ function initAudioBlobGL() {
             vec3 midColor = vec3(0.1, 1.0, 0.3) * u_midLevel;   // Green for mids
             vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel; // Blue for treble
             
-            // Blend colors based on audio intensity
+            // Rainbow spectrum colors that shift with time and position
+            vec3 rainbowColor = vec3(
+                sin(angle * 2.0 + time * 1.5) * 0.5 + 0.5,
+                sin(angle * 2.0 + time * 1.5 + 2.094) * 0.5 + 0.5,  // 2π/3 offset
+                sin(angle * 2.0 + time * 1.5 + 4.188) * 0.5 + 0.5   // 4π/3 offset
+            );
+            
+            // HSV-style color cycling
+            float hue = fract(angle / 6.283 + time * 0.1 + audioIntensity * 0.3);
+            vec3 hsvColor = vec3(
+                abs(hue * 6.0 - 3.0) - 1.0,
+                2.0 - abs(hue * 6.0 - 2.0),
+                2.0 - abs(hue * 6.0 - 4.0)
+            );
+            hsvColor = clamp(hsvColor, 0.0, 1.0);
+            
+            // Blend different color sources based on colorful parameter
             vec3 audioColor = bassColor + midColor + trebleColor;
+            vec3 spectrumColor = mix(rainbowColor, hsvColor, 0.5) * audioIntensity;
             
             // Create color waves that move with the music
             float colorWave = sin(angle * 3.0 + time * 2.0) * 0.5 + 0.5;
             float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
             
-            // Final color mixing
-            vec3 color = baseColor * colorPulse + audioColor * 0.4;
-            color += baseColor * colorWave * audioIntensity * 0.2;
+            // Mix base color with colorful effects based on u_colorful parameter
+            vec3 color = baseColor * (1.0 - u_colorful * 0.7) * colorPulse;
+            color += audioColor * (0.4 + u_colorful * 0.4);
+            color += spectrumColor * u_colorful * 0.6;
+            color += baseColor * colorWave * audioIntensity * 0.2 * (1.0 - u_colorful * 0.5);
             
             // Enhanced glow effects
             float innerGlow = exp(-dist * 4.0) * 0.4 * audioIntensity;
@@ -4290,7 +4312,8 @@ function initAudioBlobGL() {
         trebleLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_trebleLevel'),
         resolution: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_resolution'),
         baseColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_baseColor'),
-        opacity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_opacity')
+        opacity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_opacity'),
+        colorful: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_colorful')
     };
     
     // Create vertex buffer for full-screen quad
@@ -4421,6 +4444,7 @@ function renderAudioBlob() {
     gl.uniform2f(audioBlobState.uniforms.resolution, audioBlobState.canvas.width, audioBlobState.canvas.height);
     gl.uniform3f(audioBlobState.uniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
     gl.uniform1f(audioBlobState.uniforms.opacity, audioBlobState.opacity);
+    gl.uniform1f(audioBlobState.uniforms.colorful, audioBlobState.colorful);
     
     // Set up vertex attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
@@ -4611,6 +4635,11 @@ function updateAudioDelay(value) {
 function updateAudioOpacity(value) {
     audioBlobState.opacity = value;
     document.getElementById('audioOpacityValue').textContent = value.toFixed(2);
+}
+
+function updateAudioColorful(value) {
+    audioBlobState.colorful = value;
+    document.getElementById('audioColorfulValue').textContent = value.toFixed(1);
 }
 
 function updateAudioBlobColor(color) {
