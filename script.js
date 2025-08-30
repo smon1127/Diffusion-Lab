@@ -750,13 +750,13 @@ function setControlNetPreset(presetName, event) {
             // Balanced preset: Good for general use with moderate control
             presetConfig = {
                 CONTROLNET_POSE_SCALE: 0.65,
-                CONTROLNET_HED_SCALE: 0.60,
-                CONTROLNET_CANNY_SCALE: 0.50,
-                CONTROLNET_DEPTH_SCALE: 0.45,
-                CONTROLNET_COLOR_SCALE: 0.55,
+                CONTROLNET_HED_SCALE: 0.41,
+                CONTROLNET_CANNY_SCALE: 0.00,
+                CONTROLNET_DEPTH_SCALE: 0.21,
+                CONTROLNET_COLOR_SCALE: 0.26,
                 DENOISE_X: 3,
                 DENOISE_Y: 6,
-                DENOISE_Z: 9
+                DENOISE_Z: 6
             };
             break;
             
@@ -4530,15 +4530,15 @@ function resetValues() {
         config.SUNRAYS_WEIGHT = 0.4;
         config.INFERENCE_STEPS = 50;
         config.SEED = 42;
-        config.CONTROLNET_POSE_SCALE = 0.56;
-        config.CONTROLNET_HED_SCALE = 0.53;
-        config.CONTROLNET_CANNY_SCALE = 0.27;
-        config.CONTROLNET_DEPTH_SCALE = 0.34;
-        config.CONTROLNET_COLOR_SCALE = 0.66;
+        config.CONTROLNET_POSE_SCALE = 0.65;
+        config.CONTROLNET_HED_SCALE = 0.41;
+        config.CONTROLNET_CANNY_SCALE = 0.00;
+        config.CONTROLNET_DEPTH_SCALE = 0.21;
+        config.CONTROLNET_COLOR_SCALE = 0.26;
         config.GUIDANCE_SCALE = 7.5;
         config.DELTA = 0.5;
-        config.DENOISE_X = 2;
-        config.DENOISE_Y = 4;
+        config.DENOISE_X = 3;
+        config.DENOISE_Y = 6;
         config.DENOISE_Z = 6;
         config.COLORFUL = false;
         config.PAUSED = false;
@@ -4598,15 +4598,15 @@ function clearAllSettings() {
         config.SUNRAYS_WEIGHT = 0.4;
         config.INFERENCE_STEPS = 50;
         config.SEED = 42;
-        config.CONTROLNET_POSE_SCALE = 0.56;
-        config.CONTROLNET_HED_SCALE = 0.53;
-        config.CONTROLNET_CANNY_SCALE = 0.27;
-        config.CONTROLNET_DEPTH_SCALE = 0.34;
-        config.CONTROLNET_COLOR_SCALE = 0.66;
+        config.CONTROLNET_POSE_SCALE = 0.65;
+        config.CONTROLNET_HED_SCALE = 0.41;
+        config.CONTROLNET_CANNY_SCALE = 0.00;
+        config.CONTROLNET_DEPTH_SCALE = 0.21;
+        config.CONTROLNET_COLOR_SCALE = 0.26;
         config.GUIDANCE_SCALE = 7.5;
         config.DELTA = 0.5;
-        config.DENOISE_X = 2;
-        config.DENOISE_Y = 4;
+        config.DENOISE_X = 3;
+        config.DENOISE_Y = 6;
         config.DENOISE_Z = 6;
         config.COLORFUL = false;
         config.PAUSED = false;
@@ -4638,6 +4638,14 @@ function clearAllSettings() {
 
 function initializeLocalStorage() {
     loadConfig();
+    
+    // Set balanced preset as default if no saved config exists
+    const hasConfigData = loadFromLocalStorage(STORAGE_KEYS.CONFIG);
+    if (!hasConfigData) {
+        // Apply balanced preset values on first load
+        setControlNetPreset('balanced');
+        console.log('✅ Applied balanced preset as default');
+    }
     
     // Ensure DOM is ready before updating UI elements
     setTimeout(() => {
