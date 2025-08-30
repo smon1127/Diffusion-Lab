@@ -4056,6 +4056,9 @@ async function startAudioBlob() {
         
         audioBlobState.active = true;
         
+        // Switch streaming canvas to audio blob canvas if streaming is active
+        switchStreamingCanvas(true);
+        
         // Integrate with media stream if streaming is active
         await integrateAudioWithStream();
         
@@ -4103,6 +4106,9 @@ function stopAudioBlob() {
     const button = document.getElementById('audioBlobButton');
     button.textContent = '🎵 Audio Blob';
     button.classList.remove('streaming');
+    
+    // Switch streaming canvas back to fluid canvas if streaming is active
+    switchStreamingCanvas(false);
     
     // Remove audio from media stream if streaming
     removeAudioFromStream();
@@ -4163,6 +4169,7 @@ function initAudioBlobGL() {
         uniform bool u_sunrays;
         uniform float u_bloomIntensity;
         uniform float u_sunraysWeight;
+        uniform vec3 u_backgroundColor;
         
         // Enhanced noise functions for organic blob shape
         float hash(vec2 p) {
@@ -4339,7 +4346,11 @@ function initAudioBlobGL() {
                 color = applySunrays(color, pos, u_sunraysWeight);
             }
             
-            gl_FragColor = vec4(color, edge * u_opacity);
+            // Composite blob over background color
+            float blobAlpha = edge * u_opacity;
+            vec3 finalColor = mix(u_backgroundColor, color, blobAlpha);
+            
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     `;
     
@@ -4362,6 +4373,7 @@ function initAudioBlobGL() {
         colorful: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_colorful'),
         bloom: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloom'),
         sunrays: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunrays'),
+        backgroundColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_backgroundColor'),
         bloomIntensity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloomIntensity'),
         sunraysWeight: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunraysWeight')
     };
@@ -4501,6 +4513,9 @@ function renderAudioBlob() {
     gl.uniform1i(audioBlobState.uniforms.sunrays, config.SUNRAYS ? 1 : 0);
     gl.uniform1f(audioBlobState.uniforms.bloomIntensity, config.BLOOM_INTENSITY);
     gl.uniform1f(audioBlobState.uniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
+    
+    // Set background color from global config
+    gl.uniform3f(audioBlobState.uniforms.backgroundColor, config.BACK_COLOR.r, config.BACK_COLOR.g, config.BACK_COLOR.b);
     
     // Set up vertex attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
@@ -4665,6 +4680,55 @@ function removeAudioFromStream() {
         console.log('✅ Audio removed from stream');
     } catch (error) {
         console.warn('Failed to remove audio from stream:', error);
+    }
+}
+
+function switchStreamingCanvas(useAudioBlob) {
+    // Only switch if streaming is active
+    if (!streamState.isStreaming || !streamState.peerConnection) return;
+    
+    try {
+        // Get the target canvas
+        const targetCanvas = useAudioBlob ? audioBlobState.canvas : canvas;
+        
+        if (!targetCanvas) {
+            console.warn('Target canvas not available for streaming switch');
+            return;
+        }
+        
+        // Create new media stream from target canvas
+        const newMediaStream = targetCanvas.captureStream(30);
+        if (!newMediaStream) {
+            console.error('Failed to capture stream from target canvas');
+            return;
+        }
+        
+        // Get video tracks from new stream
+        const newVideoTracks = newMediaStream.getVideoTracks();
+        if (newVideoTracks.length === 0) {
+            console.error('No video tracks in new media stream');
+            return;
+        }
+        
+        // Replace video track in peer connection
+        const senders = streamState.peerConnection.getSenders();
+        const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
+        
+        if (videoSender) {
+            videoSender.replaceTrack(newVideoTracks[0])
+                .then(() => {
+                    console.log(`✅ Switched streaming canvas to ${useAudioBlob ? 'audio blob' : 'fluid'}`);
+                })
+                .catch(error => {
+                    console.error('Failed to replace video track:', error);
+                });
+        }
+        
+        // Update stored media stream reference
+        streamState.mediaStream = newMediaStream;
+        
+    } catch (error) {
+        console.error('Error switching streaming canvas:', error);
     }
 }
 
