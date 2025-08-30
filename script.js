@@ -4504,23 +4504,16 @@ function renderAudioBlobOverlay() {
     // Analyze audio
     analyzeAudio();
     
-    // Save current WebGL state to restore later
-    const previousProgram = gl.getParameter(gl.CURRENT_PROGRAM);
-    const previousBuffer = gl.getParameter(gl.ARRAY_BUFFER_BINDING);
-    const previousBlend = gl.getParameter(gl.BLEND);
-    const previousBlendSrc = gl.getParameter(gl.BLEND_SRC_ALPHA);
-    const previousBlendDst = gl.getParameter(gl.BLEND_DST_ALPHA);
-    
-    // Enable blending for overlay
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    
     // Use the main audio blob shader program on main WebGL context
     if (!audioBlobState.mainShaderProgram) {
         initMainAudioBlobShader();
     }
     
     if (audioBlobState.mainShaderProgram) {
+        // Enable blending for overlay - this should blend with existing content
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        
         gl.useProgram(audioBlobState.mainShaderProgram);
         
         // Set uniforms
@@ -4546,20 +4539,13 @@ function renderAudioBlobOverlay() {
         
         // Draw audio blob overlay
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        // Clean up: disable vertex attribute array and restore fluid blend function
+        gl.disableVertexAttribArray(audioBlobState.mainPositionAttributeLocation);
+        
+        // Restore the blend function that the fluid system expects
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     }
-    
-    // Restore previous WebGL state
-    gl.useProgram(previousProgram);
-    gl.bindBuffer(gl.ARRAY_BUFFER, previousBuffer);
-    if (!previousBlend) {
-        gl.disable(gl.BLEND);
-    }
-    if (previousBlendSrc !== gl.SRC_ALPHA || previousBlendDst !== gl.ONE_MINUS_SRC_ALPHA) {
-        gl.blendFunc(previousBlendSrc, previousBlendDst);
-    }
-    
-    // Disable the vertex attribute array we enabled to prevent interference
-    gl.disableVertexAttribArray(audioBlobState.mainPositionAttributeLocation);
 }
 
 // Legacy function for separate canvas (still used for preview)
