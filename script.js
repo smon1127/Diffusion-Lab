@@ -65,16 +65,16 @@ let config = {
     INFERENCE_STEPS: 50,
     SEED: 42,
     CONTROLNET_POSE_SCALE: 0.65,  // Balanced preset default
-    CONTROLNET_HED_SCALE: 0.60,   // Balanced preset default
-    CONTROLNET_CANNY_SCALE: 0.50, // Balanced preset default
-    CONTROLNET_DEPTH_SCALE: 0.45, // Balanced preset default
-    CONTROLNET_COLOR_SCALE: 0.55, // Balanced preset default
+    CONTROLNET_HED_SCALE: 0.41,   // Balanced preset default
+    CONTROLNET_CANNY_SCALE: 0.00, // Balanced preset default
+    CONTROLNET_DEPTH_SCALE: 0.21, // Balanced preset default
+    CONTROLNET_COLOR_SCALE: 0.26, // Balanced preset default
     GUIDANCE_SCALE: 7.5,
     DELTA: 0.5,
     // Denoise controls (t_index_list values) - Balanced preset default
     DENOISE_X: 3,
     DENOISE_Y: 6, 
-    DENOISE_Z: 9,
+    DENOISE_Z: 6,
     // Animation Parameters - Redesigned with intuitive 0-1 ranges
     ANIMATE: true,
     LIVELINESS: 0.62,   // 0=gentle (1 splat), 1=energetic (8 splats) - Default: moderate-high energy
