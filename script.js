@@ -380,7 +380,10 @@ function handleSliderClick(event, sliderName, min, max) {
     updateSliderValue(sliderName, percentage);
 }
 
-function updateSliderValue(sliderName, percentage, skipSave = false) {
+function updateSliderValue(sliderName, percentage, skipSave = false, updateInput = true) {
+    // Ensure percentage is between 0 and 1
+    percentage = Math.min(1, Math.max(0, percentage));
+    
     const sliderMap = {
         'density': { min: 0, max: 4, prop: 'DENSITY_DISSIPATION', decimals: 2 },
         'velocity': { min: 0, max: 4, prop: 'VELOCITY_DISSIPATION', decimals: 2 },
@@ -448,18 +451,16 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
     const valueDisplay = document.getElementById(sliderName + 'Value');
     
     if (fill) {
-        // Adjust percentage to prevent handle clipping
-        // Reserve space for handle on both ends (8px handle radius + 2px border = 10px each side)
-        // For a typical 280px slider, this is about 3.5% padding on each side
-        const adjustedPercentage = SLIDER_HANDLE_PADDING + (percentage * (1 - 2 * SLIDER_HANDLE_PADDING));
-        fill.style.width = (adjustedPercentage * 100) + '%';
+        // Convert percentage (0-1) to percentage display (0-100) and adjust for handle padding
+        const displayPercentage = SLIDER_HANDLE_PADDING * 100 + (percentage * (100 - 2 * SLIDER_HANDLE_PADDING * 100));
+        fill.style.width = displayPercentage + '%';
     }
     
-    if (valueDisplay) {
+    if (valueDisplay && updateInput) {
         if (slider.isArray && slider.prop === 'T_INDEX_LIST') {
-            valueDisplay.textContent = '[' + config[slider.prop].join(',') + ']';
+            valueDisplay.value = '[' + config[slider.prop].join(',') + ']';
         } else {
-            valueDisplay.textContent = value.toFixed(slider.decimals);
+            valueDisplay.value = value.toFixed(slider.decimals);
         }
     }
     
@@ -4033,9 +4034,13 @@ async function startAudioBlob() {
         audioBlobState.analyser = audioBlobState.audioContext.createAnalyser();
         audioBlobState.microphone = audioBlobState.audioContext.createMediaStreamSource(stream);
         
-        // Create gain node for preview control (starts muted)
+        // Create audio nodes for preview control
         audioBlobState.previewGain = audioBlobState.audioContext.createGain();
-        audioBlobState.previewGain.gain.value = 0;
+        audioBlobState.previewGain.gain.value = 0; // Start muted
+        
+        // Create delay node for preview audio
+        audioBlobState.delayNode = audioBlobState.audioContext.createDelay(10.0); // Max 10 seconds delay
+        audioBlobState.delayNode.delayTime.value = (audioBlobState.delay || 0) / 1000; // Convert ms to seconds
         
         // Configure analyser
         audioBlobState.analyser.fftSize = 512;
@@ -4043,9 +4048,10 @@ async function startAudioBlob() {
         
         // Connect audio graph:
         // microphone -> analyser (for visuals)
-        //           -> previewGain -> destination (for preview)
+        //           -> delayNode -> previewGain -> destination (for preview)
         audioBlobState.microphone.connect(audioBlobState.analyser);
-        audioBlobState.microphone.connect(audioBlobState.previewGain);
+        audioBlobState.microphone.connect(audioBlobState.delayNode);
+        audioBlobState.delayNode.connect(audioBlobState.previewGain);
         audioBlobState.previewGain.connect(audioBlobState.audioContext.destination);
         
         console.log('🎵 Audio initialized:', {
@@ -4115,6 +4121,9 @@ function stopAudioBlob() {
     if (audioBlobState.previewGain) {
         audioBlobState.previewGain.disconnect();
         audioBlobState.previewGain.gain.value = 0;
+    }
+    if (audioBlobState.delayNode) {
+        audioBlobState.delayNode.disconnect();
     }
     
     // Hide and reset preview button
@@ -4741,7 +4750,8 @@ async function switchAudioDevice(e) {
         
         // Reconnect audio graph
         audioBlobState.microphone.connect(audioBlobState.analyser);
-        audioBlobState.microphone.connect(audioBlobState.previewGain);
+        audioBlobState.microphone.connect(audioBlobState.delayNode);
+        audioBlobState.delayNode.connect(audioBlobState.previewGain);
         audioBlobState.previewGain.connect(audioBlobState.audioContext.destination);
         
         // Restore preview state if it was on
@@ -4960,33 +4970,282 @@ function switchStreamingCanvas(useAudioBlob) {
 }
 
 // Audio control handlers
-function updateAudioReactivity(value) {
+function updateAudioReactivity(value, updateInput = true) {
     audioBlobState.reactivity = value;
-    document.getElementById('audioReactivityValue').textContent = value.toFixed(1);
+    if (updateInput) {
+        document.getElementById('audioReactivityValue').value = value.toFixed(1);
+    }
 }
 
-function updateAudioDelay(value) {
+function updateAudioDelay(value, updateInput = true) {
+    // Store delay value in ms
     audioBlobState.delay = Math.round(value);
-    document.getElementById('audioDelayValue').textContent = audioBlobState.delay + 'ms';
     
-    // Resize delay buffer based on sample rate (assuming 60fps analysis)
-    const bufferSize = Math.max(1, Math.round(audioBlobState.delay / 16.67)); // 60fps = ~16.67ms per frame
-    audioBlobState.delayBuffer = new Array(bufferSize).fill({
-        bassLevel: 0,
-        midLevel: 0,
-        trebleLevel: 0
+    // Update input field if this update came from the slider
+    if (updateInput) {
+        document.getElementById('audioDelayValue').value = audioBlobState.delay;
+    }
+    
+    // Update audio delay node if it exists
+    if (audioBlobState.delayNode) {
+        audioBlobState.delayNode.delayTime.value = audioBlobState.delay / 1000; // Convert ms to seconds
+        console.log(`🕒 Audio delay updated: ${audioBlobState.delay}ms`);
+    }
+    
+    // Update slider fill - cap at 100% for values over 500
+    const percentage = Math.min(100, (audioBlobState.delay / 500) * 100);
+    document.getElementById('audioDelayFill').style.width = `${percentage}%`;
+}
+
+// Handle manual input of delay value
+function initializeAudioDelayInput() {
+    const input = document.getElementById('audioDelayValue');
+    if (!input) return;
+    
+    input.addEventListener('input', (e) => {
+        // Remove any non-numeric characters
+        let value = e.target.value.replace(/[^\d]/g, '');
+        e.target.value = value;
     });
-    audioBlobState.delayIndex = 0;
+    
+    input.addEventListener('change', (e) => {
+        // Get numeric value
+        let value = parseInt(e.target.value, 10);
+        
+        // Only clamp the minimum value to 0, allow higher than 500
+        value = Math.max(0, isNaN(value) ? 0 : value);
+        
+        // Update the input with the cleaned value
+        e.target.value = value;
+        
+        // Update delay without updating the input field again
+        updateAudioDelay(value, false);
+    });
+    
+    input.addEventListener('blur', (e) => {
+        // Ensure the value is set when leaving the field
+        if (e.target.value === '') {
+            e.target.value = '0';
+            updateAudioDelay(0, false);
+        }
+    });
 }
 
-function updateAudioOpacity(value) {
+// Initialize numeric input fields
+function initializeNumericInput(id, min, max, updateFn, precision = 1) {
+    const input = document.getElementById(id);
+    if (!input) return;
+    
+    // Extract slider name from id (remove 'Value' suffix)
+    const sliderName = id.replace('Value', '');
+    
+    function updateSliderFromInput(value, targetSlider = null) {
+        const actualSlider = targetSlider || sliderName;
+        
+        // For denoise inputs, just update the slider position and call the update function
+        if (actualSlider.startsWith('denoise')) {
+            // Calculate percentage for slider
+            const range = max - min;
+            const percentage = range !== 0 ? ((value - min) / range) * 100 : 0;
+            
+            // Update slider fill directly
+            const fill = document.getElementById(`${actualSlider}Fill`);
+            if (fill) {
+                const displayPercentage = SLIDER_HANDLE_PADDING * 100 + ((percentage / 100) * (100 - 2 * SLIDER_HANDLE_PADDING * 100));
+                fill.style.width = displayPercentage + '%';
+            }
+            
+            // Call the update function only if it's the original slider
+            if (!targetSlider && updateFn) {
+                updateFn(value, false);
+            }
+        } else {
+            // For non-denoise inputs, use the regular slider update
+            const range = max - min;
+            const percentage = range !== 0 ? ((value - min) / range) * 100 : 0;
+            
+            updateSliderValue(actualSlider, percentage / 100, false, false);
+            
+            if (!targetSlider && updateFn) {
+                updateFn(value, false);
+            }
+        }
+    }
+    
+    input.addEventListener('input', (e) => {
+        // Allow any input while typing
+        let value = e.target.value;
+        
+        // Only validate that we have at most one decimal point
+        const parts = value.split('.');
+        if (parts.length > 2) {
+            value = parts[0] + '.' + parts.slice(1).join('');
+            e.target.value = value;
+        }
+    });
+    
+    function applyValue(e) {
+        const rawValue = e.target.value.trim();
+        
+        // Handle empty or invalid input
+        if (rawValue === '' || rawValue === '.' || rawValue === '-' || isNaN(parseFloat(rawValue))) {
+            const defaultValue = min < 0 ? min : 0;
+            e.target.value = defaultValue.toFixed(precision);
+            updateSliderFromInput(defaultValue);
+            applyDenoiseRules(sliderName, defaultValue);
+            return;
+        }
+        
+        // Parse and validate value
+        let value = parseFloat(rawValue);
+        
+        // Clamp value if min/max provided
+        if (min !== undefined) value = Math.max(min, value);
+        if (max !== undefined) value = Math.min(max, value);
+        
+        // Format value based on precision
+        value = parseFloat(value.toFixed(precision));
+        
+        // Update the input with the cleaned value
+        e.target.value = value.toFixed(precision);
+        
+        // Update slider and state
+        updateSliderFromInput(value);
+        
+        // Apply denoise rules if this is a denoise input
+        applyDenoiseRules(sliderName, value);
+    }
+    
+    function applyDenoiseRules(changedSlider, value) {
+        if (!changedSlider.startsWith('denoise')) return;
+        
+        // Update the config value first
+        if (changedSlider === 'denoiseX') config.DENOISE_X = value;
+        else if (changedSlider === 'denoiseY') config.DENOISE_Y = value;
+        else if (changedSlider === 'denoiseZ') config.DENOISE_Z = value;
+        
+        const x = config.DENOISE_X;
+        const y = config.DENOISE_Y;
+        const z = config.DENOISE_Z;
+        
+        if (changedSlider === 'denoiseX' || changedSlider === 'denoiseY') {
+            // Z should sync to max(X, Y)
+            const newZ = Math.max(x, y);
+            if (newZ !== z) {
+                config.DENOISE_Z = newZ;
+                const zInput = document.getElementById('denoiseZValue');
+                if (zInput) {
+                    zInput.value = newZ.toFixed(0);
+                    updateSliderFromInput(newZ, 'denoiseZ');
+                }
+            }
+        } else if (changedSlider === 'denoiseZ') {
+            // X and Y should not exceed Z
+            let updated = false;
+            if (x > z) {
+                config.DENOISE_X = z;
+                const xInput = document.getElementById('denoiseXValue');
+                if (xInput) {
+                    xInput.value = z.toFixed(0);
+                    updateSliderFromInput(z, 'denoiseX');
+                }
+                updated = true;
+            }
+            if (y > z) {
+                config.DENOISE_Y = z;
+                const yInput = document.getElementById('denoiseYValue');
+                if (yInput) {
+                    yInput.value = z.toFixed(0);
+                    updateSliderFromInput(z, 'denoiseY');
+                }
+                updated = true;
+            }
+        }
+        
+        // Save config after all updates
+        saveConfig();
+    }
+    
+    // Apply value on blur or when Enter is pressed
+    input.addEventListener('blur', applyValue);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.target.blur(); // This will trigger the blur event
+        }
+    });
+}
+
+// Initialize all input fields when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Create a map of all numeric inputs with their configurations
+    const inputConfigs = {
+        // Audio controls
+        audioDelay: { min: 0, max: 500, updateFn: updateAudioDelay, precision: 0 },
+        audioReactivity: { min: 0.1, max: 3.0, updateFn: updateAudioReactivity, precision: 1 },
+        audioOpacity: { min: 0, max: 1, updateFn: updateAudioOpacity, precision: 2 },
+        audioColorful: { min: 0, max: 1, updateFn: updateAudioColorful, precision: 1 },
+        
+        // Animation controls
+        animationInterval: { min: 0, max: 1, updateFn: (v) => updateSliderValue('animationInterval', v/1, false, false), precision: 2 },
+        chaos: { min: 0, max: 1, updateFn: (v) => updateSliderValue('chaos', v/1, false, false), precision: 2 },
+        breathing: { min: 0, max: 1, updateFn: (v) => updateSliderValue('breathing', v/1, false, false), precision: 2 },
+        colorLife: { min: 0, max: 1, updateFn: (v) => updateSliderValue('colorLife', v/1, false, false), precision: 2 },
+        
+        // Fluid simulation controls
+        density: { min: 0, max: 4, updateFn: (v) => updateSliderValue('density', v/4, false, false), precision: 2 },
+        velocity: { min: 0, max: 4, updateFn: (v) => updateSliderValue('velocity', v/4, false, false), precision: 2 },
+        pressure: { min: 0, max: 1, updateFn: (v) => updateSliderValue('pressure', v/1, false, false), precision: 2 },
+        vorticity: { min: 0, max: 50, updateFn: (v) => updateSliderValue('vorticity', v/50, false, false), precision: 0 },
+        splat: { min: 0.01, max: 1, updateFn: (v) => updateSliderValue('splat', (v-0.01)/0.99, false, false), precision: 2 },
+        
+        // Visual effects
+        bloomIntensity: { min: 0.1, max: 2, updateFn: (v) => updateSliderValue('bloomIntensity', (v-0.1)/1.9, false, false), precision: 2 },
+        sunray: { min: 0.3, max: 1, updateFn: (v) => updateSliderValue('sunray', (v-0.3)/0.7, false, false), precision: 2 },
+        backgroundImageScale: { min: 0.1, max: 5, updateFn: (v) => updateSliderValue('backgroundImageScale', (v-0.1)/4.9, false, false), precision: 2 },
+        
+        // ControlNet weights
+        controlnetPose: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetPose', v/1, false, false), precision: 2 },
+        controlnetHed: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetHed', v/1, false, false), precision: 2 },
+        controlnetCanny: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetCanny', v/1, false, false), precision: 2 },
+        controlnetDepth: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetDepth', v/1, false, false), precision: 2 },
+        controlnetColor: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetColor', v/1, false, false), precision: 2 },
+        
+        // Denoise XYZ - simple direct config updates
+        denoiseX: { min: 1, max: 45, updateFn: (v) => { config.DENOISE_X = v; saveConfig(); }, precision: 0 },
+        denoiseY: { min: 1, max: 45, updateFn: (v) => { config.DENOISE_Y = v; saveConfig(); }, precision: 0 },
+        denoiseZ: { min: 1, max: 45, updateFn: (v) => { config.DENOISE_Z = v; saveConfig(); }, precision: 0 },
+        
+        // Generation parameters
+        inferenceSteps: { min: 1, max: 150, updateFn: (v) => updateSliderValue('inferenceSteps', (v-1)/149, false, false), precision: 0 },
+        seed: { min: -1, max: 2147483647, updateFn: (v) => updateSliderValue('seed', (v+1)/2147483648, false, false), precision: 0 },
+        guidanceScale: { min: 1, max: 20, updateFn: (v) => updateSliderValue('guidanceScale', (v-1)/19, false, false), precision: 1 },
+        delta: { min: 0, max: 1, updateFn: (v) => updateSliderValue('delta', v/1, false, false), precision: 2 }
+    };
+    
+    // Initialize all inputs
+    Object.entries(inputConfigs).forEach(([name, config]) => {
+        initializeNumericInput(
+            `${name}Value`,
+            config.min,
+            config.max,
+            config.updateFn,
+            config.precision
+        );
+    });
+});
+
+function updateAudioOpacity(value, updateInput = true) {
     audioBlobState.opacity = value;
-    document.getElementById('audioOpacityValue').textContent = value.toFixed(2);
+    if (updateInput) {
+        document.getElementById('audioOpacityValue').value = value.toFixed(2);
+    }
 }
 
-function updateAudioColorful(value) {
+function updateAudioColorful(value, updateInput = true) {
     audioBlobState.colorful = value;
-    document.getElementById('audioColorfulValue').textContent = value.toFixed(1);
+    if (updateInput) {
+        document.getElementById('audioColorfulValue').value = value.toFixed(1);
+    }
 }
 
 function updateAudioBlobColor(color) {
@@ -5061,7 +5320,7 @@ updateSliderValue = function(sliderName, percentage) {
     
     // Handle denoise slider synchronization
     if (['denoiseX', 'denoiseY', 'denoiseZ'].includes(sliderName)) {
-        syncDenoiseSliders(sliderName);
+        syncDenoiseSliders(sliderName, true);
     }
     
     // Trigger parameter update for StreamDiffusion sliders with debouncing
@@ -5072,7 +5331,10 @@ updateSliderValue = function(sliderName, percentage) {
 
 
 
-function syncDenoiseSliders(changedSlider) {
+function syncDenoiseSliders(changedSlider, fromSlider = true) {
+    // Skip sync if not from slider interaction
+    if (!fromSlider) return;
+
     const x = config.DENOISE_X;
     const y = config.DENOISE_Y;
     const z = config.DENOISE_Z;
