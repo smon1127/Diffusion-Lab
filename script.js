@@ -3449,24 +3449,7 @@ let audioBlobState = {
     selectedDeviceId: null,
     audioStream: null,
     delayBuffer: [],
-    delayIndex: 0,
-    // Shader resources for separate canvas WebGL context
-    shaderProgram: null,
-    uniforms: null,
-    positionBuffer: null,
-    positionAttributeLocation: null,
-    // Shader resources for main WebGL context (used during streaming)
-    mainShaderProgram: null,
-    mainUniforms: null,
-    mainPositionBuffer: null,
-    mainPositionAttributeLocation: null
-};
-
-// Composite System for Streaming
-let compositeState = {
-    active: false,
-    canvas: null,
-    ctx: null
+    delayIndex: 0
 };
 
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
@@ -3824,13 +3807,10 @@ async function startStream() {
             throw new Error('Please enter your Daydream API key');
         }
         
-        // Initialize composite system for dual WebGL rendering
-        initCompositeSystem();
-        
-        // Create canvas media stream from composite canvas
-        streamState.mediaStream = compositeState.canvas.captureStream(30);
+        // Create canvas media stream
+        streamState.mediaStream = canvas.captureStream(30);
         if (!streamState.mediaStream) {
-            throw new Error('Failed to capture composite canvas stream');
+            throw new Error('Failed to capture canvas stream');
         }
         
         // Try to load and validate existing stream first
@@ -3974,9 +3954,6 @@ function stopStream() {
         streamState.mediaStream.getTracks().forEach(track => track.stop());
         streamState.mediaStream = null;
     }
-    
-    // Stop composite system
-    stopCompositeSystem();
     
     // Clean up popup window only if it's closed or we're fully stopping
     if (streamState.popupWindow && streamState.popupWindow.closed) {
@@ -4497,9 +4474,6 @@ function analyzeAudio() {
 function renderAudioBlob() {
     if (!audioBlobState.active || !audioBlobState.gl) return;
     
-    // If composite system is active (streaming), don't render on separate canvas
-    if (compositeState.active) return;
-    
     const gl = audioBlobState.gl;
     
     // Analyze audio
@@ -4509,7 +4483,7 @@ function renderAudioBlob() {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     
-    // Use shader program (from separate canvas context)
+    // Use shader program
     gl.useProgram(audioBlobState.shaderProgram);
     
     // Set uniforms
@@ -4540,406 +4514,10 @@ function renderAudioBlob() {
     audioBlobState.animationId = requestAnimationFrame(renderAudioBlob);
 }
 
-// Composite System for Dual WebGL Rendering
-function initCompositeSystem() {
-    if (compositeState.canvas) return; // Already initialized
-    
-    // Create composite canvas
-    compositeState.canvas = document.createElement('canvas');
-    compositeState.ctx = compositeState.canvas.getContext('2d');
-    
-    // Match main canvas dimensions
-    compositeState.canvas.width = canvas.width;
-    compositeState.canvas.height = canvas.height;
-    
-    // Initialize audio blob shader for main WebGL context
-    initAudioBlobForMainContext();
-    
-    // Start composite rendering loop
-    startCompositeRendering();
-    
-    compositeState.active = true;
-    console.log('✅ Composite system initialized for streaming');
-}
-
-function initAudioBlobForMainContext() {
-    if (!gl || audioBlobState.mainShaderProgram) return; // Already initialized or no WebGL
-    
-    try {
-        // Use the same shader source as the separate canvas version
-        const vertexShaderSource = `
-            attribute vec2 a_position;
-            varying vec2 v_position;
-            
-            void main() {
-                v_position = a_position;
-                gl_Position = vec4(a_position, 0.0, 1.0);
-            }
-        `;
-        
-        const fragmentShaderSource = `
-            precision mediump float;
-            varying vec2 v_position;
-            
-            uniform float u_time;
-            uniform float u_bassLevel;
-            uniform float u_midLevel;
-            uniform float u_trebleLevel;
-            uniform vec2 u_resolution;
-            uniform vec3 u_baseColor;
-            uniform float u_opacity;
-            uniform float u_colorful;
-            uniform bool u_bloom;
-            uniform bool u_sunrays;
-            uniform float u_bloomIntensity;
-            uniform float u_sunraysWeight;
-            
-            // Enhanced noise functions for organic blob shape
-            float hash(vec2 p) {
-                p = fract(p * vec2(123.34, 456.21));
-                p += dot(p, p + 45.32);
-                return fract(p.x * p.y);
-            }
-            
-            float noise(vec2 p) {
-                vec2 i = floor(p);
-                vec2 f = fract(p);
-                f = f * f * (3.0 - 2.0 * f);
-                
-                float a = hash(i);
-                float b = hash(i + vec2(1.0, 0.0));
-                float c = hash(i + vec2(0.0, 1.0));
-                float d = hash(i + vec2(1.0, 1.0));
-                
-                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-            }
-            
-            float fbm(vec2 p) {
-                float f = 0.0;
-                float amplitude = 0.5;
-                for(int i = 0; i < 6; i++) {
-                    f += amplitude * noise(p);
-                    p *= 2.0;
-                    amplitude *= 0.5;
-                }
-                return f;
-            }
-            
-            float turbulence(vec2 p) {
-                float t = 0.0;
-                float amplitude = 1.0;
-                for(int i = 0; i < 4; i++) {
-                    t += abs(noise(p)) * amplitude;
-                    p *= 2.0;
-                    amplitude *= 0.5;
-                }
-                return t;
-            }
-            
-            // Bloom effect function
-            vec3 applyBloom(vec3 color, float intensity) {
-                // Simple bloom approximation using glow
-                float luminance = dot(color, vec3(0.299, 0.587, 0.114));
-                float bloom = smoothstep(0.3, 1.0, luminance);
-                vec3 bloomColor = color * bloom * intensity * 2.0;
-                return color + bloomColor;
-            }
-            
-            // Sunrays effect function
-            vec3 applySunrays(vec3 color, vec2 pos, float weight) {
-                vec2 center = vec2(0.0, 0.0);
-                vec2 dir = normalize(pos - center);
-                float dist = length(pos - center);
-                
-                // Create radial rays
-                float rays = 0.0;
-                for(int i = 0; i < 8; i++) {
-                    float angle = float(i) * 0.785398; // π/4
-                    vec2 rayDir = vec2(cos(angle), sin(angle));
-                    float rayAlignment = max(0.0, dot(dir, rayDir));
-                    float rayIntensity = pow(rayAlignment, 4.0) * exp(-dist * 2.0);
-                    rays += rayIntensity;
-                }
-                
-                // Apply sunrays based on audio intensity
-                float audioIntensity = (u_bassLevel + u_midLevel + u_trebleLevel) / 3.0;
-                rays *= weight * audioIntensity * 0.5;
-                
-                return color + vec3(rays) * color;
-            }
-            
-            void main() {
-                vec2 uv = (v_position + 1.0) * 0.5;
-                vec2 center = vec2(0.5, 0.5);
-                vec2 pos = uv - center;
-                
-                // Correct for aspect ratio to make blob circular
-                float aspectRatio = u_resolution.x / u_resolution.y;
-                pos.x *= aspectRatio;
-                
-                float dist = length(pos);
-                float angle = atan(pos.y, pos.x);
-                
-                float time = u_time * 0.5;
-                
-                // Bass: Controls overall size and slow organic movement
-                float baseSize = 0.12 + u_bassLevel * 0.35;
-                float bassWave = fbm(vec2(angle * 2.0 + time * 0.8, time * 0.3)) * u_bassLevel * 0.08;
-                
-                // Mid: Controls medium-frequency deformations
-                float midNoise1 = fbm(vec2(angle * 4.0 + time * 1.5, time * 0.7)) * u_midLevel * 0.06;
-                float midNoise2 = noise(vec2(angle * 6.0 - time * 2.0, time)) * u_midLevel * 0.04;
-                float midDeform = midNoise1 + midNoise2;
-                
-                // Treble: Controls high-frequency spikes and sharp details
-                float trebleSpikes = 0.0;
-                for(int i = 0; i < 3; i++) {
-                    float freq = 8.0 + float(i) * 4.0;
-                    float speed = 3.0 + float(i) * 2.0;
-                    trebleSpikes += sin(angle * freq + time * speed) * u_trebleLevel * (0.02 - float(i) * 0.005);
-                }
-                
-                // Additional organic chaos based on overall audio intensity
-                float organicChaos = turbulence(vec2(angle * 8.0 + time * 1.2, time * 2.5)) * 0.03;
-                float audioIntensity = (u_bassLevel + u_midLevel + u_trebleLevel) / 3.0;
-                organicChaos *= audioIntensity;
-                
-                // Breathing effect that scales with audio
-                float breathe = sin(time * 1.5) * audioIntensity * 0.02;
-                
-                // Combine all deformations
-                float blobRadius = baseSize + bassWave + midDeform + trebleSpikes + organicChaos + breathe;
-                
-                // Create smooth edge
-                float edge = smoothstep(blobRadius + 0.05, blobRadius - 0.05, dist);
-                
-                // Base color
-                vec3 baseColor = u_baseColor;
-                
-                // Frequency-specific colors
-                vec3 bassColor = vec3(1.0, 0.3, 0.1) * u_bassLevel;   // Red-orange for bass
-                vec3 midColor = vec3(0.1, 1.0, 0.3) * u_midLevel;   // Green for mids
-                vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel; // Blue for treble
-                
-                // Rainbow spectrum colors that shift with time and position
-                vec3 rainbowColor = vec3(
-                    sin(angle * 2.0 + time * 1.5) * 0.5 + 0.5,
-                    sin(angle * 2.0 + time * 1.5 + 2.094) * 0.5 + 0.5,  // 2π/3 offset
-                    sin(angle * 2.0 + time * 1.5 + 4.188) * 0.5 + 0.5   // 4π/3 offset
-                );
-                
-                // HSV-style color cycling
-                float hue = fract(angle / 6.283 + time * 0.1 + audioIntensity * 0.3);
-                vec3 hsvColor = vec3(
-                    abs(hue * 6.0 - 3.0) - 1.0,
-                    2.0 - abs(hue * 6.0 - 2.0),
-                    2.0 - abs(hue * 6.0 - 4.0)
-                );
-                hsvColor = clamp(hsvColor, 0.0, 1.0);
-                
-                // Combine frequency colors and spectrum colors
-                vec3 audioColor = bassColor + midColor + trebleColor;
-                vec3 spectrumColor = mix(rainbowColor, hsvColor, 0.5) * audioIntensity;
-                
-                // Create color waves that move with the music
-                float colorWave = sin(angle * 3.0 + time * 2.0) * 0.5 + 0.5;
-                float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
-                
-                // Mix base color with colorful effects based on u_colorful parameter
-                vec3 color = baseColor * (1.0 - u_colorful * 0.7) * colorPulse;
-                color += audioColor * (0.4 + u_colorful * 0.4);
-                color += spectrumColor * u_colorful * 0.6;
-                color += baseColor * colorWave * audioIntensity * 0.2 * (1.0 - u_colorful * 0.5);
-                
-                // Enhanced glow effects
-                float innerGlow = exp(-dist * 4.0) * 0.4 * audioIntensity;
-                float outerGlow = exp(-dist * 1.5) * 0.2 * u_bassLevel;
-                color += vec3(innerGlow) * (baseColor + audioColor * 0.5);
-                color += vec3(outerGlow) * bassColor;
-                
-                // Apply bloom effect if enabled
-                if (u_bloom) {
-                    color = applyBloom(color, u_bloomIntensity);
-                }
-                
-                // Apply sunrays effect if enabled
-                if (u_sunrays) {
-                    color = applySunrays(color, pos, u_sunraysWeight);
-                }
-                
-                gl_FragColor = vec4(color, edge * u_opacity);
-            }
-        `;
-        
-        // Create and compile shaders
-        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
-        gl.shaderSource(vertexShader, vertexShaderSource);
-        gl.compileShader(vertexShader);
-        
-        if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
-            console.error('Audio blob vertex shader error:', gl.getShaderInfoLog(vertexShader));
-            return;
-        }
-        
-        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-        gl.shaderSource(fragmentShader, fragmentShaderSource);
-        gl.compileShader(fragmentShader);
-        
-        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
-            console.error('Audio blob fragment shader error:', gl.getShaderInfoLog(fragmentShader));
-            return;
-        }
-        
-        // Create shader program for main context
-        audioBlobState.mainShaderProgram = gl.createProgram();
-        gl.attachShader(audioBlobState.mainShaderProgram, vertexShader);
-        gl.attachShader(audioBlobState.mainShaderProgram, fragmentShader);
-        gl.linkProgram(audioBlobState.mainShaderProgram);
-        
-        if (!gl.getProgramParameter(audioBlobState.mainShaderProgram, gl.LINK_STATUS)) {
-            console.error('Audio blob program link error:', gl.getProgramInfoLog(audioBlobState.mainShaderProgram));
-            return;
-        }
-        
-        // Get uniform locations for main context
-        audioBlobState.mainUniforms = {
-            time: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_time'),
-            bassLevel: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_bassLevel'),
-            midLevel: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_midLevel'),
-            trebleLevel: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_trebleLevel'),
-            resolution: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_resolution'),
-            baseColor: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_baseColor'),
-            opacity: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_opacity'),
-            colorful: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_colorful'),
-            bloom: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_bloom'),
-            sunrays: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_sunrays'),
-            bloomIntensity: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_bloomIntensity'),
-            sunraysWeight: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_sunraysWeight')
-        };
-        
-        // Create vertex buffer for main context
-        const positions = new Float32Array([
-            -1, -1,
-             1, -1,
-            -1,  1,
-             1,  1
-        ]);
-        
-        audioBlobState.mainPositionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.mainPositionBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
-        
-        // Get attribute location for main context
-        audioBlobState.mainPositionAttributeLocation = gl.getAttribLocation(audioBlobState.mainShaderProgram, 'a_position');
-        
-        console.log('✅ Audio blob shader initialized for main WebGL context');
-        
-    } catch (error) {
-        console.error('Failed to initialize audio blob shader for main context:', error);
-    }
-}
-
-function startCompositeRendering() {
-    function renderComposite() {
-        if (!compositeState.active) return;
-        
-        // First, render the normal fluid simulation to the main canvas
-        render(null);
-        
-        // Then, if audio blob is active, render it as an overlay on the same WebGL context
-        if (audioBlobState.active && audioBlobState.mainShaderProgram) {
-            renderAudioBlobOverlay();
-        }
-        
-        // Copy the main canvas to the composite canvas
-        compositeState.ctx.clearRect(0, 0, compositeState.canvas.width, compositeState.canvas.height);
-        compositeState.ctx.drawImage(canvas, 0, 0);
-        
-        requestAnimationFrame(renderComposite);
-    }
-    
-    renderComposite();
-}
-
-function renderAudioBlobOverlay() {
-    if (!audioBlobState.active || !audioBlobState.mainShaderProgram || !gl) return;
-    
-    // Analyze audio (only if not already analyzed in separate canvas)
-    if (!compositeState.active || !audioBlobState.gl) {
-        analyzeAudio();
-    }
-    
-    // Enable blending for overlay
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    
-    // Use audio blob shader program from main context
-    gl.useProgram(audioBlobState.mainShaderProgram);
-    
-    // Set uniforms using main context uniform locations
-    gl.uniform1f(audioBlobState.mainUniforms.time, Date.now() * 0.001);
-    gl.uniform1f(audioBlobState.mainUniforms.bassLevel, audioBlobState.bassLevel);
-    gl.uniform1f(audioBlobState.mainUniforms.midLevel, audioBlobState.midLevel);
-    gl.uniform1f(audioBlobState.mainUniforms.trebleLevel, audioBlobState.trebleLevel);
-    gl.uniform2f(audioBlobState.mainUniforms.resolution, canvas.width, canvas.height);
-    gl.uniform3f(audioBlobState.mainUniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
-    gl.uniform1f(audioBlobState.mainUniforms.opacity, audioBlobState.opacity);
-    gl.uniform1f(audioBlobState.mainUniforms.colorful, audioBlobState.colorful);
-    
-    // Set bloom and sunrays uniforms based on global config
-    gl.uniform1i(audioBlobState.mainUniforms.bloom, config.BLOOM ? 1 : 0);
-    gl.uniform1i(audioBlobState.mainUniforms.sunrays, config.SUNRAYS ? 1 : 0);
-    gl.uniform1f(audioBlobState.mainUniforms.bloomIntensity, config.BLOOM_INTENSITY);
-    gl.uniform1f(audioBlobState.mainUniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
-    
-    // Set up vertex attributes using main context resources
-    gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.mainPositionBuffer);
-    gl.enableVertexAttribArray(audioBlobState.mainPositionAttributeLocation);
-    gl.vertexAttribPointer(audioBlobState.mainPositionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
-    
-    // Draw audio blob overlay
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    
-    // Disable blending
-    gl.disable(gl.BLEND);
-}
-
-function stopCompositeSystem() {
-    compositeState.active = false;
-    
-    // Clean up audio blob shader resources in main context
-    // Note: We need to store separate references for main context resources
-    if (audioBlobState.mainShaderProgram && gl) {
-        gl.deleteProgram(audioBlobState.mainShaderProgram);
-        audioBlobState.mainShaderProgram = null;
-    }
-    if (audioBlobState.mainPositionBuffer && gl) {
-        gl.deleteBuffer(audioBlobState.mainPositionBuffer);
-        audioBlobState.mainPositionBuffer = null;
-    }
-    
-    // Clear main context uniforms and attributes
-    audioBlobState.mainUniforms = null;
-    audioBlobState.mainPositionAttributeLocation = null;
-    
-    console.log('🛑 Composite system stopped');
-}
-
-// Handle window resize for composite system
-function resizeCompositeCanvas() {
-    if (compositeState.canvas) {
-        compositeState.canvas.width = canvas.width;
-        compositeState.canvas.height = canvas.height;
-    }
-}
-
 // Handle window resize for audio blob
 window.addEventListener('resize', () => {
     if (audioBlobState.active) {
         resizeAudioCanvas();
-    }
-    if (compositeState.active) {
-        resizeCompositeCanvas();
     }
 });
 
