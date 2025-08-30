@@ -3418,6 +3418,22 @@ let streamState = {
     isUpdatingParameters: false
 };
 
+// Audio Blob System
+let audioBlobState = {
+    active: false,
+    audioContext: null,
+    analyser: null,
+    microphone: null,
+    dataArray: null,
+    canvas: null,
+    gl: null,
+    animationId: null,
+    frequencyData: new Uint8Array(256),
+    bassLevel: 0,
+    midLevel: 0,
+    trebleLevel: 0
+};
+
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
 const PIPELINE_ID = 'pip_qpUgXycjWF6YMeSL';
 
@@ -3960,20 +3976,6 @@ function toggleStream() {
 }
 
 // Audio Blob System
-let audioBlobState = {
-    active: false,
-    audioContext: null,
-    analyser: null,
-    microphone: null,
-    dataArray: null,
-    canvas: null,
-    gl: null,
-    animationId: null,
-    frequencyData: new Uint8Array(256),
-    bassLevel: 0,
-    midLevel: 0,
-    trebleLevel: 0
-};
 
 async function toggleAudioBlob() {
     if (audioBlobState.active) {
@@ -4152,7 +4154,7 @@ function initAudioBlobGL() {
     const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
     
     // Create shader program
-    audioBlobState.shaderProgram = createProgram(gl, vertexShader, fragmentShader);
+    audioBlobState.shaderProgram = createAudioBlobProgram(gl, vertexShader, fragmentShader);
     
     // Get uniform locations
     audioBlobState.uniforms = {
@@ -4193,7 +4195,7 @@ function createShader(gl, type, source) {
     return shader;
 }
 
-function createProgram(gl, vertexShader, fragmentShader) {
+function createAudioBlobProgram(gl, vertexShader, fragmentShader) {
     const program = gl.createProgram();
     gl.attachShader(program, vertexShader);
     gl.attachShader(program, fragmentShader);
