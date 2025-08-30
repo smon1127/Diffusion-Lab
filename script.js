@@ -4154,17 +4154,47 @@ function initAudioBlobGL() {
         uniform vec2 u_resolution;
         uniform vec3 u_baseColor;
         
-        // Noise function for organic blob shape
+        // Enhanced noise functions for organic blob shape
+        float hash(vec2 p) {
+            p = fract(p * vec2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return fract(p.x * p.y);
+        }
+        
         float noise(vec2 p) {
-            return sin(p.x * 12.9898 + p.y * 78.233) * 43758.5453;
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f); // Smooth interpolation
+            
+            float a = hash(i);
+            float b = hash(i + vec2(1.0, 0.0));
+            float c = hash(i + vec2(0.0, 1.0));
+            float d = hash(i + vec2(1.0, 1.0));
+            
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
         }
         
         float fbm(vec2 p) {
             float f = 0.0;
-            f += 0.5 * sin(noise(p));
-            f += 0.25 * sin(noise(p * 2.0));
-            f += 0.125 * sin(noise(p * 4.0));
+            float amplitude = 0.5;
+            for(int i = 0; i < 6; i++) {
+                f += amplitude * noise(p);
+                p *= 2.0;
+                amplitude *= 0.5;
+            }
             return f;
+        }
+        
+        // Turbulence function for more chaotic movement
+        float turbulence(vec2 p) {
+            float t = 0.0;
+            float amplitude = 1.0;
+            for(int i = 0; i < 4; i++) {
+                t += abs(noise(p)) * amplitude;
+                p *= 2.0;
+                amplitude *= 0.5;
+            }
+            return t;
         }
         
         void main() {
@@ -4179,27 +4209,64 @@ function initAudioBlobGL() {
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
             
-            // Audio-reactive blob parameters
-            float baseSize = 0.15 + u_bassLevel * 0.3;
-            float wobble = fbm(vec2(angle * 3.0, u_time * 2.0)) * 0.05;
-            float midWobble = sin(angle * 5.0 + u_time * 3.0) * u_midLevel * 0.02;
-            float trebleSpikes = sin(angle * 12.0 + u_time * 8.0) * u_trebleLevel * 0.015;
+            // Enhanced audio-reactive blob parameters
+            float time = u_time * 0.5;
             
-            float blobRadius = baseSize + wobble + midWobble + trebleSpikes;
+            // Bass: Controls overall size and slow organic movement
+            float baseSize = 0.12 + u_bassLevel * 0.35;
+            float bassWave = fbm(vec2(angle * 2.0 + time * 0.8, time * 0.3)) * u_bassLevel * 0.08;
+            
+            // Mid frequencies: Control medium-scale organic deformation
+            float midNoise1 = fbm(vec2(angle * 4.0 + time * 1.5, time * 0.7)) * u_midLevel * 0.06;
+            float midNoise2 = noise(vec2(angle * 6.0 - time * 2.0, time)) * u_midLevel * 0.04;
+            float midDeform = midNoise1 + midNoise2;
+            
+            // Treble: Creates sharp, fast-moving details and spikes
+            float trebleSpikes = 0.0;
+            for(int i = 0; i < 3; i++) {
+                float freq = 8.0 + float(i) * 4.0;
+                float speed = 3.0 + float(i) * 2.0;
+                trebleSpikes += sin(angle * freq + time * speed) * u_trebleLevel * (0.02 - float(i) * 0.005);
+            }
+            
+            // High-frequency turbulence for organic chaos
+            float organicChaos = turbulence(vec2(angle * 8.0 + time * 1.2, time * 2.5)) * 0.03;
+            float audioIntensity = (u_bassLevel + u_midLevel + u_trebleLevel) / 3.0;
+            organicChaos *= audioIntensity;
+            
+            // Breathing effect based on overall audio energy
+            float breathe = sin(time * 1.5) * audioIntensity * 0.02;
+            
+            // Combine all deformations
+            float blobRadius = baseSize + bassWave + midDeform + trebleSpikes + organicChaos + breathe;
             
             // Create soft blob edge
             float edge = smoothstep(blobRadius + 0.05, blobRadius - 0.05, dist);
             
-            // Audio-reactive colors based on base color
-            vec3 color = u_baseColor + vec3(
-                u_bassLevel * 0.3,
-                u_midLevel * 0.3,
-                u_trebleLevel * 0.3
-            );
+            // Enhanced audio-reactive colors
+            vec3 baseColor = u_baseColor;
             
-            // Add glow effect
-            float glow = exp(-dist * 3.0) * 0.3;
-            color += vec3(glow * u_bassLevel);
+            // Create color variations based on frequency bands
+            vec3 bassColor = vec3(1.0, 0.3, 0.1) * u_bassLevel; // Warm red/orange for bass
+            vec3 midColor = vec3(0.1, 1.0, 0.3) * u_midLevel;   // Green for mids
+            vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel; // Blue for treble
+            
+            // Blend colors based on audio intensity
+            vec3 audioColor = bassColor + midColor + trebleColor;
+            
+            // Create color waves that move with the music
+            float colorWave = sin(angle * 3.0 + time * 2.0) * 0.5 + 0.5;
+            float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
+            
+            // Final color mixing
+            vec3 color = baseColor * colorPulse + audioColor * 0.4;
+            color += baseColor * colorWave * audioIntensity * 0.2;
+            
+            // Enhanced glow effects
+            float innerGlow = exp(-dist * 4.0) * 0.4 * audioIntensity;
+            float outerGlow = exp(-dist * 1.5) * 0.2 * u_bassLevel;
+            color += vec3(innerGlow) * (baseColor + audioColor * 0.5);
+            color += vec3(outerGlow) * bassColor;
             
             gl_FragColor = vec4(color, edge * 0.7);
         }
