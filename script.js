@@ -3807,11 +3807,14 @@ async function startStream() {
             throw new Error('Please enter your Daydream API key');
         }
         
-        // Create canvas media stream
-        streamState.mediaStream = canvas.captureStream(30);
+        // Create canvas media stream from appropriate canvas (audio blob or fluid)
+        const streamingCanvas = getStreamingCanvas();
+        streamState.mediaStream = streamingCanvas.captureStream(30);
         if (!streamState.mediaStream) {
             throw new Error('Failed to capture canvas stream');
         }
+        
+        console.log(`📹 Using ${streamingCanvas === audioBlobState.canvas ? 'audio blob' : 'fluid'} canvas for streaming`);
         
         // Try to load and validate existing stream first
         savedStream = loadStreamState();
@@ -4681,6 +4684,14 @@ function removeAudioFromStream() {
     } catch (error) {
         console.warn('Failed to remove audio from stream:', error);
     }
+}
+
+function getStreamingCanvas() {
+    // Return audio blob canvas if active and available, otherwise main canvas
+    if (audioBlobState.active && audioBlobState.canvas) {
+        return audioBlobState.canvas;
+    }
+    return canvas;
 }
 
 function switchStreamingCanvas(useAudioBlob) {
