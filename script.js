@@ -4475,7 +4475,7 @@ function animateAudioBlobColor() {
     } else {
         // Animate color based on time and colorful slider
         const time = Date.now() * 0.001;
-        const speed = audioBlobState.colorful * 2.0; // Speed multiplier
+        const speed = audioBlobState.colorful * 6.0; // Speed multiplier (faster cycling)
         const hue = (time * speed) % (Math.PI * 2); // Full rotation every 2π/speed seconds
         
         // Generate vibrant colors using HSV-like approach
