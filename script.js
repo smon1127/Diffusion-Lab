@@ -5059,8 +5059,24 @@ function initializeNumericInput(id, min, max, updateFn, precision = 1) {
             if (!targetSlider && updateFn) {
                 updateFn(value, false);
             }
+        } else if (actualSlider === 'audioDelay') {
+            // Special handling for audio delay - unlimited range but slider caps at 500
+            const sliderMax = 500;
+            const percentage = Math.min(100, (value / sliderMax) * 100);
+            
+            // Update slider fill directly
+            const fill = document.getElementById(`${actualSlider}Fill`);
+            if (fill) {
+                const displayPercentage = SLIDER_HANDLE_PADDING * 100 + ((percentage / 100) * (100 - 2 * SLIDER_HANDLE_PADDING * 100));
+                fill.style.width = displayPercentage + '%';
+            }
+            
+            // Call the update function only if it's the original slider
+            if (!targetSlider && updateFn) {
+                updateFn(value, false);
+            }
         } else {
-            // For non-denoise inputs, use the regular slider update
+            // For other inputs, use the regular slider update
             const range = max - min;
             const percentage = range !== 0 ? ((value - min) / range) * 100 : 0;
             
@@ -5180,7 +5196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Create a map of all numeric inputs with their configurations
     const inputConfigs = {
         // Audio controls
-        audioDelay: { min: 0, max: 500, updateFn: updateAudioDelay, precision: 0 },
+        audioDelay: { min: 0, max: undefined, updateFn: updateAudioDelay, precision: 0 },
         audioReactivity: { min: 0.1, max: 3.0, updateFn: updateAudioReactivity, precision: 1 },
         audioOpacity: { min: 0, max: 1, updateFn: updateAudioOpacity, precision: 2 },
         audioColorful: { min: 0, max: 1, updateFn: updateAudioColorful, precision: 1 },
