@@ -2843,6 +2843,11 @@ function drawDisplay (target) {
     if (config.SUNRAYS)
         gl.uniform1i(displayMaterial.uniforms.uSunrays, sunrays.attach(3));
     blit(target);
+    
+    // Render audio blob overlay if active
+    if (audioBlobState.active && target == null) {
+        renderAudioBlobOverlay();
+    }
 }
 
 function applyBloom (source, destination) {
@@ -4471,44 +4476,90 @@ function analyzeAudio() {
     }
 }
 
+// Render audio blob overlay onto main canvas (for streaming integration)
+function renderAudioBlobOverlay() {
+    if (!audioBlobState.active) return;
+    
+    // Analyze audio
+    analyzeAudio();
+    
+    // Enable blending for overlay
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    
+    // Use the main audio blob shader program on main WebGL context
+    if (!audioBlobState.mainShaderProgram) {
+        initMainAudioBlobShader();
+    }
+    
+    if (audioBlobState.mainShaderProgram) {
+        gl.useProgram(audioBlobState.mainShaderProgram);
+        
+        // Set uniforms
+        gl.uniform1f(audioBlobState.mainUniforms.time, Date.now() * 0.001);
+        gl.uniform1f(audioBlobState.mainUniforms.bassLevel, audioBlobState.bassLevel);
+        gl.uniform1f(audioBlobState.mainUniforms.midLevel, audioBlobState.midLevel);
+        gl.uniform1f(audioBlobState.mainUniforms.trebleLevel, audioBlobState.trebleLevel);
+        gl.uniform2f(audioBlobState.mainUniforms.resolution, canvas.width, canvas.height);
+        gl.uniform3f(audioBlobState.mainUniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
+        gl.uniform1f(audioBlobState.mainUniforms.opacity, audioBlobState.opacity);
+        gl.uniform1f(audioBlobState.mainUniforms.colorful, audioBlobState.colorful);
+        
+        // Set bloom and sunrays uniforms based on global config
+        gl.uniform1i(audioBlobState.mainUniforms.bloom, config.BLOOM ? 1 : 0);
+        gl.uniform1i(audioBlobState.mainUniforms.sunrays, config.SUNRAYS ? 1 : 0);
+        gl.uniform1f(audioBlobState.mainUniforms.bloomIntensity, config.BLOOM_INTENSITY);
+        gl.uniform1f(audioBlobState.mainUniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
+        
+        // Set up vertex attributes
+        gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.mainPositionBuffer);
+        gl.enableVertexAttribArray(audioBlobState.mainPositionAttributeLocation);
+        gl.vertexAttribPointer(audioBlobState.mainPositionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+        
+        // Draw audio blob overlay
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+}
+
+// Legacy function for separate canvas (still used for preview)
 function renderAudioBlob() {
     if (!audioBlobState.active || !audioBlobState.gl) return;
     
-    const gl = audioBlobState.gl;
+    const blobGl = audioBlobState.gl;
     
     // Analyze audio
     analyzeAudio();
     
     // Clear canvas
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    blobGl.clearColor(0, 0, 0, 0);
+    blobGl.clear(blobGl.COLOR_BUFFER_BIT);
     
     // Use shader program
-    gl.useProgram(audioBlobState.shaderProgram);
+    blobGl.useProgram(audioBlobState.shaderProgram);
     
     // Set uniforms
-    gl.uniform1f(audioBlobState.uniforms.time, Date.now() * 0.001);
-    gl.uniform1f(audioBlobState.uniforms.bassLevel, audioBlobState.bassLevel);
-    gl.uniform1f(audioBlobState.uniforms.midLevel, audioBlobState.midLevel);
-    gl.uniform1f(audioBlobState.uniforms.trebleLevel, audioBlobState.trebleLevel);
-    gl.uniform2f(audioBlobState.uniforms.resolution, audioBlobState.canvas.width, audioBlobState.canvas.height);
-    gl.uniform3f(audioBlobState.uniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
-    gl.uniform1f(audioBlobState.uniforms.opacity, audioBlobState.opacity);
-    gl.uniform1f(audioBlobState.uniforms.colorful, audioBlobState.colorful);
+    blobGl.uniform1f(audioBlobState.uniforms.time, Date.now() * 0.001);
+    blobGl.uniform1f(audioBlobState.uniforms.bassLevel, audioBlobState.bassLevel);
+    blobGl.uniform1f(audioBlobState.uniforms.midLevel, audioBlobState.midLevel);
+    blobGl.uniform1f(audioBlobState.uniforms.trebleLevel, audioBlobState.trebleLevel);
+    blobGl.uniform2f(audioBlobState.uniforms.resolution, audioBlobState.canvas.width, audioBlobState.canvas.height);
+    blobGl.uniform3f(audioBlobState.uniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
+    blobGl.uniform1f(audioBlobState.uniforms.opacity, audioBlobState.opacity);
+    blobGl.uniform1f(audioBlobState.uniforms.colorful, audioBlobState.colorful);
     
     // Set bloom and sunrays uniforms based on global config
-    gl.uniform1i(audioBlobState.uniforms.bloom, config.BLOOM ? 1 : 0);
-    gl.uniform1i(audioBlobState.uniforms.sunrays, config.SUNRAYS ? 1 : 0);
-    gl.uniform1f(audioBlobState.uniforms.bloomIntensity, config.BLOOM_INTENSITY);
-    gl.uniform1f(audioBlobState.uniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
+    blobGl.uniform1i(audioBlobState.uniforms.bloom, config.BLOOM ? 1 : 0);
+    blobGl.uniform1i(audioBlobState.uniforms.sunrays, config.SUNRAYS ? 1 : 0);
+    blobGl.uniform1f(audioBlobState.uniforms.bloomIntensity, config.BLOOM_INTENSITY);
+    blobGl.uniform1f(audioBlobState.uniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
     
     // Set up vertex attributes
-    gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
-    gl.enableVertexAttribArray(audioBlobState.positionAttributeLocation);
-    gl.vertexAttribPointer(audioBlobState.positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+    blobGl.bindBuffer(blobGl.ARRAY_BUFFER, audioBlobState.positionBuffer);
+    blobGl.enableVertexAttribArray(audioBlobState.positionAttributeLocation);
+    blobGl.vertexAttribPointer(audioBlobState.positionAttributeLocation, 2, blobGl.FLOAT, false, 0, 0);
     
     // Draw
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    blobGl.drawArrays(blobGl.TRIANGLE_STRIP, 0, 4);
     
     // Continue animation
     audioBlobState.animationId = requestAnimationFrame(renderAudioBlob);
@@ -4665,6 +4716,261 @@ function removeAudioFromStream() {
         console.log('✅ Audio removed from stream');
     } catch (error) {
         console.warn('Failed to remove audio from stream:', error);
+    }
+}
+
+// Initialize audio blob shader for main WebGL context
+function initMainAudioBlobShader() {
+    if (!gl) return;
+    
+    try {
+        // Reuse the same shader source from the separate canvas version
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            varying vec2 v_position;
+            
+            void main() {
+                v_position = a_position;
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+        
+        const fragmentShaderSource = `
+            precision mediump float;
+            varying vec2 v_position;
+            
+            uniform float u_time;
+            uniform float u_bassLevel;
+            uniform float u_midLevel;
+            uniform float u_trebleLevel;
+            uniform vec2 u_resolution;
+            uniform vec3 u_baseColor;
+            uniform float u_opacity;
+            uniform float u_colorful;
+            uniform bool u_bloom;
+            uniform bool u_sunrays;
+            uniform float u_bloomIntensity;
+            uniform float u_sunraysWeight;
+            
+            // Enhanced noise functions for organic blob shape
+            float hash(vec2 p) {
+                p = fract(p * vec2(123.34, 456.21));
+                p += dot(p, p + 45.32);
+                return fract(p.x * p.y);
+            }
+            
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                
+                float a = hash(i);
+                float b = hash(i + vec2(1.0, 0.0));
+                float c = hash(i + vec2(0.0, 1.0));
+                float d = hash(i + vec2(1.0, 1.0));
+                
+                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+            }
+            
+            float fbm(vec2 p) {
+                float f = 0.0;
+                float amplitude = 0.5;
+                for(int i = 0; i < 6; i++) {
+                    f += amplitude * noise(p);
+                    p *= 2.0;
+                    amplitude *= 0.5;
+                }
+                return f;
+            }
+            
+            float turbulence(vec2 p) {
+                float t = 0.0;
+                float amplitude = 1.0;
+                for(int i = 0; i < 4; i++) {
+                    t += abs(noise(p)) * amplitude;
+                    p *= 2.0;
+                    amplitude *= 0.5;
+                }
+                return t;
+            }
+            
+            vec3 applyBloom(vec3 color, float intensity) {
+                float luminance = dot(color, vec3(0.299, 0.587, 0.114));
+                float bloom = smoothstep(0.3, 1.0, luminance);
+                vec3 bloomColor = color * bloom * intensity * 2.0;
+                return color + bloomColor;
+            }
+            
+            vec3 applySunrays(vec3 color, vec2 pos, float weight) {
+                vec2 center = vec2(0.0, 0.0);
+                vec2 dir = normalize(pos - center);
+                float dist = length(pos - center);
+                
+                float rays = 0.0;
+                for(int i = 0; i < 8; i++) {
+                    float angle = float(i) * 0.785398;
+                    vec2 rayDir = vec2(cos(angle), sin(angle));
+                    float rayAlignment = max(0.0, dot(dir, rayDir));
+                    float rayIntensity = pow(rayAlignment, 4.0) * exp(-dist * 2.0);
+                    rays += rayIntensity;
+                }
+                
+                float audioIntensity = (u_bassLevel + u_midLevel + u_trebleLevel) / 3.0;
+                rays *= weight * audioIntensity * 0.5;
+                
+                return color + vec3(rays) * color;
+            }
+            
+            void main() {
+                vec2 uv = (v_position + 1.0) * 0.5;
+                vec2 center = vec2(0.5, 0.5);
+                vec2 pos = uv - center;
+                
+                float aspectRatio = u_resolution.x / u_resolution.y;
+                pos.x *= aspectRatio;
+                
+                float dist = length(pos);
+                float angle = atan(pos.y, pos.x);
+                
+                float time = u_time * 0.5;
+                
+                float baseSize = 0.12 + u_bassLevel * 0.35;
+                float bassWave = fbm(vec2(angle * 2.0 + time * 0.8, time * 0.3)) * u_bassLevel * 0.08;
+                
+                float midNoise1 = fbm(vec2(angle * 4.0 + time * 1.5, time * 0.7)) * u_midLevel * 0.06;
+                float midNoise2 = noise(vec2(angle * 6.0 - time * 2.0, time)) * u_midLevel * 0.04;
+                float midDeform = midNoise1 + midNoise2;
+                
+                float trebleSpikes = 0.0;
+                for(int i = 0; i < 3; i++) {
+                    float freq = 8.0 + float(i) * 4.0;
+                    float speed = 3.0 + float(i) * 2.0;
+                    trebleSpikes += sin(angle * freq + time * speed) * u_trebleLevel * (0.02 - float(i) * 0.005);
+                }
+                
+                float organicChaos = turbulence(vec2(angle * 8.0 + time * 1.2, time * 2.5)) * 0.03;
+                float audioIntensity = (u_bassLevel + u_midLevel + u_trebleLevel) / 3.0;
+                organicChaos *= audioIntensity;
+                
+                float breathe = sin(time * 1.5) * audioIntensity * 0.02;
+                
+                float blobRadius = baseSize + bassWave + midDeform + trebleSpikes + organicChaos + breathe;
+                
+                float edge = smoothstep(blobRadius + 0.05, blobRadius - 0.05, dist);
+                
+                vec3 baseColor = u_baseColor;
+                
+                vec3 bassColor = vec3(1.0, 0.3, 0.1) * u_bassLevel;
+                vec3 midColor = vec3(0.1, 1.0, 0.3) * u_midLevel;
+                vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel;
+                
+                vec3 rainbowColor = vec3(
+                    sin(angle * 2.0 + time * 1.5) * 0.5 + 0.5,
+                    sin(angle * 2.0 + time * 1.5 + 2.094) * 0.5 + 0.5,
+                    sin(angle * 2.0 + time * 1.5 + 4.188) * 0.5 + 0.5
+                );
+                
+                float hue = fract(angle / 6.283 + time * 0.1 + audioIntensity * 0.3);
+                vec3 hsvColor = vec3(
+                    abs(hue * 6.0 - 3.0) - 1.0,
+                    2.0 - abs(hue * 6.0 - 2.0),
+                    2.0 - abs(hue * 6.0 - 4.0)
+                );
+                hsvColor = clamp(hsvColor, 0.0, 1.0);
+                
+                vec3 audioColor = bassColor + midColor + trebleColor;
+                vec3 spectrumColor = mix(rainbowColor, hsvColor, 0.5) * audioIntensity;
+                
+                float colorWave = sin(angle * 3.0 + time * 2.0) * 0.5 + 0.5;
+                float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
+                
+                vec3 color = baseColor * (1.0 - u_colorful * 0.7) * colorPulse;
+                color += audioColor * (0.4 + u_colorful * 0.4);
+                color += spectrumColor * u_colorful * 0.6;
+                color += baseColor * colorWave * audioIntensity * 0.2 * (1.0 - u_colorful * 0.5);
+                
+                float innerGlow = exp(-dist * 4.0) * 0.4 * audioIntensity;
+                float outerGlow = exp(-dist * 1.5) * 0.2 * u_bassLevel;
+                color += vec3(innerGlow) * (baseColor + audioColor * 0.5);
+                color += vec3(outerGlow) * bassColor;
+                
+                if (u_bloom) {
+                    color = applyBloom(color, u_bloomIntensity);
+                }
+                
+                if (u_sunrays) {
+                    color = applySunrays(color, pos, u_sunraysWeight);
+                }
+                
+                gl_FragColor = vec4(color, edge * u_opacity);
+            }
+        `;
+        
+        // Create and compile shaders for main context
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vertexShaderSource);
+        gl.compileShader(vertexShader);
+        
+        if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+            console.error('Main vertex shader compilation error:', gl.getShaderInfoLog(vertexShader));
+            return;
+        }
+        
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fragmentShaderSource);
+        gl.compileShader(fragmentShader);
+        
+        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+            console.error('Main fragment shader compilation error:', gl.getShaderInfoLog(fragmentShader));
+            return;
+        }
+        
+        // Create shader program for main context
+        audioBlobState.mainShaderProgram = gl.createProgram();
+        gl.attachShader(audioBlobState.mainShaderProgram, vertexShader);
+        gl.attachShader(audioBlobState.mainShaderProgram, fragmentShader);
+        gl.linkProgram(audioBlobState.mainShaderProgram);
+        
+        if (!gl.getProgramParameter(audioBlobState.mainShaderProgram, gl.LINK_STATUS)) {
+            console.error('Main program linking error:', gl.getProgramInfoLog(audioBlobState.mainShaderProgram));
+            return;
+        }
+        
+        // Get uniform locations for main context
+        audioBlobState.mainUniforms = {
+            time: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_time'),
+            bassLevel: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_bassLevel'),
+            midLevel: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_midLevel'),
+            trebleLevel: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_trebleLevel'),
+            resolution: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_resolution'),
+            baseColor: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_baseColor'),
+            opacity: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_opacity'),
+            colorful: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_colorful'),
+            bloom: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_bloom'),
+            sunrays: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_sunrays'),
+            bloomIntensity: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_bloomIntensity'),
+            sunraysWeight: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_sunraysWeight')
+        };
+        
+        // Create vertex buffer for main context
+        const positions = new Float32Array([
+            -1, -1,
+             1, -1,
+            -1,  1,
+             1,  1
+        ]);
+        
+        audioBlobState.mainPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.mainPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        
+        // Get attribute location for main context
+        audioBlobState.mainPositionAttributeLocation = gl.getAttribLocation(audioBlobState.mainShaderProgram, 'a_position');
+        
+        console.log('✅ Main audio blob shader initialized for streaming');
+        
+    } catch (error) {
+        console.error('Failed to initialize main audio blob shader:', error);
     }
 }
 
