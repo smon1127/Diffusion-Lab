@@ -1726,9 +1726,6 @@
                                 style="display: none;">
                             📋 Copy Stream URL
                         </button>
-                        <button class="modern-button secondary" id="audioBlobButton" onclick="toggleAudioBlob()">
-                            🎵 Audio Blob
-                        </button>
                     </div>
                 </div>
                 
@@ -1973,6 +1970,9 @@
                                 <button class="modern-button secondary" id="cameraButton" onclick="toggleCamera()">
                                     📷 Camera
                                 </button>
+                                <button class="modern-button secondary" id="audioBlobButton" onclick="toggleAudioBlob()">
+                                    🎵 Audio Blob
+                                </button>
                                 <button class="modern-button secondary" id="clearBackgroundButton" onclick="clearAllBackground()" style="display: none;">
                                     🗑️ Clear
                                 </button>
@@ -1980,6 +1980,54 @@
 
                             <div class="camera-preview" id="cameraPreview" style="display: none;">
                                 <video id="cameraVideo" autoplay muted style="width: 100%; max-height: 80px; border-radius: 4px;"></video>
+                            </div>
+                            
+                            <div class="audio-controls" id="audioControls" style="display: none; margin-top: 12px;">
+                                <div class="control-item">
+                                    <div class="control-label">
+                                        <span>Audio Input <div class="tooltip"><span class="info-icon">i</span>
+                                            <span class="tooltiptext">Select microphone or audio input device</span>
+                                        </div></span>
+                                    </div>
+                                    <select id="audioInputSelect" class="audio-select" style="width: 100%; padding: 8px 12px; background: var(--control-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 13px;">
+                                        <option value="">Default Microphone</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                        <span>Reactivity <div class="tooltip"><span class="info-icon">i</span>
+                                            <span class="tooltiptext">Audio sensitivity: higher values make blob more responsive to quiet sounds</span>
+                                        </div></span>
+                                        <span class="control-value" id="audioReactivityValue">1.0</span>
+                                    </div>
+                                    <div class="slider-container" onclick="handleSliderClick(event, 'audioReactivity', 0.1, 3.0)">
+                                        <div class="slider-fill" id="audioReactivityFill" style="width: 30%">
+                                            <div class="slider-handle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="control-label">
+                                        <span>Delay <div class="tooltip"><span class="info-icon">i</span>
+                                            <span class="tooltiptext">Audio processing delay in milliseconds (0-500ms)</span>
+                                        </div></span>
+                                        <span class="control-value" id="audioDelayValue">0ms</span>
+                                    </div>
+                                    <div class="slider-container" onclick="handleSliderClick(event, 'audioDelay', 0, 500)">
+                                        <div class="slider-fill" id="audioDelayFill" style="width: 0%">
+                                            <div class="slider-handle"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-item">
+                                    <div class="color-container full">
+                                        <span class="color-label">Blob Color</span>
+                                        <input type="text" id="audioBlobColorPicker" class="color-input" value="#00d4ff" data-coloris readonly inputmode="none">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         

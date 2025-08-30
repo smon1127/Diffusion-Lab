@@ -407,7 +407,9 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         'colorLife': { min: 0, max: 1, prop: 'COLOR_LIFE', decimals: 2 },
         'animationInterval': { min: 0, max: 1, prop: 'ANIMATION_INTERVAL', decimals: 2 },
         'backgroundImageScale': { min: 0.1, max: 2.0, prop: 'BACKGROUND_IMAGE_SCALE', decimals: 2 },
-        'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true }
+        'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true },
+        'audioReactivity': { min: 0.1, max: 3.0, prop: 'AUDIO_REACTIVITY', decimals: 1, handler: updateAudioReactivity },
+        'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay }
     };
     
     const slider = sliderMap[sliderName];
@@ -423,6 +425,11 @@ function updateSliderValue(sliderName, percentage, skipSave = false) {
         config[slider.prop] = [0, middleIndex, Math.min(middleIndex * 2, 50)];
     } else {
         config[slider.prop] = value;
+    }
+    
+    // Call custom handler if defined (for audio controls)
+    if (slider.handler && typeof slider.handler === 'function') {
+        slider.handler(value);
     }
     
     // Special handling for background media scale
@@ -3431,7 +3438,14 @@ let audioBlobState = {
     frequencyData: new Uint8Array(256),
     bassLevel: 0,
     midLevel: 0,
-    trebleLevel: 0
+    trebleLevel: 0,
+    reactivity: 1.0,
+    delay: 0,
+    color: { r: 0, g: 0.831, b: 1 },
+    selectedDeviceId: null,
+    audioStream: null,
+    delayBuffer: [],
+    delayIndex: 0
 };
 
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
@@ -3987,8 +4001,18 @@ async function toggleAudioBlob() {
 
 async function startAudioBlob() {
     try {
+        // Populate audio input devices
+        await populateAudioInputs();
+        
+        // Get selected device or use default
+        const deviceId = audioBlobState.selectedDeviceId;
+        const constraints = {
+            audio: deviceId ? { deviceId: { exact: deviceId } } : true
+        };
+        
         // Request microphone permission
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        audioBlobState.audioStream = stream;
         
         // Initialize Web Audio API
         audioBlobState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -4008,12 +4032,25 @@ async function startAudioBlob() {
         // Initialize WebGL for audio blob
         initAudioBlobGL();
         
-        // Update button state
+        // Update button state and show controls
         const button = document.getElementById('audioBlobButton');
         button.textContent = '🎵 Stop Audio';
         button.classList.add('streaming');
         
+        // Show audio controls
+        const audioControls = document.getElementById('audioControls');
+        if (audioControls) {
+            audioControls.style.display = 'block';
+        }
+        
+        // Initialize delay buffer
+        audioBlobState.delayBuffer = [];
+        audioBlobState.delayIndex = 0;
+        
         audioBlobState.active = true;
+        
+        // Integrate with media stream if streaming is active
+        await integrateAudioWithStream();
         
         // Start rendering loop
         renderAudioBlob();
@@ -4041,16 +4078,27 @@ function stopAudioBlob() {
     if (audioBlobState.audioContext) {
         audioBlobState.audioContext.close();
     }
+    if (audioBlobState.audioStream) {
+        audioBlobState.audioStream.getTracks().forEach(track => track.stop());
+        audioBlobState.audioStream = null;
+    }
     
-    // Hide canvas
+    // Hide canvas and controls
     if (audioBlobState.canvas) {
         audioBlobState.canvas.style.display = 'none';
+    }
+    const audioControls = document.getElementById('audioControls');
+    if (audioControls) {
+        audioControls.style.display = 'none';
     }
     
     // Update button state
     const button = document.getElementById('audioBlobButton');
     button.textContent = '🎵 Audio Blob';
     button.classList.remove('streaming');
+    
+    // Remove audio from media stream if streaming
+    removeAudioFromStream();
     
     console.log('Audio blob stopped');
 }
@@ -4101,6 +4149,7 @@ function initAudioBlobGL() {
         uniform float u_midLevel;
         uniform float u_trebleLevel;
         uniform vec2 u_resolution;
+        uniform vec3 u_baseColor;
         
         // Noise function for organic blob shape
         float noise(vec2 p) {
@@ -4134,11 +4183,11 @@ function initAudioBlobGL() {
             // Create soft blob edge
             float edge = smoothstep(blobRadius + 0.05, blobRadius - 0.05, dist);
             
-            // Audio-reactive colors
-            vec3 color = vec3(
-                0.0 + u_bassLevel * 0.8,
-                0.4 + u_midLevel * 0.6,
-                0.8 + u_trebleLevel * 0.2
+            // Audio-reactive colors based on base color
+            vec3 color = u_baseColor + vec3(
+                u_bassLevel * 0.3,
+                u_midLevel * 0.3,
+                u_trebleLevel * 0.3
             );
             
             // Add glow effect
@@ -4162,7 +4211,8 @@ function initAudioBlobGL() {
         bassLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bassLevel'),
         midLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_midLevel'),
         trebleLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_trebleLevel'),
-        resolution: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_resolution')
+        resolution: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_resolution'),
+        baseColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_baseColor')
     };
     
     // Create vertex buffer for full-screen quad
@@ -4233,10 +4283,41 @@ function analyzeAudio() {
         trebleSum += audioBlobState.frequencyData[i];
     }
     
-    // Normalize levels (0-1)
-    audioBlobState.bassLevel = (bassSum / bassEnd) / 255;
-    audioBlobState.midLevel = (midSum / (midEnd - bassEnd)) / 255;
-    audioBlobState.trebleLevel = (trebleSum / (bufferLength - midEnd)) / 255;
+    // Normalize levels (0-1) and apply reactivity
+    let bassLevel = ((bassSum / bassEnd) / 255) * audioBlobState.reactivity;
+    let midLevel = ((midSum / (midEnd - bassEnd)) / 255) * audioBlobState.reactivity;
+    let trebleLevel = ((trebleSum / (bufferLength - midEnd)) / 255) * audioBlobState.reactivity;
+    
+    // Clamp values to 0-1
+    bassLevel = Math.min(1, bassLevel);
+    midLevel = Math.min(1, midLevel);
+    trebleLevel = Math.min(1, trebleLevel);
+    
+    // Apply delay if enabled
+    if (audioBlobState.delay > 0 && audioBlobState.delayBuffer.length > 0) {
+        // Add current values to delay buffer
+        audioBlobState.delayBuffer[audioBlobState.delayIndex] = {
+            bassLevel,
+            midLevel,
+            trebleLevel
+        };
+        
+        // Get delayed values
+        const delayedIndex = (audioBlobState.delayIndex + 1) % audioBlobState.delayBuffer.length;
+        const delayed = audioBlobState.delayBuffer[delayedIndex];
+        
+        audioBlobState.bassLevel = delayed.bassLevel;
+        audioBlobState.midLevel = delayed.midLevel;
+        audioBlobState.trebleLevel = delayed.trebleLevel;
+        
+        // Update delay buffer index
+        audioBlobState.delayIndex = (audioBlobState.delayIndex + 1) % audioBlobState.delayBuffer.length;
+    } else {
+        // No delay - use current values
+        audioBlobState.bassLevel = bassLevel;
+        audioBlobState.midLevel = midLevel;
+        audioBlobState.trebleLevel = trebleLevel;
+    }
 }
 
 function renderAudioBlob() {
@@ -4260,6 +4341,7 @@ function renderAudioBlob() {
     gl.uniform1f(audioBlobState.uniforms.midLevel, audioBlobState.midLevel);
     gl.uniform1f(audioBlobState.uniforms.trebleLevel, audioBlobState.trebleLevel);
     gl.uniform2f(audioBlobState.uniforms.resolution, audioBlobState.canvas.width, audioBlobState.canvas.height);
+    gl.uniform3f(audioBlobState.uniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
     
     // Set up vertex attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
@@ -4279,6 +4361,127 @@ window.addEventListener('resize', () => {
         resizeAudioCanvas();
     }
 });
+
+// Audio input device management
+async function populateAudioInputs() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(device => device.kind === 'audioinput');
+        
+        const select = document.getElementById('audioInputSelect');
+        if (!select) return;
+        
+        // Clear existing options except default
+        select.innerHTML = '<option value="">Default Microphone</option>';
+        
+        // Add available audio inputs
+        audioInputs.forEach(device => {
+            const option = document.createElement('option');
+            option.value = device.deviceId;
+            option.textContent = device.label || `Microphone ${device.deviceId.slice(0, 8)}`;
+            select.appendChild(option);
+        });
+        
+        // Set change listener
+        select.addEventListener('change', (e) => {
+            audioBlobState.selectedDeviceId = e.target.value || null;
+            if (audioBlobState.active) {
+                // Restart audio with new device
+                stopAudioBlob();
+                setTimeout(() => startAudioBlob(), 500);
+            }
+        });
+        
+    } catch (error) {
+        console.warn('Could not enumerate audio devices:', error);
+    }
+}
+
+// Audio streaming integration
+async function integrateAudioWithStream() {
+    if (!streamState.isStreaming || !audioBlobState.audioStream) return;
+    
+    try {
+        // Get current video tracks from canvas stream
+        const videoTracks = streamState.mediaStream.getVideoTracks();
+        
+        // Get audio tracks from audio stream
+        const audioTracks = audioBlobState.audioStream.getAudioTracks();
+        
+        if (audioTracks.length > 0) {
+            // Create new stream with both video and audio
+            const combinedStream = new MediaStream([...videoTracks, ...audioTracks]);
+            
+            // Update WebRTC connection with new stream
+            if (streamState.peerConnection) {
+                // Remove old audio tracks
+                const senders = streamState.peerConnection.getSenders();
+                senders.forEach(sender => {
+                    if (sender.track && sender.track.kind === 'audio') {
+                        streamState.peerConnection.removeTrack(sender);
+                    }
+                });
+                
+                // Add new audio track
+                audioTracks.forEach(track => {
+                    streamState.peerConnection.addTrack(track, combinedStream);
+                });
+                
+                console.log('✅ Audio integrated with stream');
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to integrate audio with stream:', error);
+    }
+}
+
+function removeAudioFromStream() {
+    if (!streamState.peerConnection) return;
+    
+    try {
+        // Remove audio tracks from WebRTC connection
+        const senders = streamState.peerConnection.getSenders();
+        senders.forEach(sender => {
+            if (sender.track && sender.track.kind === 'audio') {
+                streamState.peerConnection.removeTrack(sender);
+            }
+        });
+        
+        console.log('✅ Audio removed from stream');
+    } catch (error) {
+        console.warn('Failed to remove audio from stream:', error);
+    }
+}
+
+// Audio control handlers
+function updateAudioReactivity(value) {
+    audioBlobState.reactivity = value;
+    document.getElementById('audioReactivityValue').textContent = value.toFixed(1);
+}
+
+function updateAudioDelay(value) {
+    audioBlobState.delay = Math.round(value);
+    document.getElementById('audioDelayValue').textContent = audioBlobState.delay + 'ms';
+    
+    // Resize delay buffer based on sample rate (assuming 60fps analysis)
+    const bufferSize = Math.max(1, Math.round(audioBlobState.delay / 16.67)); // 60fps = ~16.67ms per frame
+    audioBlobState.delayBuffer = new Array(bufferSize).fill({
+        bassLevel: 0,
+        midLevel: 0,
+        trebleLevel: 0
+    });
+    audioBlobState.delayIndex = 0;
+}
+
+function updateAudioBlobColor(color) {
+    // Parse hex color to RGB
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16) / 255;
+    const g = parseInt(hex.substr(2, 2), 16) / 255;
+    const b = parseInt(hex.substr(4, 2), 16) / 255;
+    
+    audioBlobState.color = { r, g, b };
+}
 
 // Add parameter change listeners with debouncing
 function initializeStreamParameterListeners() {
@@ -5027,6 +5230,18 @@ function initializeColorPickers() {
             backgroundColorPicker.dispatchEvent(new Event('input', { bubbles: true }));
         }
     }
+    
+    // Set audio blob color picker value
+    const audioBlobColorPicker = document.getElementById('audioBlobColorPicker');
+    if (audioBlobColorPicker) {
+        const audioBlobColorHex = rgbToHex(audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
+        audioBlobColorPicker.value = audioBlobColorHex;
+        audioBlobColorPicker.style.backgroundColor = audioBlobColorHex;
+        // Update Coloris if it's already initialized
+        if (window.Coloris) {
+            audioBlobColorPicker.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
 }
 
 function setupInputSaveHandlers() {
@@ -5125,6 +5340,8 @@ function initializeColoris() {
                 updateStaticColor(color);
             } else if (input.id === 'backgroundColorPicker') {
                 updateBackgroundColor(color);
+            } else if (input.id === 'audioBlobColorPicker') {
+                updateAudioBlobColor(color);
             }
         }
     });
@@ -5167,6 +5384,10 @@ function initializeColoris() {
 
     setupColorPickerEvents(staticColorPicker);
     setupColorPickerEvents(backgroundColorPicker);
+    
+    // Set up audio blob color picker
+    const audioBlobColorPicker = document.getElementById('audioBlobColorPicker');
+    setupColorPickerEvents(audioBlobColorPicker);
 
     console.log('Coloris initialized successfully');
 }
