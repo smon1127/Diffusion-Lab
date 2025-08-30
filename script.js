@@ -4510,6 +4510,9 @@ function renderAudioBlobOverlay() {
     }
     
     if (audioBlobState.mainShaderProgram) {
+        // Save the current buffer binding to restore later
+        const previousBuffer = gl.getParameter(gl.ARRAY_BUFFER_BINDING);
+        
         // Enable blending for overlay - this should blend with existing content
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -4545,6 +4548,9 @@ function renderAudioBlobOverlay() {
         
         // Restore the blend function that the fluid system expects
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        
+        // Restore the previous buffer binding so blit() works correctly
+        gl.bindBuffer(gl.ARRAY_BUFFER, previousBuffer);
     }
 }
 
