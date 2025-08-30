@@ -4298,15 +4298,18 @@ function initAudioBlobGL() {
             vec3 midColor = vec3(0.1, 1.0, 0.3) * u_midLevel;   // Green for mids
             vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel; // Blue for treble
             
+            // Dynamic color speed based on colorful parameter (1.0 = base speed, up to 4x faster)
+            float colorSpeed = 1.0 + u_colorful * 3.0;
+            
             // Rainbow spectrum colors that shift with time and position
             vec3 rainbowColor = vec3(
-                sin(angle * 2.0 + time * 1.5) * 0.5 + 0.5,
-                sin(angle * 2.0 + time * 1.5 + 2.094) * 0.5 + 0.5,  // 2π/3 offset
-                sin(angle * 2.0 + time * 1.5 + 4.188) * 0.5 + 0.5   // 4π/3 offset
+                sin(angle * 2.0 + time * 1.5 * colorSpeed) * 0.5 + 0.5,
+                sin(angle * 2.0 + time * 1.5 * colorSpeed + 2.094) * 0.5 + 0.5,  // 2π/3 offset
+                sin(angle * 2.0 + time * 1.5 * colorSpeed + 4.188) * 0.5 + 0.5   // 4π/3 offset
             );
             
-            // HSV-style color cycling
-            float hue = fract(angle / 6.283 + time * 0.1 + audioIntensity * 0.3);
+            // HSV-style color cycling (keep this slower for smooth transitions)
+            float hue = fract(angle / 6.283 + time * 0.1 * colorSpeed + audioIntensity * 0.3);
             vec3 hsvColor = vec3(
                 abs(hue * 6.0 - 3.0) - 1.0,
                 2.0 - abs(hue * 6.0 - 2.0),
@@ -4318,9 +4321,9 @@ function initAudioBlobGL() {
             vec3 audioColor = bassColor + midColor + trebleColor;
             vec3 spectrumColor = mix(rainbowColor, hsvColor, 0.5) * audioIntensity;
             
-            // Create color waves that move with the music
-            float colorWave = sin(angle * 3.0 + time * 2.0) * 0.5 + 0.5;
-            float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
+            // Create color waves that move with the music (speed varies with colorful)
+            float colorWave = sin(angle * 3.0 + time * 2.0 * colorSpeed) * 0.5 + 0.5;
+            float colorPulse = sin(time * 4.0 * colorSpeed) * audioIntensity * 0.3 + 0.7;
             
             // Mix base color with colorful effects based on u_colorful parameter
             vec3 color = baseColor * (1.0 - u_colorful * 0.7) * colorPulse;
@@ -4864,13 +4867,16 @@ function initMainAudioBlobShader() {
                 vec3 midColor = vec3(0.1, 1.0, 0.3) * u_midLevel;
                 vec3 trebleColor = vec3(0.3, 0.1, 1.0) * u_trebleLevel;
                 
+                // Dynamic color speed based on colorful parameter (1.0 = base speed, up to 4x faster)
+                float colorSpeed = 1.0 + u_colorful * 3.0;
+                
                 vec3 rainbowColor = vec3(
-                    sin(angle * 2.0 + time * 1.5) * 0.5 + 0.5,
-                    sin(angle * 2.0 + time * 1.5 + 2.094) * 0.5 + 0.5,
-                    sin(angle * 2.0 + time * 1.5 + 4.188) * 0.5 + 0.5
+                    sin(angle * 2.0 + time * 1.5 * colorSpeed) * 0.5 + 0.5,
+                    sin(angle * 2.0 + time * 1.5 * colorSpeed + 2.094) * 0.5 + 0.5,
+                    sin(angle * 2.0 + time * 1.5 * colorSpeed + 4.188) * 0.5 + 0.5
                 );
                 
-                float hue = fract(angle / 6.283 + time * 0.1 + audioIntensity * 0.3);
+                float hue = fract(angle / 6.283 + time * 0.1 * colorSpeed + audioIntensity * 0.3);
                 vec3 hsvColor = vec3(
                     abs(hue * 6.0 - 3.0) - 1.0,
                     2.0 - abs(hue * 6.0 - 2.0),
@@ -4881,8 +4887,8 @@ function initMainAudioBlobShader() {
                 vec3 audioColor = bassColor + midColor + trebleColor;
                 vec3 spectrumColor = mix(rainbowColor, hsvColor, 0.5) * audioIntensity;
                 
-                float colorWave = sin(angle * 3.0 + time * 2.0) * 0.5 + 0.5;
-                float colorPulse = sin(time * 4.0) * audioIntensity * 0.3 + 0.7;
+                float colorWave = sin(angle * 3.0 + time * 2.0 * colorSpeed) * 0.5 + 0.5;
+                float colorPulse = sin(time * 4.0 * colorSpeed) * audioIntensity * 0.3 + 0.7;
                 
                 vec3 color = baseColor * (1.0 - u_colorful * 0.7) * colorPulse;
                 color += audioColor * (0.4 + u_colorful * 0.4);
