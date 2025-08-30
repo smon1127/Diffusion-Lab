@@ -4159,6 +4159,10 @@ function initAudioBlobGL() {
         uniform vec3 u_baseColor;
         uniform float u_opacity;
         uniform float u_colorful;
+        uniform bool u_bloom;
+        uniform bool u_sunrays;
+        uniform float u_bloomIntensity;
+        uniform float u_sunraysWeight;
         
         // Enhanced noise functions for organic blob shape
         float hash(vec2 p) {
@@ -4201,6 +4205,38 @@ function initAudioBlobGL() {
                 amplitude *= 0.5;
             }
             return t;
+        }
+        
+        // Bloom effect function
+        vec3 applyBloom(vec3 color, float intensity) {
+            // Simple bloom approximation using glow
+            float luminance = dot(color, vec3(0.299, 0.587, 0.114));
+            float bloom = smoothstep(0.3, 1.0, luminance);
+            vec3 bloomColor = color * bloom * intensity * 2.0;
+            return color + bloomColor;
+        }
+        
+        // Sunrays effect function
+        vec3 applySunrays(vec3 color, vec2 pos, float weight) {
+            vec2 center = vec2(0.0, 0.0);
+            vec2 dir = normalize(pos - center);
+            float dist = length(pos - center);
+            
+            // Create radial rays
+            float rays = 0.0;
+            for(int i = 0; i < 8; i++) {
+                float angle = float(i) * 0.785398; // π/4
+                vec2 rayDir = vec2(cos(angle), sin(angle));
+                float rayAlignment = max(0.0, dot(dir, rayDir));
+                float rayIntensity = pow(rayAlignment, 4.0) * exp(-dist * 2.0);
+                rays += rayIntensity;
+            }
+            
+            // Apply sunrays based on audio intensity
+            float audioIntensity = (u_bassLevel + u_midLevel + u_trebleLevel) / 3.0;
+            rays *= weight * audioIntensity * 0.5;
+            
+            return color + vec3(rays) * color;
         }
         
         void main() {
@@ -4293,6 +4329,16 @@ function initAudioBlobGL() {
             color += vec3(innerGlow) * (baseColor + audioColor * 0.5);
             color += vec3(outerGlow) * bassColor;
             
+            // Apply bloom effect if enabled
+            if (u_bloom) {
+                color = applyBloom(color, u_bloomIntensity);
+            }
+            
+            // Apply sunrays effect if enabled
+            if (u_sunrays) {
+                color = applySunrays(color, pos, u_sunraysWeight);
+            }
+            
             gl_FragColor = vec4(color, edge * u_opacity);
         }
     `;
@@ -4313,7 +4359,11 @@ function initAudioBlobGL() {
         resolution: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_resolution'),
         baseColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_baseColor'),
         opacity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_opacity'),
-        colorful: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_colorful')
+        colorful: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_colorful'),
+        bloom: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloom'),
+        sunrays: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunrays'),
+        bloomIntensity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloomIntensity'),
+        sunraysWeight: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunraysWeight')
     };
     
     // Create vertex buffer for full-screen quad
@@ -4445,6 +4495,12 @@ function renderAudioBlob() {
     gl.uniform3f(audioBlobState.uniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
     gl.uniform1f(audioBlobState.uniforms.opacity, audioBlobState.opacity);
     gl.uniform1f(audioBlobState.uniforms.colorful, audioBlobState.colorful);
+    
+    // Set bloom and sunrays uniforms based on global config
+    gl.uniform1i(audioBlobState.uniforms.bloom, config.BLOOM ? 1 : 0);
+    gl.uniform1i(audioBlobState.uniforms.sunrays, config.SUNRAYS ? 1 : 0);
+    gl.uniform1f(audioBlobState.uniforms.bloomIntensity, config.BLOOM_INTENSITY);
+    gl.uniform1f(audioBlobState.uniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
     
     // Set up vertex attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
