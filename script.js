@@ -2530,9 +2530,20 @@ multipleSplats(parseInt(Math.random() * 20) + 5);
 
 let lastUpdateTime = Date.now();
 let colorUpdateTimer = 0.0;
+let isFluidVisible = true; // Track fluid visibility for performance optimization
+let performanceStats = { skippedFrames: 0, renderedFrames: 0 }; // Performance monitoring
 update();
 
 function update () {
+    // Skip all fluid operations when not visible for performance
+    if (!isFluidVisible) {
+        performanceStats.skippedFrames++;
+        requestAnimationFrame(update);
+        return;
+    }
+    
+    performanceStats.renderedFrames++;
+    
     const dt = calcDeltaTime();
     
     // Mobile performance optimization
@@ -4001,10 +4012,143 @@ function toggleStream() {
 // Audio Blob System
 
 async function toggleAudioBlob() {
-    if (audioBlobState.active) {
+    const button = document.getElementById('audioBlobButton');
+    if (!button) return;
+
+    const isActive = button.classList.contains('active');
+    
+    if (isActive) {
         stopAudioBlob();
+        deactivateAllInputModes();
     } else {
+        activateInputMode('audio');
         await startAudioBlob();
+    }
+}
+
+// Input mode toggle group
+const inputModes = {
+    audio: {
+        buttonId: 'audioBlobButton',
+        canvasId: 'audioBlobCanvas',
+        controlIds: ['audioControls'],
+        text: '🎵 Audio'
+    },
+    fluid: {
+        buttonId: 'fluidDrawingButton',
+        canvasId: 'fluidCanvas',
+        controlIds: ['fluidControlsContent'],
+        text: '🎨 Fluid Drawing'
+    }
+};
+
+function deactivateAllInputModes() {
+    Object.values(inputModes).forEach(mode => {
+        const button = document.getElementById(mode.buttonId);
+        if (button) {
+            button.classList.remove('active');
+        }
+        
+        const canvas = document.getElementById(mode.canvasId);
+        if (canvas) {
+            canvas.style.display = 'none';
+        }
+        
+        mode.controlIds.forEach(controlId => {
+            const control = document.getElementById(controlId);
+            if (control) {
+                control.style.display = 'none';
+            }
+        });
+    });
+    
+    // Hide fluid simulation for performance optimization
+    isFluidVisible = false;
+    console.log('🎨 Fluid rendering paused for performance');
+    console.log(`📊 Performance stats - Rendered: ${performanceStats.renderedFrames}, Skipped: ${performanceStats.skippedFrames}`);
+}
+
+function activateInputMode(modeName) {
+    const mode = inputModes[modeName];
+    if (!mode) return;
+
+    // Deactivate all other modes first
+    deactivateAllInputModes();
+    
+    // Activate this mode
+    const button = document.getElementById(mode.buttonId);
+    if (button) {
+        button.classList.add('active');
+    }
+    
+    const canvas = document.getElementById(mode.canvasId);
+    if (canvas) {
+        canvas.style.display = 'block';
+        
+        // Special handling for fluid mode
+        if (modeName === 'fluid') {
+            // Enable fluid rendering for performance optimization
+            isFluidVisible = true;
+            
+            // Fully reinitialize WebGL context and fluid simulation
+            try {
+                // Ensure canvas is properly sized first
+                if (resizeCanvas()) {
+                    console.log('🎨 Canvas resized for fluid mode');
+                }
+                
+                // Reinitialize framebuffers and WebGL state
+                initFramebuffers();
+                initBloomFramebuffers();
+                initSunraysFramebuffers();
+                
+                // Clear and reset canvas
+                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                
+                // Add initial splats for visual feedback
+                multipleSplats(parseInt(Math.random() * 20) + 5);
+                
+                // Start animation loop
+                config.PAUSED = false;
+                if (window.fluidAnimationFrame) {
+                    cancelAnimationFrame(window.fluidAnimationFrame);
+                }
+                window.fluidAnimationFrame = requestAnimationFrame(update);
+                
+                console.log('🎨 Fluid simulation reinitialized and rendering enabled');
+                console.log(`📊 Performance stats reset - Starting fresh render cycle`);
+            } catch (error) {
+                console.error('Failed to reinitialize fluid simulation:', error);
+            }
+        }
+    }
+    
+    mode.controlIds.forEach(controlId => {
+        const control = document.getElementById(controlId);
+        if (control) {
+            control.style.display = 'block';
+        }
+    });
+}
+
+function toggleFluidDrawing() {
+    const button = document.getElementById('fluidDrawingButton');
+    if (!button) return;
+
+    const isActive = button.classList.contains('active');
+    
+    if (isActive) {
+        deactivateAllInputModes();
+        // Note: isFluidVisible is set to false in deactivateAllInputModes()
+        config.PAUSED = true;
+        if (window.fluidAnimationFrame) {
+            cancelAnimationFrame(window.fluidAnimationFrame);
+            window.fluidAnimationFrame = null;
+        }
+    } else {
+        activateInputMode('fluid');
+        // Note: isFluidVisible is set to true in activateInputMode('fluid')
     }
 }
 
@@ -4061,8 +4205,20 @@ async function startAudioBlob() {
         });
         
         // Get canvas and WebGL context
-        audioBlobState.canvas = document.getElementById('audioBlobCanvas');
-        audioBlobState.canvas.style.display = 'block';
+        const audioCanvas = document.getElementById('audioBlobCanvas');
+        const fluidCanvas = document.getElementById('fluidCanvas');
+        const fluidControls = document.getElementById('fluidControlsContent');
+        
+        if (!audioCanvas) {
+            throw new Error('Audio canvas element not found');
+        }
+        
+        audioBlobState.canvas = audioCanvas;
+        audioCanvas.style.display = 'block';
+        
+        // Hide fluid canvas and controls if they exist
+        if (fluidCanvas) fluidCanvas.style.display = 'none';
+        if (fluidControls) fluidControls.style.display = 'none';
         resizeAudioCanvas();
         
         // Initialize WebGL for audio blob
@@ -4070,7 +4226,7 @@ async function startAudioBlob() {
         
         // Update button state and show controls
         const button = document.getElementById('audioBlobButton');
-        button.textContent = '🎵 Stop Audio';
+        button.textContent = '🎵 Audio';
         button.classList.add('streaming');
         
         // Show audio controls and preview button
@@ -4152,7 +4308,7 @@ function stopAudioBlob() {
     
     // Update button state
     const button = document.getElementById('audioBlobButton');
-    button.textContent = '🎵 Audio Blob';
+    button.textContent = '🎵 Audio';
     button.classList.remove('streaming');
     
     // Switch streaming canvas back to fluid canvas if streaming is active
@@ -4661,7 +4817,7 @@ async function populateAudioInputs() {
                 const group = document.createElement('optgroup');
                 group.label = groupLabel;
                 devices.forEach(device => {
-                    const option = document.createElement('option');
+            const option = document.createElement('option');
                     option.value = device.id;
                     option.textContent = `${device.icon} ${device.label}`;
                     group.appendChild(option);
@@ -4675,7 +4831,7 @@ async function populateAudioInputs() {
         addDeviceGroup(deviceGroups.builtin, 'Built-in Devices');
         addDeviceGroup(deviceGroups.usb, 'USB Devices');
         addDeviceGroup(deviceGroups.other, 'Other Devices');
-
+        
         // Restore previous selection if it still exists
         if (audioBlobState.selectedDeviceId) {
             select.value = audioBlobState.selectedDeviceId;
@@ -4828,7 +4984,7 @@ async function switchAudioDevice(e) {
             }
         } else {
             // Just revert selection if no restart needed
-            e.target.value = audioBlobState.selectedDeviceId || '';
+        e.target.value = audioBlobState.selectedDeviceId || '';
         }
         
         // Refresh device list
@@ -4865,7 +5021,7 @@ async function integrateAudioWithStream() {
         const videoTracks = streamState.mediaStream.getVideoTracks();
         
                  // Get raw audio tracks from the microphone stream
-         const audioTracks = audioBlobState.audioStream.getAudioTracks();
+        const audioTracks = audioBlobState.audioStream.getAudioTracks();
         
         if (audioTracks.length > 0) {
             // Create new stream with both video and audio
@@ -6086,6 +6242,14 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeWelcomeOverlay();
         initializeIdleAnimation();
         initializeMediaUpload();
+        
+        // Start with fluid mode active
+        activateInputMode('fluid');
+        // Ensure fluid simulation is running
+        config.PAUSED = false;
+        if (!window.fluidAnimationFrame) {
+            window.fluidAnimationFrame = requestAnimationFrame(update);
+        }
     } catch (err) {
         console.error('Initialization error:', err);
     }
