@@ -84,6 +84,8 @@ let config = {
     ANIMATION_INTERVAL: 0.1, // 0-1 range - Controls animation speed (0 = slow, 1 = fast) - Default: 10%
     // Background Image Parameters
     BACKGROUND_IMAGE_SCALE: 1.0, // 0.1-2.0 range - Controls background image size (1.0 = fit to viewport)
+    // Media Scale Parameters
+    MEDIA_SCALE: 1.0, // 0.1-2.0 range - Controls media size (1.0 = fit to viewport)
 }
 
 // Idle Animation System
@@ -254,7 +256,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -410,6 +412,7 @@ function updateSliderValue(sliderName, percentage, skipSave = false, updateInput
         'colorLife': { min: 0, max: 1, prop: 'COLOR_LIFE', decimals: 2 },
         'animationInterval': { min: 0, max: 1, prop: 'ANIMATION_INTERVAL', decimals: 2 },
         'backgroundImageScale': { min: 0.1, max: 2.0, prop: 'BACKGROUND_IMAGE_SCALE', decimals: 2 },
+        'mediaScale': { min: 0.1, max: 2.0, prop: 'MEDIA_SCALE', decimals: 2, handler: updateMediaScale },
         'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true },
         'audioReactivity': { min: 0.1, max: 3.0, prop: 'AUDIO_REACTIVITY', decimals: 1, handler: updateAudioReactivity },
         'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay },
@@ -497,6 +500,7 @@ function updateSliderPositions() {
         'colorLife': { prop: 'COLOR_LIFE', min: 0, max: 1 },
         'animationInterval': { prop: 'ANIMATION_INTERVAL', min: 0, max: 1 },
         'backgroundImageScale': { prop: 'BACKGROUND_IMAGE_SCALE', min: 0.1, max: 2.0 },
+        'mediaScale': { prop: 'MEDIA_SCALE', min: 0.1, max: 2.0 },
         'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true }
     };
     
@@ -3439,6 +3443,28 @@ let streamState = {
     isUpdatingParameters: false
 };
 
+// Camera System
+let cameraState = {
+    active: false,
+    stream: null,
+    video: null,
+    canvas: null,
+    ctx: null,
+    animationId: null
+};
+
+// Media System
+let mediaState = {
+    active: false,
+    canvas: null,
+    ctx: null,
+    animationId: null,
+    mediaElement: null, // Could be image, video, etc.
+    mediaType: null,    // 'image' or 'video'
+    mediaName: null,    // filename
+    scale: 1.0          // media scale factor (will be synced with config.MEDIA_SCALE)
+};
+
 // Audio Blob System
 let audioBlobState = {
     active: false,
@@ -3471,7 +3497,14 @@ const PIPELINE_ID = 'pip_qpUgXycjWF6YMeSL';
 function updateStreamStatus(status, className = '') {
     const statusElement = document.getElementById('streamStatus');
     if (statusElement) {
-        statusElement.textContent = status;
+        // Hide idle status text, show others
+        if (className === 'idle') {
+            statusElement.textContent = '';
+            statusElement.style.display = 'none';
+        } else {
+            statusElement.textContent = status;
+            statusElement.style.display = 'inline';
+        }
         statusElement.className = `stream-status ${className}`;
     }
 }
@@ -4039,6 +4072,18 @@ const inputModes = {
         canvasId: 'fluidCanvas',
         controlIds: ['fluidControlsContent'],
         text: '🎨 Fluid Drawing'
+    },
+    camera: {
+        buttonId: 'cameraButton',
+        canvasId: 'cameraCanvas',
+        controlIds: ['cameraControls'],
+        text: '📹 Camera'
+    },
+    media: {
+        buttonId: 'mediaButton',
+        canvasId: 'mediaCanvas',
+        controlIds: ['mediaControls'],
+        text: '🎬 Media'
     }
 };
 
@@ -4085,7 +4130,7 @@ function activateInputMode(modeName) {
     if (canvas) {
         canvas.style.display = 'block';
         
-        // Special handling for fluid mode
+        // Special handling for different input modes
         if (modeName === 'fluid') {
             // Enable fluid rendering for performance optimization
             isFluidVisible = true;
@@ -4121,6 +4166,15 @@ function activateInputMode(modeName) {
             } catch (error) {
                 console.error('Failed to reinitialize fluid simulation:', error);
             }
+        } else if (modeName === 'camera' || modeName === 'media') {
+            // Disable fluid simulation for camera and media modes
+            isFluidVisible = false;
+            config.PAUSED = true;
+            if (window.fluidAnimationFrame) {
+                cancelAnimationFrame(window.fluidAnimationFrame);
+                window.fluidAnimationFrame = null;
+            }
+            console.log(`🎨 Fluid simulation disabled for ${modeName} mode`);
         }
     }
     
@@ -4150,6 +4204,505 @@ function toggleFluidDrawing() {
         activateInputMode('fluid');
         // Note: isFluidVisible is set to true in activateInputMode('fluid')
     }
+}
+
+function toggleCamera() {
+    const button = document.getElementById('cameraButton');
+    if (!button) return;
+
+    const isActive = button.classList.contains('active');
+    
+    if (isActive) {
+        deactivateAllInputModes();
+        stopCamera();
+    } else {
+        activateInputMode('camera');
+        startCamera();
+    }
+}
+
+function toggleMedia() {
+    const button = document.getElementById('mediaButton');
+    if (!button) return;
+
+    const isActive = button.classList.contains('active');
+    
+    if (isActive) {
+        deactivateAllInputModes();
+        stopMedia();
+    } else {
+        // Trigger file selection when activating media mode
+        selectMediaFile();
+    }
+}
+
+function selectMediaFile() {
+    const fileInput = document.getElementById('mediaFileInput');
+    if (!fileInput) {
+        console.error('Media file input not found');
+        return;
+    }
+    
+    // Set up file change handler
+    fileInput.onchange = handleMediaFileSelection;
+    
+    // Trigger file dialog
+    fileInput.click();
+}
+
+function handleMediaFileSelection(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        console.log('No file selected');
+        return;
+    }
+    
+    console.log('🎬 Media file selected:', file.name, file.type);
+    
+    // Validate file type
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+        alert('Please select an image or video file.');
+        return;
+    }
+    
+    // Activate media mode and load the file
+    activateInputMode('media');
+    loadMediaFile(file);
+}
+
+async function loadMediaFile(file) {
+    try {
+        // Start media mode first
+        await startMedia();
+        
+        const url = URL.createObjectURL(file);
+        
+        if (file.type.startsWith('image/')) {
+            await loadImageMedia(url, file.name);
+        } else if (file.type.startsWith('video/')) {
+            await loadVideoMedia(url, file.name);
+        }
+        
+    } catch (error) {
+        console.error('Failed to load media file:', error);
+        alert('Failed to load media file: ' + error.message);
+        stopMedia();
+    }
+}
+
+async function loadImageMedia(url, filename) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            mediaState.mediaElement = img;
+            mediaState.mediaType = 'image';
+            mediaState.mediaName = filename;
+            
+            console.log(`🖼️ Image loaded: ${filename} (${img.width}x${img.height})`);
+            
+            // Start rendering the image
+            renderMediaContent();
+            resolve();
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Failed to load image'));
+        };
+        img.src = url;
+    });
+}
+
+async function loadVideoMedia(url, filename) {
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.onloadedmetadata = () => {
+            mediaState.mediaElement = video;
+            mediaState.mediaType = 'video';
+            mediaState.mediaName = filename;
+            video.muted = true; // Prevent audio feedback
+            video.loop = true;
+            video.play();
+            
+            console.log(`🎥 Video loaded: ${filename} (${video.videoWidth}x${video.videoHeight})`);
+            
+            // Start rendering the video
+            renderMediaContent();
+            resolve();
+        };
+        video.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Failed to load video'));
+        };
+        video.src = url;
+    });
+}
+
+async function startCamera() {
+    try {
+        console.log('📹 Starting camera...');
+        
+        // Get camera constraints
+        const constraints = {
+            video: {
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                facingMode: 'user' // Front camera by default
+            }
+        };
+        
+        // Request camera permission and stream
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        cameraState.stream = stream;
+        
+        // Get the camera canvas
+        const canvas = document.getElementById('cameraCanvas');
+        if (!canvas) {
+            throw new Error('Camera canvas element not found');
+        }
+        
+        cameraState.canvas = canvas;
+        cameraState.ctx = canvas.getContext('2d');
+        
+        // Ensure canvas is properly sized
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Create video element to receive camera stream
+        cameraState.video = document.createElement('video');
+        cameraState.video.srcObject = stream;
+        cameraState.video.autoplay = true;
+        cameraState.video.playsInline = true; // Important for iOS
+        cameraState.video.muted = true; // Prevent audio feedback
+        
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+            cameraState.video.onloadedmetadata = () => {
+                resolve();
+            };
+        });
+        
+        cameraState.active = true;
+        
+        // Start rendering camera feed to canvas
+        renderCameraFeed();
+        
+        console.log('📹 Camera started successfully');
+        console.log(`📹 Camera resolution: ${cameraState.video.videoWidth}x${cameraState.video.videoHeight}`);
+        
+        // Switch streaming canvas to camera if streaming is active
+        switchStreamingCanvas();
+        
+    } catch (error) {
+        console.error('Failed to start camera:', error);
+        
+        // Provide user-friendly error messages
+        let errorMessage = 'Failed to access camera: ';
+        if (error.name === 'NotAllowedError') {
+            errorMessage += 'Camera permission denied. Please allow camera access and try again.';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage += 'No camera found on this device.';
+        } else if (error.name === 'NotReadableError') {
+            errorMessage += 'Camera is already in use by another application.';
+        } else {
+            errorMessage += error.message || 'Unknown error occurred.';
+        }
+        
+        alert(errorMessage);
+        
+        // Clean up on error
+        stopCamera();
+    }
+}
+
+function renderCameraFeed() {
+    if (!cameraState.active || !cameraState.video || !cameraState.canvas || !cameraState.ctx) {
+        return;
+    }
+    
+    const canvas = cameraState.canvas;
+    const ctx = cameraState.ctx;
+    const video = cameraState.video;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Calculate aspect ratios for proper scaling
+    const canvasAspect = canvas.width / canvas.height;
+    const videoAspect = video.videoWidth / video.videoHeight;
+    
+    let drawWidth, drawHeight, drawX, drawY;
+    
+    if (videoAspect > canvasAspect) {
+        // Video is wider than canvas - fit to height
+        drawHeight = canvas.height;
+        drawWidth = drawHeight * videoAspect;
+        drawX = (canvas.width - drawWidth) / 2;
+        drawY = 0;
+    } else {
+        // Video is taller than canvas - fit to width
+        drawWidth = canvas.width;
+        drawHeight = drawWidth / videoAspect;
+        drawX = 0;
+        drawY = (canvas.height - drawHeight) / 2;
+    }
+    
+    // Draw video frame to canvas
+    ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+    
+    // Continue animation loop
+    if (cameraState.active) {
+        cameraState.animationId = requestAnimationFrame(renderCameraFeed);
+    }
+}
+
+function stopCamera() {
+    console.log('📹 Camera stopped');
+    
+    cameraState.active = false;
+    
+    // Stop animation loop
+    if (cameraState.animationId) {
+        cancelAnimationFrame(cameraState.animationId);
+        cameraState.animationId = null;
+    }
+    
+    // Stop camera stream
+    if (cameraState.stream) {
+        cameraState.stream.getTracks().forEach(track => track.stop());
+        cameraState.stream = null;
+    }
+    
+    // Clean up video element
+    if (cameraState.video) {
+        cameraState.video.srcObject = null;
+        cameraState.video = null;
+    }
+    
+    // Clear canvas
+    if (cameraState.canvas && cameraState.ctx) {
+        cameraState.ctx.clearRect(0, 0, cameraState.canvas.width, cameraState.canvas.height);
+    }
+    
+    // Reset state
+    cameraState.canvas = null;
+    cameraState.ctx = null;
+}
+
+async function startMedia() {
+    try {
+        console.log('🎬 Starting media...');
+        
+        // Get the media canvas
+        const canvas = document.getElementById('mediaCanvas');
+        if (!canvas) {
+            throw new Error('Media canvas element not found');
+        }
+        
+        mediaState.canvas = canvas;
+        mediaState.ctx = canvas.getContext('2d');
+        
+        // Ensure canvas is properly sized
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Sync scale with config
+        mediaState.scale = config.MEDIA_SCALE || 1.0;
+        
+        mediaState.active = true;
+        
+        // Start with a placeholder display (will be replaced if media is loaded)
+        renderMediaPlaceholder();
+        
+        console.log('🎬 Media started successfully - showing placeholder');
+        console.log('🎬 TODO: Implement file upload and media processing');
+        
+        // Switch streaming canvas to media if streaming is active
+        switchStreamingCanvas();
+        
+    } catch (error) {
+        console.error('Failed to start media:', error);
+        
+        // Clean up on error
+        stopMedia();
+    }
+}
+
+function renderMediaContent() {
+    if (!mediaState.active || !mediaState.canvas || !mediaState.ctx) {
+        return;
+    }
+    
+    const canvas = mediaState.canvas;
+    const ctx = mediaState.ctx;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (mediaState.mediaElement && mediaState.mediaType) {
+        // Render the loaded media
+        if (mediaState.mediaType === 'image') {
+            renderImageMedia(canvas, ctx);
+        } else if (mediaState.mediaType === 'video') {
+            renderVideoMedia(canvas, ctx);
+        }
+    } else {
+        // Show placeholder
+        renderMediaPlaceholderContent(canvas, ctx);
+    }
+    
+    // Continue animation loop
+    if (mediaState.active) {
+        mediaState.animationId = requestAnimationFrame(renderMediaContent);
+    }
+}
+
+function renderImageMedia(canvas, ctx) {
+    const img = mediaState.mediaElement;
+    const scale = mediaState.scale;
+    
+    // Calculate aspect ratios for proper scaling
+    const canvasAspect = canvas.width / canvas.height;
+    const imageAspect = img.width / img.height;
+    
+    let baseWidth, baseHeight, drawX, drawY;
+    
+    if (imageAspect > canvasAspect) {
+        // Image is wider than canvas - fit to width
+        baseWidth = canvas.width;
+        baseHeight = baseWidth / imageAspect;
+    } else {
+        // Image is taller than canvas - fit to height
+        baseHeight = canvas.height;
+        baseWidth = baseHeight * imageAspect;
+    }
+    
+    // Apply scale factor (inverted - higher scale = larger media)
+    const drawWidth = baseWidth * scale;
+    const drawHeight = baseHeight * scale;
+    
+    // Center the scaled image
+    drawX = (canvas.width - drawWidth) / 2;
+    drawY = (canvas.height - drawHeight) / 2;
+    
+    // Draw image to canvas
+    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+}
+
+function renderVideoMedia(canvas, ctx) {
+    const video = mediaState.mediaElement;
+    const scale = mediaState.scale;
+    
+    // Calculate aspect ratios for proper scaling
+    const canvasAspect = canvas.width / canvas.height;
+    const videoAspect = video.videoWidth / video.videoHeight;
+    
+    let baseWidth, baseHeight, drawX, drawY;
+    
+    if (videoAspect > canvasAspect) {
+        // Video is wider than canvas - fit to width
+        baseWidth = canvas.width;
+        baseHeight = baseWidth / videoAspect;
+    } else {
+        // Video is taller than canvas - fit to height
+        baseHeight = canvas.height;
+        baseWidth = baseHeight * videoAspect;
+    }
+    
+    // Apply scale factor (inverted - higher scale = larger media)
+    const drawWidth = baseWidth * scale;
+    const drawHeight = baseHeight * scale;
+    
+    // Center the scaled video
+    drawX = (canvas.width - drawWidth) / 2;
+    drawY = (canvas.height - drawHeight) / 2;
+    
+    // Draw video frame to canvas
+    ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+}
+
+function renderMediaPlaceholderContent(canvas, ctx) {
+    // Draw placeholder background
+    ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw placeholder text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '48px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    
+    ctx.fillText('🎬 Media Mode', centerX, centerY - 50);
+    
+    ctx.font = '24px Arial';
+    ctx.fillText('Click Media button to select', centerX, centerY + 20);
+    ctx.fillText('images or videos', centerX, centerY + 60);
+}
+
+function drawMediaInfo(ctx, canvas, filename, resolution, scale = 1.0) {
+    // Draw semi-transparent overlay for text
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(10, 10, 320, 100);
+    
+    // Draw filename, resolution, and scale
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    
+    ctx.fillText(`📁 ${filename}`, 20, 25);
+    ctx.fillText(`📐 ${resolution}`, 20, 50);
+    ctx.fillText(`🔍 Scale: ${scale.toFixed(2)}x`, 20, 75);
+}
+
+function renderMediaPlaceholder() {
+    // Legacy function - redirect to new implementation
+    renderMediaContent();
+}
+
+function resizeMediaCanvas() {
+    if (!mediaState.canvas) return;
+    
+    mediaState.canvas.width = window.innerWidth;
+    mediaState.canvas.height = window.innerHeight;
+}
+
+function stopMedia() {
+    console.log('🎬 Media stopped');
+    
+    mediaState.active = false;
+    
+    // Stop animation loop
+    if (mediaState.animationId) {
+        cancelAnimationFrame(mediaState.animationId);
+        mediaState.animationId = null;
+    }
+    
+    // Clear canvas
+    if (mediaState.canvas && mediaState.ctx) {
+        mediaState.ctx.clearRect(0, 0, mediaState.canvas.width, mediaState.canvas.height);
+    }
+    
+    // Clean up media element
+    if (mediaState.mediaElement) {
+        if (mediaState.mediaType === 'video') {
+            mediaState.mediaElement.pause();
+            mediaState.mediaElement.src = '';
+        }
+        // Revoke object URL to free memory
+        if (mediaState.mediaElement.src && mediaState.mediaElement.src.startsWith('blob:')) {
+            URL.revokeObjectURL(mediaState.mediaElement.src);
+        }
+        mediaState.mediaElement = null;
+    }
+    
+    // Reset state
+    mediaState.canvas = null;
+    mediaState.ctx = null;
+    mediaState.mediaType = null;
+    mediaState.mediaName = null;
 }
 
 async function startAudioBlob() {
@@ -4752,12 +5305,25 @@ function renderAudioBlob() {
     audioBlobState.animationId = requestAnimationFrame(renderAudioBlob);
 }
 
-// Handle window resize for audio blob
+// Handle window resize for audio blob, camera, and media
 window.addEventListener('resize', () => {
     if (audioBlobState.active) {
         resizeAudioCanvas();
     }
+    if (cameraState.active) {
+        resizeCameraCanvas();
+    }
+    if (mediaState.active) {
+        resizeMediaCanvas();
+    }
 });
+
+function resizeCameraCanvas() {
+    if (!cameraState.canvas) return;
+    
+    cameraState.canvas.width = window.innerWidth;
+    cameraState.canvas.height = window.innerHeight;
+}
 
 // Audio input device management
 async function populateAudioInputs() {
@@ -5069,20 +5635,28 @@ function removeAudioFromStream() {
 }
 
 function getStreamingCanvas() {
-    // Return audio blob canvas if active and available, otherwise main canvas
+    // Return active input canvas in priority order: camera > media > audio > fluid
+    if (cameraState.active && cameraState.canvas) {
+        return cameraState.canvas;
+    }
+    if (mediaState.active && mediaState.canvas) {
+        return mediaState.canvas;
+    }
     if (audioBlobState.active && audioBlobState.canvas) {
         return audioBlobState.canvas;
     }
-    return canvas;
+    return canvas; // Default to fluid canvas
 }
 
-function switchStreamingCanvas(useAudioBlob) {
+function switchStreamingCanvas(useAudioBlob = null) {
     // Only switch if streaming is active
     if (!streamState.isStreaming || !streamState.peerConnection) return;
     
     try {
-        // Get the target canvas
-        const targetCanvas = useAudioBlob ? audioBlobState.canvas : canvas;
+        // Get the target canvas - use active canvas or specified canvas
+        const targetCanvas = useAudioBlob !== null ? 
+            (useAudioBlob ? audioBlobState.canvas : canvas) : 
+            getStreamingCanvas();
         
         if (!targetCanvas) {
             console.warn('Target canvas not available for streaming switch');
@@ -5110,7 +5684,10 @@ function switchStreamingCanvas(useAudioBlob) {
         if (videoSender) {
             videoSender.replaceTrack(newVideoTracks[0])
                 .then(() => {
-                    console.log(`✅ Switched streaming canvas to ${useAudioBlob ? 'audio blob' : 'fluid'}`);
+                    const canvasType = targetCanvas === audioBlobState.canvas ? 'audio blob' :
+                                     targetCanvas === cameraState.canvas ? 'camera' :
+                                     targetCanvas === mediaState.canvas ? 'media' : 'fluid';
+                    console.log(`✅ Switched streaming canvas to ${canvasType}`);
                 })
                 .catch(error => {
                     console.error('Failed to replace video track:', error);
@@ -5375,6 +5952,9 @@ document.addEventListener('DOMContentLoaded', () => {
         sunray: { min: 0.3, max: 1, updateFn: (v) => updateSliderValue('sunray', (v-0.3)/0.7, false, false), precision: 2 },
         backgroundImageScale: { min: 0.1, max: 5, updateFn: (v) => updateSliderValue('backgroundImageScale', (v-0.1)/4.9, false, false), precision: 2 },
         
+        // Media controls
+        mediaScale: { min: 0.1, max: 2.0, updateFn: (v) => updateSliderValue('mediaScale', (v-0.1)/1.9, false, false), precision: 2 },
+        
         // ControlNet weights
         controlnetPose: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetPose', v/1, false, false), precision: 2 },
         controlnetHed: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetHed', v/1, false, false), precision: 2 },
@@ -5418,6 +5998,18 @@ function updateAudioColorful(value, updateInput = true) {
     if (updateInput) {
         document.getElementById('audioColorfulValue').value = value.toFixed(1);
     }
+}
+
+function updateMediaScale(value, updateInput = true) {
+    mediaState.scale = value;
+    config.MEDIA_SCALE = value;
+    if (updateInput) {
+        const inputElement = document.getElementById('mediaScaleValue');
+        if (inputElement) {
+            inputElement.value = value.toFixed(2);
+        }
+    }
+    console.log(`🎬 Media scale updated: ${value.toFixed(2)}`);
 }
 
 function updateAudioBlobColor(color) {
