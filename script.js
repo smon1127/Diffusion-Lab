@@ -3450,11 +3450,16 @@ let audioBlobState = {
     audioStream: null,
     delayBuffer: [],
     delayIndex: 0,
-    // Shader resources for main WebGL context
+    // Shader resources for separate canvas WebGL context
     shaderProgram: null,
     uniforms: null,
     positionBuffer: null,
-    positionAttributeLocation: null
+    positionAttributeLocation: null,
+    // Shader resources for main WebGL context (used during streaming)
+    mainShaderProgram: null,
+    mainUniforms: null,
+    mainPositionBuffer: null,
+    mainPositionAttributeLocation: null
 };
 
 // Composite System for Streaming
@@ -4492,6 +4497,9 @@ function analyzeAudio() {
 function renderAudioBlob() {
     if (!audioBlobState.active || !audioBlobState.gl) return;
     
+    // If composite system is active (streaming), don't render on separate canvas
+    if (compositeState.active) return;
+    
     const gl = audioBlobState.gl;
     
     // Analyze audio
@@ -4501,7 +4509,7 @@ function renderAudioBlob() {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     
-    // Use shader program
+    // Use shader program (from separate canvas context)
     gl.useProgram(audioBlobState.shaderProgram);
     
     // Set uniforms
@@ -4555,7 +4563,7 @@ function initCompositeSystem() {
 }
 
 function initAudioBlobForMainContext() {
-    if (!gl || audioBlobState.shaderProgram) return; // Already initialized or no WebGL
+    if (!gl || audioBlobState.mainShaderProgram) return; // Already initialized or no WebGL
     
     try {
         // Use the same shader source as the separate canvas version
@@ -4782,34 +4790,34 @@ function initAudioBlobForMainContext() {
             return;
         }
         
-        // Create shader program
-        audioBlobState.shaderProgram = gl.createProgram();
-        gl.attachShader(audioBlobState.shaderProgram, vertexShader);
-        gl.attachShader(audioBlobState.shaderProgram, fragmentShader);
-        gl.linkProgram(audioBlobState.shaderProgram);
+        // Create shader program for main context
+        audioBlobState.mainShaderProgram = gl.createProgram();
+        gl.attachShader(audioBlobState.mainShaderProgram, vertexShader);
+        gl.attachShader(audioBlobState.mainShaderProgram, fragmentShader);
+        gl.linkProgram(audioBlobState.mainShaderProgram);
         
-        if (!gl.getProgramParameter(audioBlobState.shaderProgram, gl.LINK_STATUS)) {
-            console.error('Audio blob program link error:', gl.getProgramInfoLog(audioBlobState.shaderProgram));
+        if (!gl.getProgramParameter(audioBlobState.mainShaderProgram, gl.LINK_STATUS)) {
+            console.error('Audio blob program link error:', gl.getProgramInfoLog(audioBlobState.mainShaderProgram));
             return;
         }
         
-        // Get uniform locations
-        audioBlobState.uniforms = {
-            time: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_time'),
-            bassLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bassLevel'),
-            midLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_midLevel'),
-            trebleLevel: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_trebleLevel'),
-            resolution: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_resolution'),
-            baseColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_baseColor'),
-            opacity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_opacity'),
-            colorful: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_colorful'),
-            bloom: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloom'),
-            sunrays: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunrays'),
-            bloomIntensity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloomIntensity'),
-            sunraysWeight: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunraysWeight')
+        // Get uniform locations for main context
+        audioBlobState.mainUniforms = {
+            time: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_time'),
+            bassLevel: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_bassLevel'),
+            midLevel: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_midLevel'),
+            trebleLevel: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_trebleLevel'),
+            resolution: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_resolution'),
+            baseColor: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_baseColor'),
+            opacity: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_opacity'),
+            colorful: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_colorful'),
+            bloom: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_bloom'),
+            sunrays: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_sunrays'),
+            bloomIntensity: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_bloomIntensity'),
+            sunraysWeight: gl.getUniformLocation(audioBlobState.mainShaderProgram, 'u_sunraysWeight')
         };
         
-        // Create vertex buffer
+        // Create vertex buffer for main context
         const positions = new Float32Array([
             -1, -1,
              1, -1,
@@ -4817,12 +4825,12 @@ function initAudioBlobForMainContext() {
              1,  1
         ]);
         
-        audioBlobState.positionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
+        audioBlobState.mainPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.mainPositionBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
         
-        // Get attribute location
-        audioBlobState.positionAttributeLocation = gl.getAttribLocation(audioBlobState.shaderProgram, 'a_position');
+        // Get attribute location for main context
+        audioBlobState.mainPositionAttributeLocation = gl.getAttribLocation(audioBlobState.mainShaderProgram, 'a_position');
         
         console.log('✅ Audio blob shader initialized for main WebGL context');
         
@@ -4839,7 +4847,7 @@ function startCompositeRendering() {
         render(null);
         
         // Then, if audio blob is active, render it as an overlay on the same WebGL context
-        if (audioBlobState.active && audioBlobState.shaderProgram) {
+        if (audioBlobState.active && audioBlobState.mainShaderProgram) {
             renderAudioBlobOverlay();
         }
         
@@ -4854,38 +4862,40 @@ function startCompositeRendering() {
 }
 
 function renderAudioBlobOverlay() {
-    if (!audioBlobState.active || !audioBlobState.shaderProgram || !gl) return;
+    if (!audioBlobState.active || !audioBlobState.mainShaderProgram || !gl) return;
     
-    // Analyze audio
-    analyzeAudio();
+    // Analyze audio (only if not already analyzed in separate canvas)
+    if (!compositeState.active || !audioBlobState.gl) {
+        analyzeAudio();
+    }
     
     // Enable blending for overlay
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     
-    // Use audio blob shader program
-    gl.useProgram(audioBlobState.shaderProgram);
+    // Use audio blob shader program from main context
+    gl.useProgram(audioBlobState.mainShaderProgram);
     
-    // Set uniforms
-    gl.uniform1f(audioBlobState.uniforms.time, Date.now() * 0.001);
-    gl.uniform1f(audioBlobState.uniforms.bassLevel, audioBlobState.bassLevel);
-    gl.uniform1f(audioBlobState.uniforms.midLevel, audioBlobState.midLevel);
-    gl.uniform1f(audioBlobState.uniforms.trebleLevel, audioBlobState.trebleLevel);
-    gl.uniform2f(audioBlobState.uniforms.resolution, canvas.width, canvas.height);
-    gl.uniform3f(audioBlobState.uniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
-    gl.uniform1f(audioBlobState.uniforms.opacity, audioBlobState.opacity);
-    gl.uniform1f(audioBlobState.uniforms.colorful, audioBlobState.colorful);
+    // Set uniforms using main context uniform locations
+    gl.uniform1f(audioBlobState.mainUniforms.time, Date.now() * 0.001);
+    gl.uniform1f(audioBlobState.mainUniforms.bassLevel, audioBlobState.bassLevel);
+    gl.uniform1f(audioBlobState.mainUniforms.midLevel, audioBlobState.midLevel);
+    gl.uniform1f(audioBlobState.mainUniforms.trebleLevel, audioBlobState.trebleLevel);
+    gl.uniform2f(audioBlobState.mainUniforms.resolution, canvas.width, canvas.height);
+    gl.uniform3f(audioBlobState.mainUniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
+    gl.uniform1f(audioBlobState.mainUniforms.opacity, audioBlobState.opacity);
+    gl.uniform1f(audioBlobState.mainUniforms.colorful, audioBlobState.colorful);
     
     // Set bloom and sunrays uniforms based on global config
-    gl.uniform1i(audioBlobState.uniforms.bloom, config.BLOOM ? 1 : 0);
-    gl.uniform1i(audioBlobState.uniforms.sunrays, config.SUNRAYS ? 1 : 0);
-    gl.uniform1f(audioBlobState.uniforms.bloomIntensity, config.BLOOM_INTENSITY);
-    gl.uniform1f(audioBlobState.uniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
+    gl.uniform1i(audioBlobState.mainUniforms.bloom, config.BLOOM ? 1 : 0);
+    gl.uniform1i(audioBlobState.mainUniforms.sunrays, config.SUNRAYS ? 1 : 0);
+    gl.uniform1f(audioBlobState.mainUniforms.bloomIntensity, config.BLOOM_INTENSITY);
+    gl.uniform1f(audioBlobState.mainUniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
     
-    // Set up vertex attributes
-    gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
-    gl.enableVertexAttribArray(audioBlobState.positionAttributeLocation);
-    gl.vertexAttribPointer(audioBlobState.positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+    // Set up vertex attributes using main context resources
+    gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.mainPositionBuffer);
+    gl.enableVertexAttribArray(audioBlobState.mainPositionAttributeLocation);
+    gl.vertexAttribPointer(audioBlobState.mainPositionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
     
     // Draw audio blob overlay
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -4898,14 +4908,19 @@ function stopCompositeSystem() {
     compositeState.active = false;
     
     // Clean up audio blob shader resources in main context
-    if (audioBlobState.shaderProgram && gl) {
-        gl.deleteProgram(audioBlobState.shaderProgram);
-        audioBlobState.shaderProgram = null;
+    // Note: We need to store separate references for main context resources
+    if (audioBlobState.mainShaderProgram && gl) {
+        gl.deleteProgram(audioBlobState.mainShaderProgram);
+        audioBlobState.mainShaderProgram = null;
     }
-    if (audioBlobState.positionBuffer && gl) {
-        gl.deleteBuffer(audioBlobState.positionBuffer);
-        audioBlobState.positionBuffer = null;
+    if (audioBlobState.mainPositionBuffer && gl) {
+        gl.deleteBuffer(audioBlobState.mainPositionBuffer);
+        audioBlobState.mainPositionBuffer = null;
     }
+    
+    // Clear main context uniforms and attributes
+    audioBlobState.mainUniforms = null;
+    audioBlobState.mainPositionAttributeLocation = null;
     
     console.log('🛑 Composite system stopped');
 }
