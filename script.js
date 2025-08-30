@@ -4001,8 +4001,11 @@ async function toggleAudioBlob() {
 
 async function startAudioBlob() {
     try {
-        // Populate audio input devices
-        await populateAudioInputs();
+        // Populate audio input devices only if not already done
+        const select = document.getElementById('audioInputSelect');
+        if (!select || !select.hasAttribute('data-listener-added')) {
+            await populateAudioInputs();
+        }
         
         // Get selected device or use default
         const deviceId = audioBlobState.selectedDeviceId;
@@ -4168,6 +4171,10 @@ function initAudioBlobGL() {
             vec2 uv = (v_position + 1.0) * 0.5;
             vec2 center = vec2(0.5, 0.5);
             vec2 pos = uv - center;
+            
+            // Correct for aspect ratio to make blob circular
+            float aspectRatio = u_resolution.x / u_resolution.y;
+            pos.x *= aspectRatio;
             
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
@@ -4371,6 +4378,9 @@ async function populateAudioInputs() {
         const select = document.getElementById('audioInputSelect');
         if (!select) return;
         
+        // Store current selection to preserve it
+        const currentSelection = select.value;
+        
         // Clear existing options except default
         select.innerHTML = '<option value="">Default Microphone</option>';
         
@@ -4382,18 +4392,71 @@ async function populateAudioInputs() {
             select.appendChild(option);
         });
         
-        // Set change listener
-        select.addEventListener('change', (e) => {
-            audioBlobState.selectedDeviceId = e.target.value || null;
-            if (audioBlobState.active) {
-                // Restart audio with new device
-                stopAudioBlob();
-                setTimeout(() => startAudioBlob(), 500);
-            }
-        });
+        // Restore previous selection if it still exists
+        if (audioBlobState.selectedDeviceId) {
+            select.value = audioBlobState.selectedDeviceId;
+        } else if (currentSelection) {
+            select.value = currentSelection;
+        }
+        
+        // Only add event listener once
+        if (!select.hasAttribute('data-listener-added')) {
+            select.addEventListener('change', switchAudioDevice);
+            select.setAttribute('data-listener-added', 'true');
+        }
         
     } catch (error) {
         console.warn('Could not enumerate audio devices:', error);
+    }
+}
+
+// Separate function to handle device switching without full restart
+async function switchAudioDevice(e) {
+    const newDeviceId = e.target.value || null;
+    
+    if (!audioBlobState.active) {
+        // Just store the selection if not active
+        audioBlobState.selectedDeviceId = newDeviceId;
+        return;
+    }
+    
+    try {
+        // Store current state
+        const wasActive = audioBlobState.active;
+        audioBlobState.selectedDeviceId = newDeviceId;
+        
+        // Get new audio stream with selected device
+        const constraints = {
+            audio: newDeviceId ? { deviceId: { exact: newDeviceId } } : true
+        };
+        
+        const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        // Clean up old audio stream
+        if (audioBlobState.audioStream) {
+            audioBlobState.audioStream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Clean up old audio context connections
+        if (audioBlobState.microphone) {
+            audioBlobState.microphone.disconnect();
+        }
+        
+        // Update with new stream
+        audioBlobState.audioStream = newStream;
+        audioBlobState.microphone = audioBlobState.audioContext.createMediaStreamSource(newStream);
+        audioBlobState.microphone.connect(audioBlobState.analyser);
+        
+        // Update streaming if active
+        await integrateAudioWithStream();
+        
+        console.log(`✅ Switched to audio device: ${newDeviceId || 'default'}`);
+        
+    } catch (error) {
+        console.error('Failed to switch audio device:', error);
+        // Revert selection on error
+        e.target.value = audioBlobState.selectedDeviceId || '';
+        alert('Failed to switch audio device. Please check device permissions.');
     }
 }
 
