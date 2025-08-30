@@ -4276,7 +4276,9 @@ function initAudioBlobGL() {
             float time = u_time * 0.5;
             
             // Bass: Controls overall size and slow organic movement
-            float baseSize = 0.12 + u_bassLevel * 0.35;
+            // Only show blob if there's audio activity, otherwise make it invisible
+            float audioActivity = u_bassLevel + u_midLevel + u_trebleLevel;
+            float baseSize = audioActivity > 0.0 ? (0.08 + u_bassLevel * 0.35) : 0.0;
             float bassWave = fbm(vec2(angle * 2.0 + time * 0.8, time * 0.3)) * u_bassLevel * 0.08;
             
             // Mid frequencies: Control medium-scale organic deformation
@@ -4853,7 +4855,9 @@ function initMainAudioBlobShader() {
                 
                 float time = u_time * 0.5;
                 
-                float baseSize = 0.12 + u_bassLevel * 0.35;
+                // Only show blob if there's audio activity, otherwise make it invisible
+                float audioActivity = u_bassLevel + u_midLevel + u_trebleLevel;
+                float baseSize = audioActivity > 0.0 ? (0.08 + u_bassLevel * 0.35) : 0.0;
                 float bassWave = fbm(vec2(angle * 2.0 + time * 0.8, time * 0.3)) * u_bassLevel * 0.08;
                 
                 float midNoise1 = fbm(vec2(angle * 4.0 + time * 1.5, time * 0.7)) * u_midLevel * 0.06;
