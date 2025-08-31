@@ -8049,6 +8049,263 @@ window.addEventListener('orientationchange', () => {
     }
 });
 
+// OSC WebSocket Connection for Remote Control
+let oscWebSocket = null;
+let oscConnectionStatus = 'disconnected';
+let oscServerIP = null;
+
+function initOSCConnection() {
+    // Try to connect to local OSC server
+    const possibleIPs = [
+        'localhost',
+        '192.168.1.100', // Common router IP range
+        '192.168.0.100',
+        '10.0.0.100'
+    ];
+    
+    // Try to detect network IP from URL or use common local IPs
+    const currentHost = window.location.hostname;
+    if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+        // If we're on a remote site, try to guess local network IP
+        possibleIPs.unshift(currentHost.replace(/\d+$/, '100')); // Replace last number with 100
+    }
+    
+    tryConnectToOSCServer(possibleIPs, 0);
+}
+
+function tryConnectToOSCServer(ips, index) {
+    if (index >= ips.length) {
+        console.log('🔌 Could not connect to OSC server. Make sure local-osc-server.js is running.');
+        updateOSCStatus('disconnected', null);
+        return;
+    }
+    
+    const ip = ips[index];
+    
+    // Handle HTTPS websites - they require WSS, but local servers typically use WS
+    // For HTTPS sites connecting to local IP, we'll try both protocols
+    const isHTTPS = window.location.protocol === 'https:';
+    const isLocalIP = ip.startsWith('192.168.') || ip.startsWith('10.0.') || ip.startsWith('172.') || ip === 'localhost' || ip === '127.0.0.1';
+    
+    let wsUrl;
+    if (isHTTPS && isLocalIP) {
+        // HTTPS site trying to connect to local server - this will likely fail due to mixed content
+        // But we'll try WS first, then suggest alternatives
+        wsUrl = `ws://${ip}:8001`;
+        console.log(`⚠️ HTTPS website connecting to local WS server - this may be blocked by browser security`);
+    } else if (isHTTPS) {
+        // HTTPS site connecting to remote server - use WSS
+        wsUrl = `wss://${ip}:8001`;
+    } else {
+        // HTTP site - use WS
+        wsUrl = `ws://${ip}:8001`;
+    }
+    
+    console.log(`🔌 Trying to connect to OSC server at ${wsUrl}...`);
+    
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        console.log(`✅ Connected to OSC server at ${ip}:8001`);
+        oscWebSocket = ws;
+        oscServerIP = ip;
+        updateOSCStatus('connected', ip);
+        setupOSCMessageHandling();
+    };
+    
+    ws.onerror = (error) => {
+        console.log(`❌ Failed to connect to ${wsUrl}`);
+        
+        // Special handling for HTTPS mixed content errors
+        if (isHTTPS && isLocalIP) {
+            console.log(`🔒 HTTPS Mixed Content Error: Cannot connect to local WebSocket server`);
+            console.log(`💡 Solutions:`);
+            console.log(`   1. Use HTTP version of the website (if available)`);
+            console.log(`   2. Run OSC server with SSL certificate`);
+            console.log(`   3. Use browser flag: --disable-web-security (not recommended)`);
+            console.log(`   4. Upload your modified files to FTP and use that version`);
+            
+            updateOSCStatus('https_blocked', ip);
+            return; // Don't try other IPs for HTTPS mixed content
+        }
+        
+        // Try next IP
+        setTimeout(() => tryConnectToOSCServer(ips, index + 1), 100);
+    };
+    
+    ws.onclose = () => {
+        if (oscWebSocket === ws) {
+            console.log('🔌 OSC WebSocket connection closed');
+            oscWebSocket = null;
+            updateOSCStatus('disconnected', null);
+            
+            // Try to reconnect after 5 seconds
+            setTimeout(initOSCConnection, 5000);
+        }
+    };
+}
+
+function setupOSCMessageHandling() {
+    if (!oscWebSocket) return;
+    
+    oscWebSocket.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+            handleOSCMessage(message);
+        } catch (error) {
+            console.error('❌ Error parsing OSC message:', error);
+        }
+    };
+}
+
+function handleOSCMessage(message) {
+    console.log('📨 OSC Message:', message);
+    
+    if (message.type === 'server_info') {
+        console.log('📋 OSC Server Info:', message);
+        return;
+    }
+    
+    if (message.type === 'osc_message') {
+        // Handle parameter updates
+        if (message.parameter) {
+            config[message.parameter] = message.value;
+            console.log(`🎛️  Updated ${message.parameter} = ${message.value}`);
+            
+            // Update UI elements
+            updateUIFromConfig(message.parameter, message.value);
+            
+            // Save config
+            saveConfig();
+        }
+        
+        // Handle actions
+        if (message.action) {
+            console.log(`🎬 Executing action: ${message.action}`);
+            executeOSCAction(message.action, message.value);
+        }
+    }
+}
+
+function updateUIFromConfig(parameter, value) {
+    // Update sliders based on parameter
+    const sliderMappings = {
+        'DENSITY_DISSIPATION': 'density',
+        'VELOCITY_DISSIPATION': 'velocity',
+        'PRESSURE': 'pressure',
+        'CURL': 'vorticity',
+        'SPLAT_RADIUS': 'splat',
+        'BLOOM_INTENSITY': 'bloomIntensity',
+        'SUNRAYS_WEIGHT': 'sunray',
+        'LIVELINESS': 'liveliness',
+        'CHAOS': 'chaos',
+        'BREATHING': 'breathing',
+        'COLOR_LIFE': 'colorLife',
+        'ANIMATION_INTERVAL': 'animationInterval',
+        'AUDIO_REACTIVITY': 'audioReactivity',
+        'AUDIO_DELAY': 'audioDelay',
+        'AUDIO_OPACITY': 'audioOpacity',
+        'AUDIO_COLORFUL': 'audioColorful',
+        'AUDIO_EDGE_SOFTNESS': 'audioEdgeSoftness'
+    };
+    
+    const sliderName = sliderMappings[parameter];
+    if (sliderName) {
+        updateSliderPositions(); // This will update all sliders from config
+    }
+    
+    // Update toggles
+    const toggleMappings = {
+        'BLOOM': 'bloomToggle',
+        'SUNRAYS': 'sunraysToggle',
+        'COLORFUL': 'colorfulToggle',
+        'PAUSED': 'pausedToggle',
+        'ANIMATE': 'animateToggle',
+        'VELOCITY_DRAWING': 'velocityDrawingToggle'
+    };
+    
+    const toggleId = toggleMappings[parameter];
+    if (toggleId) {
+        updateToggle(toggleId, value);
+    }
+}
+
+function executeOSCAction(action, value) {
+    // Only execute on button press (value > 0)
+    if (value <= 0) return;
+    
+    switch (action) {
+        case 'toggleFluidDrawing':
+            toggleFluidDrawing();
+            break;
+        case 'toggleAudioBlob':
+            toggleAudioBlob();
+            break;
+        case 'toggleCamera':
+            toggleCamera();
+            break;
+        case 'toggleMedia':
+            toggleMedia();
+            break;
+        case 'resetValues':
+            resetValues();
+            break;
+        case 'captureScreenshot':
+            captureScreenshot();
+            break;
+        case 'toggleVideoRecording':
+            toggleVideoRecording();
+            break;
+        default:
+            console.log(`⚠️  Unknown OSC action: ${action}`);
+    }
+}
+
+function updateOSCStatus(status, ip) {
+    oscConnectionStatus = status;
+    
+    // Create or update OSC status indicator
+    let statusElement = document.getElementById('oscStatus');
+    if (!statusElement) {
+        statusElement = document.createElement('div');
+        statusElement.id = 'oscStatus';
+        statusElement.style.cssText = `
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 10000;
+            pointer-events: none;
+            transition: all 0.3s ease;
+        `;
+        document.body.appendChild(statusElement);
+    }
+    
+    if (status === 'connected') {
+        statusElement.textContent = `🎛️ OSC: ${ip}:8001`;
+        statusElement.style.backgroundColor = 'rgba(34, 197, 94, 0.9)';
+        statusElement.style.color = 'white';
+    } else if (status === 'https_blocked') {
+        statusElement.textContent = `🔒 OSC: HTTPS Blocked`;
+        statusElement.style.backgroundColor = 'rgba(251, 146, 60, 0.9)';
+        statusElement.style.color = 'white';
+        statusElement.title = `HTTPS websites cannot connect to local WebSocket servers. Use HTTP or upload modified files to FTP.`;
+    } else {
+        statusElement.textContent = '🔌 OSC: Disconnected';
+        statusElement.style.backgroundColor = 'rgba(239, 68, 68, 0.9)';
+        statusElement.style.color = 'white';
+    }
+}
+
+// Initialize OSC connection when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Wait a bit for the main app to initialize
+    setTimeout(initOSCConnection, 2000);
+});
+
 // Cleanup video recording and camera when page is closed
 window.addEventListener('beforeunload', () => {
     if (videoRecorder.isRecording) {
@@ -8058,5 +8315,10 @@ window.addEventListener('beforeunload', () => {
     // Stop camera if active
     if (cameraState.active) {
         stopCamera();
+    }
+    
+    // Close OSC connection
+    if (oscWebSocket) {
+        oscWebSocket.close();
     }
 });

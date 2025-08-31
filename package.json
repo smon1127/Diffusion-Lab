@@ -1,0 +1,22 @@
+{
+  "name": "fluid-osc-server",
+  "version": "1.0.0",
+  "description": "WebGL Fluid Simulation with OSC Control",
+  "main": "osc-server.js",
+  "scripts": {
+    "start": "node osc-server.js",
+    "dev": "nodemon osc-server.js"
+  },
+  "dependencies": {
+    "node-osc": "^9.1.0",
+    "ws": "^8.14.2",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "keywords": ["osc", "webgl", "fluid", "simulation", "touchosc"],
+  "author": "",
+  "license": "MIT"
+}
