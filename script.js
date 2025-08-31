@@ -61,7 +61,8 @@ const desktopConfig = {
     BLOOM_SOFT_KNEE: 0.7,
     SUNRAYS: true,              // Enable sunrays for desktop
     SUNRAYS_RESOLUTION: 196,
-    SUNRAYS_WEIGHT: 0.4
+    SUNRAYS_WEIGHT: 0.4,
+    VELOCITY_DRAWING: false     // Velocity-based drawing intensity
 };
 
 const mobileConfig = {
@@ -90,7 +91,8 @@ const mobileConfig = {
     BLOOM_SOFT_KNEE: 0.7,
     SUNRAYS: false,             // Disable sunrays for mobile
     SUNRAYS_RESOLUTION: 96,     // Lower sunrays resolution for mobile
-    SUNRAYS_WEIGHT: 0.4
+    SUNRAYS_WEIGHT: 0.4,
+    VELOCITY_DRAWING: false     // Velocity-based drawing intensity
 };
 
 // Initialize config based on device type
@@ -670,6 +672,7 @@ function updateToggleStates() {
     updateToggle('animateToggle', config.ANIMATE);
     updateToggle('bloomToggle', config.BLOOM);
     updateToggle('sunraysToggle', config.SUNRAYS);
+    updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
 }
 
 function updateToggle(toggleId, state) {
@@ -813,6 +816,12 @@ function toggleSunrays() {
     config.SUNRAYS = !config.SUNRAYS;
     updateToggle('sunraysToggle', config.SUNRAYS);
     updateKeywords();
+    saveConfig();
+}
+
+function toggleVelocityDrawing() {
+    config.VELOCITY_DRAWING = !config.VELOCITY_DRAWING;
+    updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
     saveConfig();
 }
 
@@ -3032,6 +3041,7 @@ function applyInputs () {
 
     pointers.forEach(p => {
         if (p.moved) {
+            console.log('Pointer moved - calling splatPointer, velocity drawing:', config.VELOCITY_DRAWING);
             p.moved = false;
             splatPointer(p);
         }
@@ -3388,7 +3398,34 @@ function blur (target, temp, iterations) {
 function splatPointer (pointer) {
     let dx = pointer.deltaX * config.SPLAT_FORCE;
     let dy = pointer.deltaY * config.SPLAT_FORCE;
-    splat(pointer.texcoordX, pointer.texcoordY, dx, dy, pointer.color);
+    
+    if (config.VELOCITY_DRAWING) {
+        // Debug logging
+        console.log('Velocity Drawing - deltaX:', pointer.deltaX, 'deltaY:', pointer.deltaY);
+        
+        // Calculate velocity magnitude from deltas
+        const velocity = Math.sqrt(pointer.deltaX * pointer.deltaX + pointer.deltaY * pointer.deltaY);
+        
+        // Scale velocity for reasonable multiplier range (0.5x to 3x)
+        const velocityMultiplier = Math.min(3.0, 0.5 + velocity * 25.0);
+        
+        console.log('Velocity:', velocity, 'Multiplier:', velocityMultiplier);
+        
+        // Apply velocity scaling to force (affects splat size and intensity)
+        dx *= velocityMultiplier;
+        dy *= velocityMultiplier;
+        
+        // Create brighter color based on velocity
+        const brightColor = {
+            r: Math.min(1.0, pointer.color.r * velocityMultiplier),
+            g: Math.min(1.0, pointer.color.g * velocityMultiplier), 
+            b: Math.min(1.0, pointer.color.b * velocityMultiplier)
+        };
+        
+        splat(pointer.texcoordX, pointer.texcoordY, dx, dy, brightColor);
+    } else {
+        splat(pointer.texcoordX, pointer.texcoordY, dx, dy, pointer.color);
+    }
 }
 
 function multipleSplats (amount) {
@@ -3440,9 +3477,25 @@ canvas.addEventListener('mousedown', e => {
 
 canvas.addEventListener('mousemove', e => {
     let pointer = pointers[0];
-    if (!pointer.down) return;
+    
+    // Allow movement without clicking when velocity drawing is enabled
+    if (!pointer.down && !config.VELOCITY_DRAWING) return;
+    
     let posX = e.offsetX;
     let posY = e.offsetY;
+    
+    // Initialize pointer if velocity drawing is on but pointer isn't down
+    if (!pointer.down && config.VELOCITY_DRAWING) {
+        // Only initialize if this is truly the first time
+        if (pointer.texcoordX === 0 && pointer.texcoordY === 0) {
+            pointer.texcoordX = posX / canvas.clientWidth;
+            pointer.texcoordY = 1.0 - posY / canvas.clientHeight;
+            pointer.prevTexcoordX = pointer.texcoordX;
+            pointer.prevTexcoordY = pointer.texcoordY;
+            pointer.color = generateColor();
+        }
+    }
+    
     updatePointerMoveData(pointer, posX, posY);
 });
 
@@ -3493,10 +3546,26 @@ canvas.addEventListener('touchmove', e => {
     
     for (let i = 0; i < touches.length; i++) {
         let pointer = pointers[i + 1];
-        if (!pointer.down) continue;
+        
+        // Allow touch movement without touching when velocity drawing is enabled
+        if (!pointer.down && !config.VELOCITY_DRAWING) continue;
+        
         const rect = canvas.getBoundingClientRect();
         let posX = touches[i].clientX - rect.left;
         let posY = touches[i].clientY - rect.top;
+        
+        // Initialize pointer if velocity drawing is on but pointer isn't down
+        if (!pointer.down && config.VELOCITY_DRAWING) {
+            // Only initialize if this is truly the first time
+            if (pointer.texcoordX === 0 && pointer.texcoordY === 0) {
+                pointer.texcoordX = posX / canvas.clientWidth;
+                pointer.texcoordY = 1.0 - posY / canvas.clientHeight;
+                pointer.prevTexcoordX = pointer.texcoordX;
+                pointer.prevTexcoordY = pointer.texcoordY;
+                pointer.color = generateColor();
+            }
+        }
+        
         updatePointerMoveData(pointer, posX, posY);
     }
 }, { passive: false });
