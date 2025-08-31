@@ -113,6 +113,10 @@ const commonParams = {
     // Animation Parameters
     ANIMATE: true,
     LIVELINESS: 0.62,
+    CHAOS: 0.73,
+    BREATHING: 0.5,
+    COLOR_LIFE: 0.22,
+    ANIMATION_INTERVAL: 0.1,
     // Audio Parameters
     AUDIO_REACTIVITY: 2.0,
     AUDIO_DELAY: 0,
