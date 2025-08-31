@@ -1938,11 +1938,11 @@
                                 <button class="modern-button secondary" onclick="document.getElementById('mediaUpload').click()">
                                     📁 Choose Media
                                 </button>
+                                <button class="modern-button secondary" id="clearFluidMediaButton" onclick="clearFluidBackgroundMediaOnly()" style="display: none;">
+                                    🗑️ Clear Media
+                                </button>
                                 <button class="modern-button secondary" id="fluidCameraButton" onclick="toggleFluidBackgroundCamera()">
                                     📷 Camera
-                                </button>
-                                <button class="modern-button secondary" id="clearFluidBackgroundButton" onclick="clearFluidBackgroundMedia()" style="display: none;">
-                                    🗑️ Clear
                                 </button>
                             </div>
 
@@ -1952,16 +1952,30 @@
 
                         </div>
                         
-                        <div class="control-item" id="fluidBackgroundScaleControl" style="display: none;">
+                        <div class="control-item" id="fluidMediaScaleControl" style="display: none;">
                             <div class="control-label">
-                                <span>Scale <div class="tooltip"><span class="info-icon">i</span>
+                                <span>Media Scale <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Background media size: 0.1 = very small, 1.0 = fit viewport, 2.0 = large</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="fluidBackgroundScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                                <input type="text" class="control-value number-input" id="fluidMediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'fluidBackgroundScale', 0.1, 2.0)">
-                                <div class="slider-fill" id="fluidBackgroundScaleFill" style="width: 47%">
-                                    <div class="slider-handle" id="fluidBackgroundScaleHandle"></div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'fluidMediaScale', 0.1, 2.0)">
+                                <div class="slider-fill" id="fluidMediaScaleFill" style="width: 47%">
+                                    <div class="slider-handle" id="fluidMediaScaleHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item" id="fluidCameraScaleControl" style="display: none;">
+                            <div class="control-label">
+                                <span>Camera Scale <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Background camera size: 0.1 = very small, 1.0 = fit viewport, 2.0 = large</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="fluidCameraScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'fluidCameraScale', 0.1, 2.0)">
+                                <div class="slider-fill" id="fluidCameraScaleFill" style="width: 47%">
+                                    <div class="slider-handle" id="fluidCameraScaleHandle"></div>
                                 </div>
                             </div>
                         </div>

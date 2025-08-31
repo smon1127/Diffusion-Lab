@@ -86,7 +86,8 @@ let config = {
     BACKGROUND_IMAGE_SCALE: 1.0, // 0.1-2.0 range - Controls background image size (1.0 = fit to viewport)
     // Media Scale Parameters
     MEDIA_SCALE: 1.0, // 0.1-2.0 range - Controls media size (1.0 = fit to viewport)
-    FLUID_BACKGROUND_SCALE: 1.0, // 0.1-2.0 range - Controls fluid background media size
+    FLUID_MEDIA_SCALE: 1.0, // 0.1-2.0 range - Controls fluid background media size
+    FLUID_CAMERA_SCALE: 1.0, // 0.1-2.0 range - Controls fluid background camera size
 }
 
 // Global State Variables (declared early to avoid initialization order issues)
@@ -347,7 +348,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidBackgroundScale'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -504,7 +505,8 @@ function updateSliderValue(sliderName, percentage, skipSave = false, updateInput
         'animationInterval': { min: 0, max: 1, prop: 'ANIMATION_INTERVAL', decimals: 2 },
         'backgroundImageScale': { min: 0.1, max: 2.0, prop: 'BACKGROUND_IMAGE_SCALE', decimals: 2 },
         'mediaScale': { min: 0.1, max: 2.0, prop: 'MEDIA_SCALE', decimals: 2, handler: updateMediaScale },
-        'fluidBackgroundScale': { min: 0.1, max: 2.0, prop: 'FLUID_BACKGROUND_SCALE', decimals: 2, handler: updateFluidBackgroundScale },
+        'fluidMediaScale': { min: 0.1, max: 2.0, prop: 'FLUID_MEDIA_SCALE', decimals: 2, handler: updateFluidMediaScale },
+        'fluidCameraScale': { min: 0.1, max: 2.0, prop: 'FLUID_CAMERA_SCALE', decimals: 2, handler: updateFluidCameraScale },
         'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true },
         'audioReactivity': { min: 0.1, max: 3.0, prop: 'AUDIO_REACTIVITY', decimals: 1, handler: updateAudioReactivity },
         'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay },
@@ -593,7 +595,8 @@ function updateSliderPositions() {
         'animationInterval': { prop: 'ANIMATION_INTERVAL', min: 0, max: 1 },
         'backgroundImageScale': { prop: 'BACKGROUND_IMAGE_SCALE', min: 0.1, max: 2.0 },
         'mediaScale': { prop: 'MEDIA_SCALE', min: 0.1, max: 2.0 },
-        'fluidBackgroundScale': { prop: 'FLUID_BACKGROUND_SCALE', min: 0.1, max: 2.0 },
+        'fluidMediaScale': { prop: 'FLUID_MEDIA_SCALE', min: 0.1, max: 2.0 },
+        'fluidCameraScale': { prop: 'FLUID_CAMERA_SCALE', min: 0.1, max: 2.0 },
         'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true }
     };
     
@@ -1528,12 +1531,10 @@ function clearFluidBackgroundMedia() {
         fluidBackgroundMedia.height = 0;
         fluidBackgroundMedia.scale = 1.0;
         
-        // Hide controls and reset file input
-        const clearButton = document.getElementById('clearFluidBackgroundButton');
-        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
+        // Hide media controls and reset file input
+        const mediaScaleControl = document.getElementById('fluidMediaScaleControl');
         const mediaUpload = document.getElementById('mediaUpload');
-        if (clearButton) clearButton.style.display = 'none';
-        if (scaleControl) scaleControl.style.display = 'none';
+        if (mediaScaleControl) mediaScaleControl.style.display = 'none';
         if (mediaUpload) mediaUpload.value = '';
         
         console.log('🗑️ Fluid background media cleared');
@@ -1549,12 +1550,51 @@ function clearFluidBackgroundMedia() {
         }
     }
     
-    // Hide controls if nothing is active
+    // Hide old clear button if nothing is active (legacy support)
     if (!fluidBackgroundMedia.loaded && !fluidBackgroundCamera.active) {
         const clearButton = document.getElementById('clearFluidBackgroundButton');
-        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
         if (clearButton) clearButton.style.display = 'none';
-        if (scaleControl) scaleControl.style.display = 'none';
+    }
+}
+
+function clearFluidBackgroundMediaOnly() {
+    // Clear only uploaded media, not camera
+    if (fluidBackgroundMedia.loaded) {
+        // Clean up texture
+        if (fluidBackgroundMedia.texture) {
+            gl.deleteTexture(fluidBackgroundMedia.texture);
+            fluidBackgroundMedia.texture = null;
+        }
+        
+        // Clean up media element
+        if (fluidBackgroundMedia.element) {
+            if (fluidBackgroundMedia.type === 'video') {
+                fluidBackgroundMedia.element.pause();
+                fluidBackgroundMedia.element.src = '';
+            }
+            // Revoke object URL to free memory
+            if (fluidBackgroundMedia.element.src && fluidBackgroundMedia.element.src.startsWith('blob:')) {
+                URL.revokeObjectURL(fluidBackgroundMedia.element.src);
+            }
+            fluidBackgroundMedia.element = null;
+        }
+        
+        // Reset media state
+        fluidBackgroundMedia.loaded = false;
+        fluidBackgroundMedia.type = null;
+        fluidBackgroundMedia.width = 0;
+        fluidBackgroundMedia.height = 0;
+        fluidBackgroundMedia.scale = 1.0;
+        
+        // Hide media controls and reset file input
+        const mediaScaleControl = document.getElementById('fluidMediaScaleControl');
+        const clearMediaButton = document.getElementById('clearFluidMediaButton');
+        const mediaUpload = document.getElementById('mediaUpload');
+        if (mediaScaleControl) mediaScaleControl.style.display = 'none';
+        if (clearMediaButton) clearMediaButton.style.display = 'none';
+        if (mediaUpload) mediaUpload.value = '';
+        
+        console.log('🗑️ Fluid background media cleared (camera remains active)');
     }
 }
 
@@ -1579,10 +1619,10 @@ function loadFluidBackgroundImage(dataURL, filename) {
         fluidBackgroundMedia.loaded = true;
         
         // Show controls
-        const clearButton = document.getElementById('clearFluidBackgroundButton');
-        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
-        if (clearButton) clearButton.style.display = 'inline-block';
-        if (scaleControl) scaleControl.style.display = 'block';
+        const clearMediaButton = document.getElementById('clearFluidMediaButton');
+        const mediaScaleControl = document.getElementById('fluidMediaScaleControl');
+        if (clearMediaButton) clearMediaButton.style.display = 'inline-block';
+        if (mediaScaleControl) mediaScaleControl.style.display = 'block';
         
         console.log(`🖼️ Fluid background image loaded: ${filename} (${img.width}x${img.height})`);
     };
@@ -1608,10 +1648,10 @@ function loadFluidBackgroundVideo(url, filename) {
         video.play();
         
         // Show controls
-        const clearButton = document.getElementById('clearFluidBackgroundButton');
-        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
-        if (clearButton) clearButton.style.display = 'inline-block';
-        if (scaleControl) scaleControl.style.display = 'block';
+        const clearMediaButton = document.getElementById('clearFluidMediaButton');
+        const mediaScaleControl = document.getElementById('fluidMediaScaleControl');
+        if (clearMediaButton) clearMediaButton.style.display = 'inline-block';
+        if (mediaScaleControl) mediaScaleControl.style.display = 'block';
         
         console.log(`🎥 Fluid background video loaded: ${filename} (${video.videoWidth}x${video.videoHeight})`);
     };
@@ -1943,11 +1983,11 @@ const backgroundVideoShader = compileShader(gl.FRAGMENT_SHADER, `
         float mediaAspect = uVideoAspect;
         
         if (canvasAspect > mediaAspect) {
-            // Canvas wider than media - fit height, scale width
-            uv.x = (uv.x - 0.5) * (canvasAspect / mediaAspect) + 0.5;
-        } else {
-            // Canvas taller than media - fit width, scale height
+            // Canvas wider than media - fit width, crop height
             uv.y = (uv.y - 0.5) * (mediaAspect / canvasAspect) + 0.5;
+        } else {
+            // Canvas taller than media - fit height, crop width
+            uv.x = (uv.x - 0.5) * (canvasAspect / mediaAspect) + 0.5;
         }
         
         // Apply user scale
@@ -4455,10 +4495,8 @@ async function startFluidBackgroundCamera() {
         fluidBackgroundCamera.height = video.videoHeight;
         
         // Show controls
-        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
-        const clearButton = document.getElementById('clearFluidBackgroundButton');
-        if (scaleControl) scaleControl.style.display = 'block';
-        if (clearButton) clearButton.style.display = 'inline-block';
+        const cameraScaleControl = document.getElementById('fluidCameraScaleControl');
+        if (cameraScaleControl) cameraScaleControl.style.display = 'block';
         
         console.log(`📷 Fluid background camera started: ${video.videoWidth}x${video.videoHeight}`);
         
@@ -4493,11 +4531,9 @@ function stopFluidBackgroundCamera() {
         fluidBackgroundCamera.width = 0;
         fluidBackgroundCamera.height = 0;
         
-        // Hide scale control if no other background media is active
-        if (!fluidBackgroundMedia.loaded) {
-            const scaleControl = document.getElementById('fluidBackgroundScaleControl');
-            if (scaleControl) scaleControl.style.display = 'none';
-        }
+        // Hide camera scale control
+        const cameraScaleControl = document.getElementById('fluidCameraScaleControl');
+        if (cameraScaleControl) cameraScaleControl.style.display = 'none';
         
         console.log('📷 Fluid background camera stopped');
     }
@@ -6530,7 +6566,8 @@ document.addEventListener('DOMContentLoaded', () => {
         mediaScale: { min: 0.1, max: 2.0, updateFn: (v) => updateSliderValue('mediaScale', (v-0.1)/1.9, false, false), precision: 2 },
         
         // Fluid background controls
-        fluidBackgroundScale: { min: 0.1, max: 2.0, updateFn: updateFluidBackgroundScale, precision: 2 },
+        fluidMediaScale: { min: 0.1, max: 2.0, updateFn: updateFluidMediaScale, precision: 2 },
+        fluidCameraScale: { min: 0.1, max: 2.0, updateFn: updateFluidCameraScale, precision: 2 },
         
         // ControlNet weights
         controlnetPose: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetPose', v/1, false, false), precision: 2 },
@@ -6589,17 +6626,28 @@ function updateMediaScale(value, updateInput = true) {
     console.log(`🎬 Media scale updated: ${value.toFixed(2)}`);
 }
 
-function updateFluidBackgroundScale(value, updateInput = true) {
+function updateFluidMediaScale(value, updateInput = true) {
     fluidBackgroundMedia.scale = value;
-    fluidBackgroundCamera.scale = value; // Also update camera scale
-    config.FLUID_BACKGROUND_SCALE = value;
+    config.FLUID_MEDIA_SCALE = value;
     if (updateInput) {
-        const inputElement = document.getElementById('fluidBackgroundScaleValue');
+        const inputElement = document.getElementById('fluidMediaScaleValue');
         if (inputElement) {
             inputElement.value = value.toFixed(2);
         }
     }
-    console.log(`🎨 Fluid background scale updated: ${value.toFixed(2)}`);
+    console.log(`🖼️ Fluid media scale updated: ${value.toFixed(2)}`);
+}
+
+function updateFluidCameraScale(value, updateInput = true) {
+    fluidBackgroundCamera.scale = value;
+    config.FLUID_CAMERA_SCALE = value;
+    if (updateInput) {
+        const inputElement = document.getElementById('fluidCameraScaleValue');
+        if (inputElement) {
+            inputElement.value = value.toFixed(2);
+        }
+    }
+    console.log(`📷 Fluid camera scale updated: ${value.toFixed(2)}`);
 }
 
 function updateAudioBlobColor(color) {
