@@ -39,6 +39,8 @@ if (isMobile()) {
     console.log('🔍 All canvas IDs:', Array.from(document.getElementsByTagName('canvas')).map(c => c.id));
 }
 
+
+
 // Ensure we have a canvas before proceeding
 if (canvas) {
     resizeCanvas();
@@ -134,12 +136,19 @@ const commonParams = {
     BREATHING: 0.5,
     COLOR_LIFE: 0.22,
     ANIMATION_INTERVAL: 0.1,
+    // Media Parameters
+    FLUID_CAMERA_SCALE: 1.0,      // Fluid background camera scale
+    FLUID_MEDIA_SCALE: 1.0,       // Fluid background media scale
+    MEDIA_SCALE: 1.0,             // Media overlay scale
+    BACKGROUND_IMAGE_SCALE: 1.0,  // Background image scale
     // Audio Parameters
     AUDIO_REACTIVITY: 2.0,
     AUDIO_DELAY: 0,
     AUDIO_OPACITY: 0.8,
     AUDIO_COLORFUL: 0.3,
-    AUDIO_EDGE_SOFTNESS: 0.25
+    AUDIO_EDGE_SOFTNESS: 0.25,
+    // Debug Parameters
+    DEBUG_MODE: false
 };
 
 // Initialize config based on device type with common parameters
@@ -679,7 +688,17 @@ function updateSliderPositions() {
             const middleValue = Array.isArray(config[slider.prop]) ? config[slider.prop][1] || 8 : 8;
             percentage = (middleValue - slider.min) / (slider.max - slider.min);
         } else {
-            percentage = (config[slider.prop] - slider.min) / (slider.max - slider.min);
+            // Handle undefined config values gracefully
+            const configValue = config[slider.prop];
+            if (configValue === undefined || configValue === null || isNaN(configValue)) {
+                // Use default value (middle of range) for undefined properties
+                const defaultValue = slider.min + (slider.max - slider.min) * 0.5;
+                config[slider.prop] = defaultValue;
+                percentage = 0.5;
+                console.warn(`Config property ${slider.prop} was undefined, using default value: ${defaultValue}`);
+            } else {
+                percentage = (configValue - slider.min) / (slider.max - slider.min);
+            }
         }
         
         updateSliderValue(sliderName, percentage, true); // Skip saving when loading
@@ -693,6 +712,7 @@ function updateToggleStates() {
     updateToggle('bloomToggle', config.BLOOM);
     updateToggle('sunraysToggle', config.SUNRAYS);
     updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
+    updateToggle('debugToggle', config.DEBUG_MODE);
 }
 
 function updateToggle(toggleId, state) {
@@ -710,6 +730,112 @@ function updateToggle(toggleId, state) {
 function togglePanel() {
     const panel = document.getElementById('controlPanel');
     panel.classList.toggle('collapsed');
+}
+
+// Safe wrapper functions for mobile compatibility
+function safeTogglePanel(event) {
+    try {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (isMobile()) {
+            console.log('🔍 MOBILE DEBUG: Panel toggle called');
+        }
+        togglePanel();
+    } catch (error) {
+        console.error('Error in safeTogglePanel:', error);
+    }
+}
+
+function safeToggleStream(event) {
+    try {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (isMobile()) {
+            console.log('🔍 MOBILE DEBUG: Stream toggle called');
+        }
+        toggleStream();
+    } catch (error) {
+        console.error('Error in safeToggleStream:', error);
+    }
+}
+
+function safeToggleNegativePrompt(event) {
+    try {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (isMobile()) {
+            console.log('🔍 MOBILE DEBUG: Negative prompt toggle called');
+        }
+        toggleNegativePrompt();
+    } catch (error) {
+        console.error('Error in safeToggleNegativePrompt:', error);
+    }
+}
+
+function safeToggleFluidDrawing(event) {
+    try {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (isMobile()) {
+            console.log('🔍 MOBILE DEBUG: Fluid drawing toggle called');
+        }
+        toggleFluidDrawing();
+    } catch (error) {
+        console.error('Error in safeToggleFluidDrawing:', error);
+    }
+}
+
+function safeToggleAudioBlob(event) {
+    try {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (isMobile()) {
+            console.log('🔍 MOBILE DEBUG: Audio blob toggle called');
+        }
+        toggleAudioBlob();
+    } catch (error) {
+        console.error('Error in safeToggleAudioBlob:', error);
+    }
+}
+
+// Ensure global availability of safe functions for mobile
+window.safeTogglePanel = safeTogglePanel;
+window.safeToggleStream = safeToggleStream;
+window.safeToggleNegativePrompt = safeToggleNegativePrompt;
+window.safeToggleFluidDrawing = safeToggleFluidDrawing;
+window.safeToggleAudioBlob = safeToggleAudioBlob;
+
+// Also ensure toggle functions are globally available
+window.toggleDebug = toggleDebug;
+
+// Ensure original functions are globally available as fallback (deferred)
+function ensureGlobalFunctions() {
+    if (typeof toggleStream !== 'undefined') window.toggleStream = toggleStream;
+    if (typeof toggleNegativePrompt !== 'undefined') window.toggleNegativePrompt = toggleNegativePrompt;
+    if (typeof toggleFluidDrawing !== 'undefined') window.toggleFluidDrawing = toggleFluidDrawing;
+    if (typeof toggleAudioBlob !== 'undefined') window.toggleAudioBlob = toggleAudioBlob;
+}
+
+// Make togglePanel available immediately since it's defined above
+window.togglePanel = togglePanel;
+
+// Mobile debugging - log function availability
+if (isMobile()) {
+    console.log('🔍 MOBILE DEBUG: Function availability check:');
+    console.log('🔍 safeTogglePanel:', typeof window.safeTogglePanel);
+    console.log('🔍 safeToggleStream:', typeof window.safeToggleStream);
+    console.log('🔍 safeToggleFluidDrawing:', typeof window.safeToggleFluidDrawing);
+    console.log('🔍 safeToggleAudioBlob:', typeof window.safeToggleAudioBlob);
 }
 
 // Mobile pull-down gesture to close control panel
@@ -877,6 +1003,27 @@ function toggleSettings() {
         content.classList.add('expanded');
         toggle.textContent = '▼';
     }
+}
+
+function toggleDebug() {
+    config.DEBUG_MODE = !config.DEBUG_MODE;
+    updateToggle('debugToggle', config.DEBUG_MODE);
+    
+    // Control mobile debug overlay visibility
+    const debugOverlay = document.getElementById('mobileDebug');
+    if (debugOverlay) {
+        if (config.DEBUG_MODE) {
+            debugOverlay.style.display = 'block';
+            debugOverlay.style.setProperty('display', 'block', 'important');
+            console.log('🔍 Debug mode enabled - OSC messages and debug overlay will be shown');
+        } else {
+            debugOverlay.style.display = 'none';
+            debugOverlay.style.setProperty('display', 'none', 'important');
+            console.log('🔍 Debug mode disabled');
+        }
+    }
+    
+    saveConfig();
 }
 
 function togglePromptPresets() {
@@ -1070,7 +1217,11 @@ function initializeMobileDebug() {
     const debugInfo = document.getElementById('debugInfo');
     
     if (debugOverlay && debugInfo) {
-        debugOverlay.style.display = 'block';
+        // Show debug overlay only if debug mode is enabled
+        if (config.DEBUG_MODE) {
+            debugOverlay.style.display = 'block';
+            debugOverlay.style.setProperty('display', 'block', 'important');
+        }
         
         // Initial debug info
         updateMobileDebugInfo({
@@ -1969,6 +2120,7 @@ function loadFluidBackgroundImage(dataURL, filename) {
         fluidBackgroundMedia.width = img.width;
         fluidBackgroundMedia.height = img.height;
         fluidBackgroundMedia.loaded = true;
+        fluidBackgroundMedia.scale = config.FLUID_MEDIA_SCALE || 1.0; // Initialize from config
         
         // Show controls
         const clearMediaButton = document.getElementById('clearFluidMediaButton');
@@ -1993,6 +2145,7 @@ function loadFluidBackgroundVideo(url, filename) {
         fluidBackgroundMedia.width = video.videoWidth;
         fluidBackgroundMedia.height = video.videoHeight;
         fluidBackgroundMedia.loaded = true;
+        fluidBackgroundMedia.scale = config.FLUID_MEDIA_SCALE || 1.0; // Initialize from config
         
         // Configure video
         video.muted = true;
@@ -4921,6 +5074,11 @@ function toggleCamera() {
         deactivateAllInputModes();
         stopCamera();
     } else {
+        // Ensure fluid background camera is stopped before starting regular camera
+        if (fluidBackgroundCamera.active) {
+            console.log('🛑 Stopping fluid background camera before starting regular camera');
+            stopFluidBackgroundCamera();
+        }
         activateInputMode('camera');
         startCamera();
     }
@@ -4973,6 +5131,7 @@ async function startFluidBackgroundCamera() {
         fluidBackgroundCamera.video = video;
         fluidBackgroundCamera.width = video.videoWidth;
         fluidBackgroundCamera.height = video.videoHeight;
+        fluidBackgroundCamera.scale = config.FLUID_CAMERA_SCALE || 1.0; // Initialize from config
         
         // Show controls
         const cameraScaleControl = document.getElementById('fluidCameraScaleControl');
@@ -5214,7 +5373,7 @@ async function startCamera() {
         console.log('📷 Requesting camera access...');
         
         // Browser-specific constraints for better Chrome compatibility
-        const constraints = {
+        let constraints = {
             video: {
                 width: { ideal: 1920, min: 640 },
                 height: { ideal: 1080, min: 480 },
@@ -5223,8 +5382,18 @@ async function startCamera() {
             }
         };
         
+        // Mobile-specific optimizations for better camera access
+        if (isMobile()) {
+            console.log('📱 Applying mobile-specific camera settings');
+            constraints.video = {
+                width: { ideal: 1280, max: 1920 },
+                height: { ideal: 720, max: 1080 },
+                facingMode: 'user',
+                frameRate: { ideal: 24, max: 30 }
+            };
+        }
         // For Chrome, be more lenient with constraints
-        if (navigator.userAgent.includes('Chrome')) {
+        else if (navigator.userAgent.includes('Chrome')) {
             console.log('🔧 Applying Chrome-specific camera settings');
             constraints.video = {
                 facingMode: 'user'
@@ -5270,6 +5439,14 @@ async function startCamera() {
         console.log(`📐 Canvas size: ${canvas.width}x${canvas.height}`);
         console.log(`📹 Video size: ${video.videoWidth}x${video.videoHeight}`);
         
+        // Mobile debugging - confirm we're in camera mode, not fluid background
+        if (isMobile()) {
+            console.log('📱 MOBILE CAMERA DEBUG: Raw camera mode activated');
+            console.log('📱 Camera canvas ID:', canvas.id);
+            console.log('📱 Fluid background camera active:', fluidBackgroundCamera.active);
+            console.log('📱 Camera state active:', cameraState.active);
+        }
+        
         // Store state
         cameraState.active = true;
         cameraState.stream = stream;
@@ -5303,9 +5480,19 @@ async function startCamera() {
             
             // Verify video is ready
             if (video.videoWidth === 0 || video.videoHeight === 0) {
-                console.warn('⚠️ Video not ready, skipping frame');
+                if (isMobile()) {
+                    console.warn('📱 Mobile camera: Video not ready, skipping frame');
+                } else {
+                    console.warn('⚠️ Video not ready, skipping frame');
+                }
                 cameraState.animationId = requestAnimationFrame(renderCamera);
                 return;
+            }
+            
+            // Mobile debugging for first few frames
+            if (isMobile() && cameraState.frameCount < 5) {
+                cameraState.frameCount = (cameraState.frameCount || 0) + 1;
+                console.log(`📱 Mobile camera frame ${cameraState.frameCount}: ${video.videoWidth}x${video.videoHeight} -> ${canvas.width}x${canvas.height}`);
             }
             
             // Clear canvas
@@ -5433,9 +5620,26 @@ async function startCameraFallback() {
         if (!canvas) return;
         
         // Minimal constraints for maximum compatibility
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: true
-        });
+        let fallbackConstraints = { video: true };
+        
+        // Even in fallback, try mobile-optimized constraints first
+        if (isMobile()) {
+            console.log('📱 Mobile fallback: trying optimized constraints first');
+            try {
+                fallbackConstraints = {
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
+                };
+            } catch (e) {
+                console.log('📱 Mobile fallback: using basic constraints');
+                fallbackConstraints = { video: true };
+            }
+        }
+        
+        const stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
         
         const video = document.createElement('video');
         video.srcObject = stream;
@@ -6776,14 +6980,26 @@ function removeAudioFromStream() {
 function getStreamingCanvas() {
     // Return active input canvas based on current input mode
     // Priority: media > camera > audio > fluid (media gets highest priority when active)
-    console.log('🔍 Checking streaming canvas states:', {
+    const states = {
         media: mediaState.active,
         camera: cameraState.active,
         audio: audioBlobState.active,
         mediaCanvas: !!mediaState.canvas,
         cameraCanvas: !!cameraState.canvas,
         audioCanvas: !!audioBlobState.canvas
-    });
+    };
+    
+    console.log('🔍 Checking streaming canvas states:', states);
+    
+    // Mobile debugging for camera canvas selection
+    if (isMobile() && cameraState.active) {
+        console.log('📱 Mobile camera canvas check:', {
+            cameraActive: cameraState.active,
+            cameraCanvas: !!cameraState.canvas,
+            cameraCanvasId: cameraState.canvas ? cameraState.canvas.id : 'none',
+            fluidBackgroundActive: fluidBackgroundCamera.active
+        });
+    }
     
     if (mediaState.active && mediaState.canvas) {
         console.log('📺 Streaming media canvas');
@@ -8293,10 +8509,14 @@ function setupOSCMessageHandling() {
 }
 
 function handleOSCMessage(message) {
-    console.log('📨 OSC Message:', message);
+    if (config.DEBUG_MODE) {
+        console.log('📨 OSC Message:', message);
+    }
     
     if (message.type === 'server_info') {
-        console.log('📋 OSC Server Info:', message);
+        if (config.DEBUG_MODE) {
+            console.log('📋 OSC Server Info:', message);
+        }
         return;
     }
     
@@ -8315,7 +8535,9 @@ function handleOSCMessage(message) {
         
         // Handle actions
         if (message.action) {
-            console.log(`🎬 Executing action: ${message.action}`);
+            if (config.DEBUG_MODE) {
+                console.log(`🎬 Executing action: ${message.action}`);
+            }
             executeOSCAction(message.action, message.value);
         }
     }
@@ -8456,3 +8678,6 @@ window.addEventListener('beforeunload', () => {
         oscWebSocket.close();
     }
 });
+
+// Ensure all toggle functions are globally available for mobile compatibility
+ensureGlobalFunctions();

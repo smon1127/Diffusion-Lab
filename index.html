@@ -508,6 +508,34 @@
             @media (max-width: 480px) {
                 .control-panel {
                     max-height: 90vh; /* Maximum space for controls on small screens */
+                    /* Improve touch interactions */
+                    -webkit-tap-highlight-color: transparent;
+                    touch-action: manipulation;
+                }
+                
+                /* Improve button touch targets */
+                .modern-button {
+                    min-height: 44px;
+                    touch-action: manipulation;
+                    -webkit-tap-highlight-color: transparent;
+                    -webkit-user-select: none;
+                    user-select: none;
+                }
+                
+                .panel-header {
+                    min-height: 44px;
+                    touch-action: manipulation;
+                    -webkit-tap-highlight-color: transparent;
+                    -webkit-user-select: none;
+                    user-select: none;
+                }
+                
+                .advanced-toggle {
+                    min-height: 44px;
+                    touch-action: manipulation;
+                    -webkit-tap-highlight-color: transparent;
+                    -webkit-user-select: none;
+                    user-select: none;
                 }
 
                 .panel-content {
@@ -1705,7 +1733,7 @@
         </div>
 
         <!-- Mobile Debug Overlay -->
-        <div id="mobileDebug" style="display: none; position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 12px; border-radius: 5px; z-index: 9999; max-width: 250px; font-family: monospace;">
+        <div id="mobileDebug" style="display: none !important; position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 12px; border-radius: 5px; z-index: 9999; max-width: 250px; font-family: monospace;">
             <div>📱 Mobile Debug</div>
             <div id="debugInfo"></div>
         </div>
@@ -1720,7 +1748,7 @@
 
         <!-- Modern Control Panel -->
         <div class="control-panel" id="controlPanel">
-            <div class="panel-header" onclick="togglePanel()">
+            <div class="panel-header" onclick="safeTogglePanel()" ontouchstart="safeTogglePanel()">
                 <span>AI Controls</span>
                 <span class="toggle-icon">▼</span>
             </div>
@@ -1734,7 +1762,7 @@
                             <span>Stream Status</span>
                             <span class="stream-status" id="streamStatus" style="display: none;"></span>
                         </div>
-                        <button class="modern-button" id="streamButton" onclick="toggleStream()">
+                        <button class="modern-button" id="streamButton" onclick="safeToggleStream()" ontouchstart="safeToggleStream()">
                             Start Stream
                         </button>
                         <button class="modern-button secondary" id="copyStreamUrlButton" 
@@ -1772,7 +1800,7 @@
                     
                     <!-- Negative Prompt Section -->
                     <div class="advanced-section">
-                        <div class="advanced-toggle" onclick="toggleNegativePrompt()">
+                        <div class="advanced-toggle" onclick="safeToggleNegativePrompt()" ontouchstart="safeToggleNegativePrompt()">
                             <span>Negative Prompt</span>
                             <div class="toggle-icon" id="negativePromptIcon">▶</div>
                         </div>
@@ -1789,13 +1817,13 @@
                     <div class="group-title">Select Input</div>
                     
                     <div class="control-item">
-                        <button class="modern-button secondary" id="fluidDrawingButton" onclick="toggleFluidDrawing()">
+                        <button class="modern-button secondary" id="fluidDrawingButton" onclick="safeToggleFluidDrawing()" ontouchstart="safeToggleFluidDrawing()">
                             🎨 Fluid Drawing
                         </button>
                     </div>
                     
                     <div class="control-item">
-                        <button class="modern-button secondary" id="audioBlobButton" onclick="toggleAudioBlob()">
+                        <button class="modern-button secondary" id="audioBlobButton" onclick="safeToggleAudioBlob()" ontouchstart="safeToggleAudioBlob()">
                             🎵 Audio
                         </button>
                     </div>
@@ -2428,6 +2456,17 @@
                             <button class="modern-button secondary" onclick="showWelcomeOverlay()">
                                 About
                             </button>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="toggle-container" onclick="toggleDebug()" ontouchstart="toggleDebug()">
+                                <span>Debug Mode <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Show OSC messages and debug overlay</span>
+                                </div></span>
+                                <div class="toggle-switch" id="debugToggle">
+                                    <div class="toggle-handle"></div>
+                                </div>
+                            </div>
                         </div>
                         
                         <!-- Sliders at bottom -->
