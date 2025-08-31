@@ -86,6 +86,7 @@ let config = {
     BACKGROUND_IMAGE_SCALE: 1.0, // 0.1-2.0 range - Controls background image size (1.0 = fit to viewport)
     // Media Scale Parameters
     MEDIA_SCALE: 1.0, // 0.1-2.0 range - Controls media size (1.0 = fit to viewport)
+    FLUID_BACKGROUND_SCALE: 1.0, // 0.1-2.0 range - Controls fluid background media size
 }
 
 // Global State Variables (declared early to avoid initialization order issues)
@@ -123,6 +124,17 @@ let mediaState = {
     mediaType: null,    // 'image' or 'video'
     mediaName: null,    // filename
     scale: 1.0          // media scale factor (will be synced with config.MEDIA_SCALE)
+};
+
+// Fluid Background Media System
+let fluidBackgroundMedia = {
+    loaded: false,
+    texture: null,
+    width: 0,
+    height: 0,
+    type: null, // 'image' or 'video'
+    element: null, // img or video element
+    scale: 1.0
 };
 
 // Audio Blob System
@@ -324,7 +336,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidBackgroundScale'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -481,6 +493,7 @@ function updateSliderValue(sliderName, percentage, skipSave = false, updateInput
         'animationInterval': { min: 0, max: 1, prop: 'ANIMATION_INTERVAL', decimals: 2 },
         'backgroundImageScale': { min: 0.1, max: 2.0, prop: 'BACKGROUND_IMAGE_SCALE', decimals: 2 },
         'mediaScale': { min: 0.1, max: 2.0, prop: 'MEDIA_SCALE', decimals: 2, handler: updateMediaScale },
+        'fluidBackgroundScale': { min: 0.1, max: 2.0, prop: 'FLUID_BACKGROUND_SCALE', decimals: 2, handler: updateFluidBackgroundScale },
         'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true },
         'audioReactivity': { min: 0.1, max: 3.0, prop: 'AUDIO_REACTIVITY', decimals: 1, handler: updateAudioReactivity },
         'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay },
@@ -569,6 +582,7 @@ function updateSliderPositions() {
         'animationInterval': { prop: 'ANIMATION_INTERVAL', min: 0, max: 1 },
         'backgroundImageScale': { prop: 'BACKGROUND_IMAGE_SCALE', min: 0.1, max: 2.0 },
         'mediaScale': { prop: 'MEDIA_SCALE', min: 0.1, max: 2.0 },
+        'fluidBackgroundScale': { prop: 'FLUID_BACKGROUND_SCALE', min: 0.1, max: 2.0 },
         'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true }
     };
     
@@ -1091,9 +1105,47 @@ let backgroundMedia = {
 // Camera feed functionality (moved to line 3416 for WebGL integration)
 
 function initializeMediaUpload() {
-    const mediaUpload = document.getElementById('mediaUpload');
-    if (mediaUpload) {
-        mediaUpload.addEventListener('change', handleMediaUpload);
+    // Initialize media file input
+    const fileInput = document.getElementById('mediaFileInput');
+    const chooseMediaButton = document.getElementById('chooseMediaButton');
+    
+    if (!fileInput) {
+        console.error('Media file input not found');
+        return;
+    }
+    
+    // Set up file change handler
+    fileInput.onchange = handleMediaFileSelection;
+    
+    // Initialize fluid background media upload
+    const fluidMediaUpload = document.getElementById('mediaUpload');
+    if (fluidMediaUpload) {
+        fluidMediaUpload.onchange = handleFluidBackgroundUpload;
+        console.log('✅ Fluid background media upload initialized');
+    } else {
+        console.warn('⚠️ Fluid background media upload input not found');
+    }
+    
+    // Set up Choose Media button handler
+    if (chooseMediaButton) {
+        chooseMediaButton.onclick = () => {
+            // Only allow media selection when media mode is active
+            if (mediaState.active) {
+                selectMediaFile();
+            } else {
+                console.warn('🎬 Please activate media mode first');
+            }
+        };
+        
+        // Add hover effect
+        chooseMediaButton.onmouseover = () => {
+            if (mediaState.active) {
+                chooseMediaButton.style.background = 'rgba(0, 212, 255, 0.2)';
+            }
+        };
+        chooseMediaButton.onmouseout = () => {
+            chooseMediaButton.style.background = 'rgba(0, 212, 255, 0.1)';
+        };
     }
     
     // Initialize camera functionality (now handled by input mode system)
@@ -1129,6 +1181,7 @@ function handleMediaUpload(event) {
         // Handle video file
         const url = URL.createObjectURL(file);
         loadBackgroundVideo(url);
+        loadFluidBackgroundVideo(url, file.name);
     } else {
         // Handle image file
         const reader = new FileReader();
@@ -1136,6 +1189,7 @@ function handleMediaUpload(event) {
             // Store original data URL for scale changes
             backgroundMedia.originalDataURL = e.target.result;
             loadBackgroundImage(e.target.result);
+            loadFluidBackgroundImage(e.target.result, file.name);
         };
         reader.readAsDataURL(file);
     }
@@ -1432,6 +1486,109 @@ function clearBackgroundMedia() {
 function clearAllBackground() {
     clearBackgroundMedia();
     // Camera stopping is now handled by input mode system
+}
+
+function clearFluidBackgroundMedia() {
+    if (fluidBackgroundMedia.loaded) {
+        // Clean up texture
+        if (fluidBackgroundMedia.texture) {
+            gl.deleteTexture(fluidBackgroundMedia.texture);
+            fluidBackgroundMedia.texture = null;
+        }
+        
+        // Clean up media element
+        if (fluidBackgroundMedia.element) {
+            if (fluidBackgroundMedia.type === 'video') {
+                fluidBackgroundMedia.element.pause();
+                fluidBackgroundMedia.element.src = '';
+            }
+            // Revoke object URL to free memory
+            if (fluidBackgroundMedia.element.src && fluidBackgroundMedia.element.src.startsWith('blob:')) {
+                URL.revokeObjectURL(fluidBackgroundMedia.element.src);
+            }
+            fluidBackgroundMedia.element = null;
+        }
+        
+        // Reset state
+        fluidBackgroundMedia.loaded = false;
+        fluidBackgroundMedia.type = null;
+        fluidBackgroundMedia.width = 0;
+        fluidBackgroundMedia.height = 0;
+        fluidBackgroundMedia.scale = 1.0;
+        
+        // Hide controls and reset file input
+        const clearButton = document.getElementById('clearFluidBackgroundButton');
+        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
+        const mediaUpload = document.getElementById('mediaUpload');
+        if (clearButton) clearButton.style.display = 'none';
+        if (scaleControl) scaleControl.style.display = 'none';
+        if (mediaUpload) mediaUpload.value = '';
+        
+        console.log('🗑️ Fluid background media cleared');
+    }
+}
+
+function loadFluidBackgroundFile(file) {
+    const url = URL.createObjectURL(file);
+    
+    if (file.type.startsWith('image/')) {
+        loadFluidBackgroundImage(url, file.name);
+    } else if (file.type.startsWith('video/')) {
+        loadFluidBackgroundVideo(url, file.name);
+    }
+}
+
+function loadFluidBackgroundImage(dataURL, filename) {
+    const img = new Image();
+    img.onload = function() {
+        // Store the image element
+        fluidBackgroundMedia.element = img;
+        fluidBackgroundMedia.type = 'image';
+        fluidBackgroundMedia.width = img.width;
+        fluidBackgroundMedia.height = img.height;
+        fluidBackgroundMedia.loaded = true;
+        
+        // Show controls
+        const clearButton = document.getElementById('clearFluidBackgroundButton');
+        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
+        if (clearButton) clearButton.style.display = 'inline-block';
+        if (scaleControl) scaleControl.style.display = 'block';
+        
+        console.log(`🖼️ Fluid background image loaded: ${filename} (${img.width}x${img.height})`);
+    };
+    img.onerror = function() {
+        console.error('Failed to load fluid background image');
+    };
+    img.src = dataURL;
+}
+
+function loadFluidBackgroundVideo(url, filename) {
+    const video = document.createElement('video');
+    video.onloadedmetadata = function() {
+        // Store the video element
+        fluidBackgroundMedia.element = video;
+        fluidBackgroundMedia.type = 'video';
+        fluidBackgroundMedia.width = video.videoWidth;
+        fluidBackgroundMedia.height = video.videoHeight;
+        fluidBackgroundMedia.loaded = true;
+        
+        // Configure video
+        video.muted = true;
+        video.loop = true;
+        video.play();
+        
+        // Show controls
+        const clearButton = document.getElementById('clearFluidBackgroundButton');
+        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
+        if (clearButton) clearButton.style.display = 'inline-block';
+        if (scaleControl) scaleControl.style.display = 'block';
+        
+        console.log(`🎥 Fluid background video loaded: ${filename} (${video.videoWidth}x${video.videoHeight})`);
+    };
+    video.onerror = function() {
+        console.error('Failed to load fluid background video');
+    };
+    video.src = url;
 }
 
 function updateBackgroundControls() {
@@ -1746,35 +1903,31 @@ const backgroundVideoShader = compileShader(gl.FRAGMENT_SHADER, `
     uniform float uScale;
 
     void main () {
-        // Flip Y coordinate for video (videos are upside down in WebGL)
-        vec2 flippedUv = vec2(vUv.x, 1.0 - vUv.y);
+        vec2 uv = vUv;
         
-        // Calculate aspect ratio correction for "cover" behavior
-        vec2 scale = vec2(1.0);
-        vec2 offset = vec2(0.0);
+        // Flip vertically
+        uv.y = 1.0 - uv.y;
         
-        if (uCanvasAspect > uVideoAspect) {
-            // Canvas is wider than video - scale video to fit width, crop height
-            scale.y = uCanvasAspect / uVideoAspect;
-            offset.y = (1.0 - scale.y) * 0.5;
+        // Simple aspect ratio correction
+        float canvasAspect = uCanvasAspect;
+        float mediaAspect = uVideoAspect;
+        
+        if (canvasAspect > mediaAspect) {
+            // Canvas wider than media - fit height, scale width
+            uv.x = (uv.x - 0.5) * (canvasAspect / mediaAspect) + 0.5;
         } else {
-            // Canvas is taller than video - scale video to fit height, crop width  
-            scale.x = uVideoAspect / uCanvasAspect;
-            offset.x = (1.0 - scale.x) * 0.5;
+            // Canvas taller than media - fit width, scale height
+            uv.y = (uv.y - 0.5) * (mediaAspect / canvasAspect) + 0.5;
         }
         
-        // Apply user scale factor (inverted: higher slider value = smaller scale)
-        scale /= uScale;
-        offset = (vec2(1.0) - scale) * 0.5;
+        // Apply user scale
+        uv = (uv - 0.5) / uScale + 0.5;
         
-        // Apply scaling and offset
-        vec2 scaledUv = flippedUv * scale + offset;
-        
-        // Sample texture with bounds checking
-        if (scaledUv.x < 0.0 || scaledUv.x > 1.0 || scaledUv.y < 0.0 || scaledUv.y > 1.0) {
-            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        // Sample texture
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+            gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
         } else {
-            gl_FragColor = texture2D(uTexture, scaledUv);
+            gl_FragColor = texture2D(uTexture, uv);
         }
     }
 `);
@@ -2658,6 +2811,11 @@ function render (target) {
     if (target == null && config.TRANSPARENT)
         drawCheckerboard(target);
     
+    // Draw fluid background media if loaded
+    if (fluidBackgroundMedia.loaded && fluidBackgroundMedia.element) {
+        drawFluidBackgroundMedia(target);
+    }
+    
     // Draw background media if loaded
     if (backgroundMedia.loaded && backgroundMedia.texture) {
         // Update video texture if it's a video
@@ -2713,6 +2871,52 @@ function drawBackgroundMedia (target) {
     }
     
     // Draw the background media
+    blit(target);
+    
+    // Restore blending state
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+}
+
+function drawFluidBackgroundMedia(target) {
+    // Create texture if not exists
+    if (!fluidBackgroundMedia.texture) {
+        fluidBackgroundMedia.texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, fluidBackgroundMedia.texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    
+    // Update texture with current media
+    gl.bindTexture(gl.TEXTURE_2D, fluidBackgroundMedia.texture);
+    try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, fluidBackgroundMedia.element);
+    } catch (e) {
+        console.warn('Failed to update fluid background texture:', e);
+        return;
+    }
+    
+    // Enable blending
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    
+    // Use background video program for proper scaling
+    backgroundVideoProgram.bind();
+    gl.uniform1i(backgroundVideoProgram.uniforms.uTexture, 0);
+    
+    // Calculate aspect ratios
+    const canvasWidth = target == null ? gl.drawingBufferWidth : target.width;
+    const canvasHeight = target == null ? gl.drawingBufferHeight : target.height;
+    const canvasAspect = canvasWidth / canvasHeight;
+    const mediaAspect = fluidBackgroundMedia.width / fluidBackgroundMedia.height;
+    
+    // Pass uniforms
+    gl.uniform1f(backgroundVideoProgram.uniforms.uCanvasAspect, canvasAspect);
+    gl.uniform1f(backgroundVideoProgram.uniforms.uVideoAspect, mediaAspect);
+    gl.uniform1f(backgroundVideoProgram.uniforms.uScale, fluidBackgroundMedia.scale);
+    
+    // Draw the media
     blit(target);
     
     // Restore blending state
@@ -3325,7 +3529,7 @@ function updateStreamStatus(status, className = '') {
             statusElement.textContent = '';
             statusElement.style.display = 'none';
         } else {
-            statusElement.textContent = status;
+        statusElement.textContent = status;
             statusElement.style.display = 'inline';
         }
         statusElement.className = `stream-status ${className}`;
@@ -4131,8 +4335,8 @@ function toggleMedia() {
         deactivateAllInputModes();
         stopMedia();
     } else {
-        // Trigger file selection when activating media mode
-        selectMediaFile();
+        // Just activate media mode without file selection
+        activateInputMode('media');
     }
 }
 
@@ -4159,6 +4363,18 @@ function handleMediaFileSelection(event) {
     
     console.log('🎬 Media file selected:', file.name, file.type);
     
+    // Clean up previous media resources
+    if (mediaState.mediaElement) {
+        if (mediaState.mediaType === 'video') {
+            mediaState.mediaElement.pause();
+            mediaState.mediaElement.src = '';
+        }
+        // Revoke object URL to free memory
+        if (mediaState.mediaElement.src && mediaState.mediaElement.src.startsWith('blob:')) {
+            URL.revokeObjectURL(mediaState.mediaElement.src);
+        }
+    }
+    
     // Validate file type
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
         alert('Please select an image or video file.');
@@ -4168,6 +4384,32 @@ function handleMediaFileSelection(event) {
     // Activate media mode and load the file
     activateInputMode('media');
     loadMediaFile(file);
+}
+
+function handleFluidBackgroundUpload(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        console.log('🎬 No fluid background file selected');
+        return;
+    }
+    
+    console.log('🌊 Fluid background media selected:', file.name, file.type);
+    
+    // Validate file type
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+        alert('Please select an image or video file for fluid background.');
+        return;
+    }
+    
+    // Validate file size (max 50MB as mentioned in tooltip)
+    const maxSize = 50 * 1024 * 1024; // 50MB in bytes
+    if (file.size > maxSize) {
+        alert('File size too large. Please select a file smaller than 50MB.');
+        return;
+    }
+    
+    // Load the file into fluid background system
+    loadFluidBackgroundFile(file);
 }
 
 async function loadMediaFile(file) {
@@ -4628,11 +4870,23 @@ async function startMedia() {
         
         mediaState.active = true;
         
-        // Start with a placeholder display (will be replaced if media is loaded)
-        renderMediaPlaceholder();
-        
-        console.log('🎬 Media started successfully - showing placeholder');
-        console.log('🎬 TODO: Implement file upload and media processing');
+        // If we have saved media, restore it
+        if (mediaState.mediaElement) {
+            console.log(`🎬 Restoring saved ${mediaState.mediaType}: ${mediaState.mediaName}`);
+            
+            // For videos, need to restart playback
+            if (mediaState.mediaType === 'video') {
+                mediaState.mediaElement.currentTime = 0;
+                mediaState.mediaElement.play();
+            }
+            
+            // Start rendering the saved media
+            renderMediaContent();
+        } else {
+            // Start with a placeholder if no media loaded
+            renderMediaPlaceholder();
+            console.log('🎬 Media started successfully - showing placeholder');
+        }
         
         // Switch streaming canvas to media if streaming is active
         switchStreamingCanvas();
@@ -4739,24 +4993,25 @@ function renderVideoMedia(canvas, ctx) {
 }
 
 function renderMediaPlaceholderContent(canvas, ctx) {
-    // Draw placeholder background
+    // Draw placeholder background at half size
+    const width = canvas.width / 2;
+    const height = canvas.height / 2;
+    const x = (canvas.width - width) / 2;
+    const y = (canvas.height - height) / 2;
+    
+    // Draw semi-transparent background
     ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(x, y, width, height);
     
     // Draw placeholder text
     ctx.fillStyle = '#ffffff';
-    ctx.font = '48px Arial';
+    ctx.font = '24px Arial'; // Smaller font for half size
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    
-    ctx.fillText('🎬 Media Mode', centerX, centerY - 50);
-    
-    ctx.font = '24px Arial';
-    ctx.fillText('Click Media button to select', centerX, centerY + 20);
-    ctx.fillText('images or videos', centerX, centerY + 60);
+    // Draw text in the center of the half-size rectangle
+    ctx.fillText('Click "Choose Media"', canvas.width / 2, canvas.height / 2 - 15);
+    ctx.fillText('to select an image or video', canvas.width / 2, canvas.height / 2 + 15);
 }
 
 function drawMediaInfo(ctx, canvas, filename, resolution, scale = 1.0) {
@@ -4803,24 +5058,14 @@ function stopMedia() {
         mediaState.ctx.clearRect(0, 0, mediaState.canvas.width, mediaState.canvas.height);
     }
     
-    // Clean up media element
-    if (mediaState.mediaElement) {
-        if (mediaState.mediaType === 'video') {
-            mediaState.mediaElement.pause();
-            mediaState.mediaElement.src = '';
-        }
-        // Revoke object URL to free memory
-        if (mediaState.mediaElement.src && mediaState.mediaElement.src.startsWith('blob:')) {
-            URL.revokeObjectURL(mediaState.mediaElement.src);
-        }
-        mediaState.mediaElement = null;
+    // Pause video if active but don't clear media element
+    if (mediaState.mediaElement && mediaState.mediaType === 'video') {
+        mediaState.mediaElement.pause();
     }
     
-    // Reset state
+    // Reset canvas state only
     mediaState.canvas = null;
     mediaState.ctx = null;
-    mediaState.mediaType = null;
-    mediaState.mediaName = null;
 }
 
 async function startAudioBlob() {
@@ -6106,6 +6351,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Media controls
         mediaScale: { min: 0.1, max: 2.0, updateFn: (v) => updateSliderValue('mediaScale', (v-0.1)/1.9, false, false), precision: 2 },
         
+        // Fluid background controls
+        fluidBackgroundScale: { min: 0.1, max: 2.0, updateFn: updateFluidBackgroundScale, precision: 2 },
+        
         // ControlNet weights
         controlnetPose: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetPose', v/1, false, false), precision: 2 },
         controlnetHed: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetHed', v/1, false, false), precision: 2 },
@@ -6161,6 +6409,18 @@ function updateMediaScale(value, updateInput = true) {
         }
     }
     console.log(`🎬 Media scale updated: ${value.toFixed(2)}`);
+}
+
+function updateFluidBackgroundScale(value, updateInput = true) {
+    fluidBackgroundMedia.scale = value;
+    config.FLUID_BACKGROUND_SCALE = value;
+    if (updateInput) {
+        const inputElement = document.getElementById('fluidBackgroundScaleValue');
+        if (inputElement) {
+            inputElement.value = value.toFixed(2);
+        }
+    }
+    console.log(`🎨 Fluid background scale updated: ${value.toFixed(2)}`);
 }
 
 function updateAudioBlobColor(color) {

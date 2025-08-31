@@ -1694,7 +1694,7 @@
             </div>
         </div>
 
-        <canvas id="fluidCanvas"></canvas>
+        <canvas id="fluidCanvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;"></canvas>
         <canvas id="audioBlobCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; display: none;"></canvas>
         <canvas id="cameraCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; display: none;"></canvas>
         <canvas id="mediaCanvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none;"></canvas>
@@ -1879,26 +1879,33 @@
                     </div>
                 </div>
                 
-                <!-- Media Controls Section -->
-                <div class="media-controls" id="mediaControls" style="display: none; margin-top: 12px;">
-                    <div class="control-group">
-                        <div class="group-title">MEDIA</div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Scale <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Media size: 0.1 = very small, 1.0 = fit viewport, 2.0 = very large</span>
-                                </div></span>
-                                <input type="text" class="control-value number-input" id="mediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'mediaScale', 0.1, 2.0)">
-                                <div class="slider-fill" id="mediaScaleFill" style="width: 47%">
-                                    <div class="slider-handle" id="mediaScaleHandle"></div>
-                                </div>
+                            <!-- Media Controls Section -->
+            <div class="media-controls" id="mediaControls" style="display: none; margin-top: 12px;">
+                <div class="control-group">
+                    <div class="group-title">MEDIA</div>
+                    
+                    <!-- Choose Media Button -->
+                    <div class="control-item" style="margin-bottom: 12px;">
+                        <button id="chooseMediaButton" class="control-button" style="width: 100%; padding: 8px; font-size: 12px; background: rgba(0, 212, 255, 0.1); color: var(--accent-color); border: none; border-radius: 4px; cursor: pointer; transition: var(--transition);">
+                            Choose Media
+                        </button>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Scale <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Media size: 0.1 = very small, 1.0 = fit viewport, 2.0 = very large</span>
+                            </div></span>
+                            <input type="text" class="control-value number-input" id="mediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                        </div>
+                        <div class="slider-container" onclick="handleSliderClick(event, 'mediaScale', 0.1, 2.0)">
+                            <div class="slider-fill" id="mediaScaleFill" style="width: 47%">
+                                <div class="slider-handle" id="mediaScaleHandle"></div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
                 
                 <!-- Fluid Controls Section -->
                 <div id="fluidControlsContent">
@@ -1914,6 +1921,48 @@
                             <div class="color-container full">
                                 <span class="color-label">Background</span>
                                 <input type="text" id="backgroundColorPicker" class="color-input" value="#000000" data-coloris readonly inputmode="none">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Background Section -->
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Background <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Upload media as background behind fluid effects. Images: PNG, JPG, JPEG. Videos: MP4, WebM, MOV (max 50MB, auto-loops). Or use camera feed.</span>
+                            </div></span>
+                        </div>
+                        <div class="image-upload-container">
+                            <input type="file" id="mediaUpload" accept=".png,.jpg,.jpeg,.mp4,.webm,.mov" style="display: none;">
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="modern-button secondary" onclick="document.getElementById('mediaUpload').click()">
+                                    📁 Choose Media
+                                </button>
+                                <button class="modern-button secondary" id="cameraButton" onclick="toggleCamera()">
+                                    📷 Camera
+                                </button>
+                                <button class="modern-button secondary" id="clearFluidBackgroundButton" onclick="clearFluidBackgroundMedia()" style="display: none;">
+                                    🗑️ Clear
+                                </button>
+                            </div>
+
+                            <div class="camera-preview" id="cameraPreview" style="display: none;">
+                                <video id="cameraVideo" autoplay muted style="width: 100%; max-height: 80px; border-radius: 4px;"></video>
+                            </div>
+
+                        </div>
+                        
+                        <div class="control-item" id="fluidBackgroundScaleControl" style="display: none;">
+                            <div class="control-label">
+                                <span>Scale <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Background media size: 0.1 = very small, 1.0 = fit viewport, 2.0 = large</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="fluidBackgroundScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'fluidBackgroundScale', 0.1, 2.0)">
+                                <div class="slider-fill" id="fluidBackgroundScaleFill" style="width: 47%">
+                                    <div class="slider-handle" id="fluidBackgroundScaleHandle"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2121,47 +2170,6 @@
                             <span>Sunrays</span>
                             <div class="toggle-switch active" id="sunraysToggle">
                                 <div class="toggle-handle"></div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="control-item">
-                        <div class="control-label">
-                            <span>Background <div class="tooltip"><span class="info-icon">i</span>
-                                <span class="tooltiptext">Upload media as background behind fluid effects. Images: PNG, JPG, JPEG. Videos: MP4, WebM, MOV (max 50MB, auto-loops). Or use camera feed.</span>
-                            </div></span>
-                        </div>
-                        <div class="image-upload-container">
-                            <input type="file" id="mediaUpload" accept=".png,.jpg,.jpeg,.mp4,.webm,.mov" style="display: none;">
-                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                <button class="modern-button secondary" onclick="document.getElementById('mediaUpload').click()">
-                                    📁 Choose Media
-                                </button>
-                                <button class="modern-button secondary" id="cameraButton" onclick="toggleCamera()">
-                                    📷 Camera
-                                </button>
-                                <button class="modern-button secondary" id="clearBackgroundButton" onclick="clearAllBackground()" style="display: none;">
-                                    🗑️ Clear
-                                </button>
-                            </div>
-
-                            <div class="camera-preview" id="cameraPreview" style="display: none;">
-                                <video id="cameraVideo" autoplay muted style="width: 100%; max-height: 80px; border-radius: 4px;"></video>
-                            </div>
-
-                        </div>
-                        
-                        <div class="control-item" id="backgroundScaleControl" style="display: none;">
-                            <div class="control-label">
-                                <span>Scale <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Background media size: 0.1 = very large, 1.0 = fit viewport, 2.0 = small</span>
-                                </div></span>
-                                <span class="control-value" id="backgroundImageScaleValue">1.00</span>
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'backgroundImageScale', 0.1, 2.0)">
-                                <div class="slider-fill" id="backgroundImageScaleFill" style="width: 47%">
-                                    <div class="slider-handle" id="backgroundImageScaleHandle"></div>
-                                </div>
                             </div>
                         </div>
                     </div>
