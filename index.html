@@ -1870,6 +1870,20 @@
                         
                         <div class="control-item">
                             <div class="control-label">
+                                <span>Edge Softness <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Controls how soft or sharp the blob edges appear (0.01 = sharp, 0.2 = very soft)</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="audioEdgeSoftnessValue" value="0.05" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioEdgeSoftness', 0.01, 0.2)">
+                                <div class="slider-fill" id="audioEdgeSoftnessFill" style="width: 25%">
+                                    <div class="slider-handle" id="audioEdgeSoftnessHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item">
+                            <div class="control-label">
                                 <span>Blob Color <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Base color for the audio blob</span>
                                 </div></span>
@@ -2015,12 +2029,12 @@
                         <div class="control-item">
                             <div class="control-label">
                                 <span>Interval <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Animation speed: 0 = slow (1 per second), 1 = moderate (2 per second)</span>
+                                    <span class="tooltiptext">Animation speed: 0 = very slow (1 per 3 seconds), 1 = fast (2.8 per second)</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="animationIntervalValue" value="0.10" />
+                                <input type="text" class="control-value number-input" id="animationIntervalValue" value="0.03" />
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'animationInterval', 0, 1)">
-                                <div class="slider-fill" id="animationIntervalFill" style="width: 10%">
+                                <div class="slider-fill" id="animationIntervalFill" style="width: 3%">
                                     <div class="slider-handle" id="animationIntervalHandle"></div>
                                 </div>
                             </div>

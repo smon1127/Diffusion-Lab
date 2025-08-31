@@ -34,33 +34,68 @@ resizeCanvas();
 // Slider handle padding to prevent clipping at edges
 const SLIDER_HANDLE_PADDING = 0.035; // 3.5% padding on each side
 
-let config = {
-    SIM_RESOLUTION: 256,        // Fixed simulation resolution for better performance
-    DYE_RESOLUTION: 1024,       // High quality by default
+// Device-specific configuration presets
+const desktopConfig = {
+    SIM_RESOLUTION: 128,        // High-quality simulation for desktop
+    DYE_RESOLUTION: 1024,       // High quality
     CAPTURE_RESOLUTION: 512,
-    DENSITY_DISSIPATION: 0.5,   // Default fade level for balanced fluid persistence
-    VELOCITY_DISSIPATION: 0.6,  // Much lower for longer-lasting fluid motion
-    PRESSURE: 0.37,             // Updated default from screenshot
+    DENSITY_DISSIPATION: 1.0,    // Increased fade rate
+    VELOCITY_DISSIPATION: 0.6,
+    PRESSURE: 0.37,
     PRESSURE_ITERATIONS: 20,
-    CURL: 4,                    // Updated default from screenshot (Vorticity)
-    SPLAT_RADIUS: 0.19,         // Updated default from screenshot
+    CURL: 4,                    // Swirl intensity
+    SPLAT_RADIUS: 0.3,         // Increased brush size
     SPLAT_FORCE: 6000,
-    SHADING: true,              // Adds 3D lighting effects for depth and realism
-    COLORFUL: false,            // Disabled by default for cleaner look
+    SHADING: true,              // Enable 3D lighting effects for desktop
+    COLORFUL: false,
     COLOR_UPDATE_SPEED: 10,
     PAUSED: false,
     BACK_COLOR: { r: 0, g: 0, b: 0 },
-    STATIC_COLOR: { r: 0, g: 0.831, b: 1 }, // Default cyan color (#00d4ff)
+    STATIC_COLOR: { r: 0, g: 0.831, b: 1 },
     TRANSPARENT: false,
-    BLOOM: true,
+    BLOOM: true,                // Enable bloom for desktop
     BLOOM_ITERATIONS: 8,
     BLOOM_RESOLUTION: 256,
-    BLOOM_INTENSITY: 0.4,       // Default glow level
+    BLOOM_INTENSITY: 0.4,
     BLOOM_THRESHOLD: 0.6,
     BLOOM_SOFT_KNEE: 0.7,
-    SUNRAYS: true,
+    SUNRAYS: true,              // Enable sunrays for desktop
     SUNRAYS_RESOLUTION: 196,
-    SUNRAYS_WEIGHT: 0.4,        // Default rays level
+    SUNRAYS_WEIGHT: 0.4
+};
+
+const mobileConfig = {
+    SIM_RESOLUTION: 64,         // Lower resolution for mobile
+    DYE_RESOLUTION: 512,        // Reduced quality for performance
+    CAPTURE_RESOLUTION: 512,
+    DENSITY_DISSIPATION: 1.0,    // Increased fade rate
+    VELOCITY_DISSIPATION: 0.6,
+    PRESSURE: 0.37,
+    PRESSURE_ITERATIONS: 20,
+    CURL: 4,                    // Swirl intensity
+    SPLAT_RADIUS: 0.3,         // Increased brush size
+    SPLAT_FORCE: 6000,
+    SHADING: false,             // Disable 3D lighting effects for mobile
+    COLORFUL: false,
+    COLOR_UPDATE_SPEED: 10,
+    PAUSED: false,
+    BACK_COLOR: { r: 0, g: 0, b: 0 },
+    STATIC_COLOR: { r: 0, g: 0.831, b: 1 },
+    TRANSPARENT: false,
+    BLOOM: false,               // Disable bloom for mobile
+    BLOOM_ITERATIONS: 8,
+    BLOOM_RESOLUTION: 128,      // Lower bloom resolution for mobile
+    BLOOM_INTENSITY: 0.4,
+    BLOOM_THRESHOLD: 0.6,
+    BLOOM_SOFT_KNEE: 0.7,
+    SUNRAYS: false,             // Disable sunrays for mobile
+    SUNRAYS_RESOLUTION: 96,     // Lower sunrays resolution for mobile
+    SUNRAYS_WEIGHT: 0.4
+};
+
+// Initialize config based on device type
+// Add common parameters to both configs
+const commonParams = {
     // StreamDiffusion parameters
     INFERENCE_STEPS: 50,
     SEED: 42,
@@ -71,24 +106,26 @@ let config = {
     CONTROLNET_COLOR_SCALE: 0.26, // Balanced preset default
     GUIDANCE_SCALE: 7.5,
     DELTA: 0.5,
-    // Denoise controls (t_index_list values) - Balanced preset default
+    // Denoise controls
     DENOISE_X: 3,
-    DENOISE_Y: 6, 
+    DENOISE_Y: 6,
     DENOISE_Z: 6,
-    // Animation Parameters - Redesigned with intuitive 0-1 ranges
+    // Animation Parameters
     ANIMATE: true,
-    LIVELINESS: 0.62,   // 0=gentle (1 splat), 1=energetic (8 splats) - Default: moderate-high energy
-    CHAOS: 0.73,        // 0=ordered streams, 1=full chaos - Default: high chaos
-    BREATHING: 0.5,     // 0=consistent, 1=dramatic pulsing - Default: moderate rhythm  
-    COLOR_LIFE: 0.22,   // 0=static color, 1=rainbow evolution - Default: subtle color shifts
-    ANIMATION_INTERVAL: 0.1, // 0-1 range - Controls animation speed (0 = slow, 1 = fast) - Default: 10%
-    // Background Image Parameters
-    BACKGROUND_IMAGE_SCALE: 1.0, // 0.1-2.0 range - Controls background image size (1.0 = fit to viewport)
-    // Media Scale Parameters
-    MEDIA_SCALE: 1.0, // 0.1-2.0 range - Controls media size (1.0 = fit to viewport)
-    FLUID_MEDIA_SCALE: 1.0, // 0.1-2.0 range - Controls fluid background media size
-    FLUID_CAMERA_SCALE: 1.0, // 0.1-2.0 range - Controls fluid background camera size
-}
+    LIVELINESS: 0.62,
+    // Audio Parameters
+    AUDIO_REACTIVITY: 2.0,
+    AUDIO_DELAY: 0,
+    AUDIO_OPACITY: 0.8,
+    AUDIO_COLORFUL: 0.3,
+    AUDIO_EDGE_SOFTNESS: 0.05
+};
+
+// Initialize config based on device type with common parameters
+let config = {
+    ...(isMobile() ? mobileConfig : desktopConfig),
+    ...commonParams
+};
 
 // Global State Variables (declared early to avoid initialization order issues)
 let streamState = {
@@ -170,6 +207,7 @@ let audioBlobState = {
     delay: 0,            // 0-500ms range - Audio delay in milliseconds
     opacity: 0.8,        // 0-1 range - Blob opacity
     colorful: 0.3,       // 0-1 range - Color cycling intensity
+    edgeSoftness: 0.05,  // 0.01-0.2 range - Blob edge softness
     
     // Audio processing nodes
     delayNode: null,     // DelayNode for audio delay
@@ -348,7 +386,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale', 'audioReactivity', 'audioDelay', 'audioOpacity', 'audioColorful', 'audioEdgeSoftness'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -511,7 +549,8 @@ function updateSliderValue(sliderName, percentage, skipSave = false, updateInput
         'audioReactivity': { min: 0.1, max: 3.0, prop: 'AUDIO_REACTIVITY', decimals: 1, handler: updateAudioReactivity },
         'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay },
         'audioOpacity': { min: 0, max: 1, prop: 'AUDIO_OPACITY', decimals: 2, handler: updateAudioOpacity },
-        'audioColorful': { min: 0, max: 1, prop: 'AUDIO_COLORFUL', decimals: 1, handler: updateAudioColorful }
+        'audioColorful': { min: 0, max: 1, prop: 'AUDIO_COLORFUL', decimals: 1, handler: updateAudioColorful },
+        'audioEdgeSoftness': { min: 0.01, max: 0.2, prop: 'AUDIO_EDGE_SOFTNESS', decimals: 2, handler: updateAudioEdgeSoftness }
     };
     
     const slider = sliderMap[sliderName];
@@ -597,7 +636,12 @@ function updateSliderPositions() {
         'mediaScale': { prop: 'MEDIA_SCALE', min: 0.1, max: 2.0 },
         'fluidMediaScale': { prop: 'FLUID_MEDIA_SCALE', min: 0.1, max: 2.0 },
         'fluidCameraScale': { prop: 'FLUID_CAMERA_SCALE', min: 0.1, max: 2.0 },
-        'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true }
+        'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true },
+        'audioReactivity': { prop: 'AUDIO_REACTIVITY', min: 0.1, max: 3.0 },
+        'audioDelay': { prop: 'AUDIO_DELAY', min: 0, max: 500 },
+        'audioOpacity': { prop: 'AUDIO_OPACITY', min: 0, max: 1 },
+        'audioColorful': { prop: 'AUDIO_COLORFUL', min: 0, max: 1 },
+        'audioEdgeSoftness': { prop: 'AUDIO_EDGE_SOFTNESS', min: 0.01, max: 0.2 }
     };
     
     Object.keys(sliderMap).forEach(sliderName => {
@@ -1162,8 +1206,203 @@ function initializeMediaUpload() {
         };
     }
     
+    // Initialize full-window drag and drop
+    initializeFullWindowDragDrop();
+    
     // Initialize camera functionality (now handled by input mode system)
     updateBackgroundControls();
+}
+
+// Full-window drag and drop system for media files
+let dragDropState = {
+    dragCounter: 0,
+    overlay: null,
+    isInitialized: false
+};
+
+function initializeFullWindowDragDrop() {
+    if (dragDropState.isInitialized) return;
+    
+    // Create drag overlay element
+    createDragOverlay();
+    
+    // Add global drag and drop event listeners
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        document.addEventListener(eventName, handleDragEvent, false);
+    });
+    
+    dragDropState.isInitialized = true;
+    console.log('✅ Full-window drag and drop initialized');
+}
+
+function createDragOverlay() {
+    const overlay = document.createElement('div');
+    overlay.id = 'mediaDragOverlay';
+    overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: linear-gradient(135deg, 
+            rgba(0, 212, 255, 0.1), 
+            rgba(0, 150, 255, 0.15), 
+            rgba(0, 100, 255, 0.1)
+        );
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 3px dashed rgba(0, 212, 255, 0.6);
+        box-sizing: border-box;
+        display: none;
+        z-index: 10000;
+        pointer-events: none;
+        animation: dragPulse 2s ease-in-out infinite;
+    `;
+    
+    // Create inner content
+    const content = document.createElement('div');
+    content.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        color: white;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        pointer-events: none;
+    `;
+    
+    content.innerHTML = `
+        <div style="font-size: 64px; margin-bottom: 20px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));">📁</div>
+        <div style="font-size: 28px; font-weight: bold; margin-bottom: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">Drop Media Files Here</div>
+        <div style="font-size: 18px; opacity: 0.9; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Images (PNG, JPG) or Videos (MP4, WebM, MOV)</div>
+    `;
+    
+    overlay.appendChild(content);
+    document.body.appendChild(overlay);
+    dragDropState.overlay = overlay;
+    
+    // Add CSS animation
+    if (!document.getElementById('dragDropStyles')) {
+        const style = document.createElement('style');
+        style.id = 'dragDropStyles';
+        style.textContent = `
+            @keyframes dragPulse {
+                0%, 100% { 
+                    border-color: rgba(0, 212, 255, 0.6);
+                    background: linear-gradient(135deg, 
+                        rgba(0, 212, 255, 0.1), 
+                        rgba(0, 150, 255, 0.15), 
+                        rgba(0, 100, 255, 0.1)
+                    );
+                }
+                50% { 
+                    border-color: rgba(0, 212, 255, 0.9);
+                    background: linear-gradient(135deg, 
+                        rgba(0, 212, 255, 0.15), 
+                        rgba(0, 150, 255, 0.2), 
+                        rgba(0, 100, 255, 0.15)
+                    );
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+function handleDragEvent(e) {
+    // Only handle drag events when media mode is active
+    if (!mediaState.active) return;
+    
+    // Prevent default browser behavior
+    e.preventDefault();
+    e.stopPropagation();
+    
+    switch (e.type) {
+        case 'dragenter':
+            handleDragEnter(e);
+            break;
+        case 'dragover':
+            handleDragOver(e);
+            break;
+        case 'dragleave':
+            handleDragLeave(e);
+            break;
+        case 'drop':
+            handleDrop(e);
+            break;
+    }
+}
+
+function handleDragEnter(e) {
+    dragDropState.dragCounter++;
+    
+    // Only show overlay on first drag enter
+    if (dragDropState.dragCounter === 1) {
+        showDragOverlay();
+    }
+}
+
+function handleDragOver(e) {
+    // Required to allow dropping
+    e.dataTransfer.dropEffect = 'copy';
+}
+
+function handleDragLeave(e) {
+    dragDropState.dragCounter--;
+    
+    // Only hide overlay when leaving the window completely
+    if (dragDropState.dragCounter <= 0) {
+        dragDropState.dragCounter = 0;
+        hideDragOverlay();
+    }
+}
+
+function handleDrop(e) {
+    dragDropState.dragCounter = 0;
+    hideDragOverlay();
+    
+    const files = Array.from(e.dataTransfer.files);
+    
+    if (files.length === 0) {
+        console.log('🎬 No files dropped');
+        return;
+    }
+    
+    // Handle the first file (media mode supports single file)
+    const file = files[0];
+    console.log('🎬 File dropped:', file.name, file.type);
+    
+    // Create a fake event object to reuse existing file handling logic
+    const fakeEvent = {
+        target: {
+            files: [file]
+        }
+    };
+    
+    handleMediaFileSelection(fakeEvent);
+}
+
+function showDragOverlay() {
+    if (dragDropState.overlay) {
+        dragDropState.overlay.style.display = 'block';
+        // Trigger animation by forcing reflow
+        dragDropState.overlay.offsetHeight;
+        console.log('🎬 Drag overlay shown');
+    }
+}
+
+function hideDragOverlay() {
+    if (dragDropState.overlay) {
+        dragDropState.overlay.style.display = 'none';
+        console.log('🎬 Drag overlay hidden');
+    }
+}
+
+// Clean up drag and drop when media mode is deactivated
+function cleanupFullWindowDragDrop() {
+    dragDropState.dragCounter = 0;
+    hideDragOverlay();
 }
 
 function handleMediaUpload(event) {
@@ -3390,11 +3629,10 @@ function startIdleAnimation() {
     // Breathing affects timing variation
     const breathingPhase = Math.sin(Date.now() * 0.003 * (breathing + 0.1)) * 0.5 + 0.5;
     
-    // Flipped interval logic: 0 = slow (1000ms), 1 = moderate (512ms)
-    // Current 50% speed becomes new 100% maximum
+    // Flipped interval logic: 0 = very slow (3000ms), 1 = fast (358ms)
     // At 10% slider (0.1): default comfortable speed
-    const minInterval = 512;  // 0.512 seconds (moderate speed, was 50%)
-    const maxInterval = 1000; // 1.0 seconds (slow)
+    const minInterval = 358;   // 0.358 seconds (fast)
+    const maxInterval = 3000;  // 3.0 seconds (very slow)
     const baseInterval = maxInterval - (interval * (maxInterval - minInterval)); // Flipped
     
     // Breathing creates natural rhythm variations
@@ -5207,25 +5445,93 @@ function renderVideoMedia(canvas, ctx) {
 }
 
 function renderMediaPlaceholderContent(canvas, ctx) {
-    // Draw placeholder background at half size
-    const width = canvas.width / 2;
-    const height = canvas.height / 2;
-    const x = (canvas.width - width) / 2;
-    const y = (canvas.height - height) / 2;
+    // Calculate dimensions for a modern card-like appearance
+    const cardWidth = Math.min(canvas.width * 0.6, 400);
+    const cardHeight = Math.min(canvas.height * 0.4, 200);
+    const x = (canvas.width - cardWidth) / 2;
+    const y = (canvas.height - cardHeight) / 2;
+    const cornerRadius = 16;
     
-    // Draw semi-transparent background
-    ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
-    ctx.fillRect(x, y, width, height);
+    // Create animated gradient background
+    const time = Date.now() * 0.001;
+    const gradient = ctx.createLinearGradient(x, y, x + cardWidth, y + cardHeight);
     
-    // Draw placeholder text
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '24px Arial'; // Smaller font for half size
+    // Modern gradient with subtle animation
+    const hue1 = (200 + Math.sin(time * 0.5) * 20) % 360;
+    const hue2 = (240 + Math.cos(time * 0.3) * 15) % 360;
+    
+    gradient.addColorStop(0, `hsla(${hue1}, 15%, 20%, 0.95)`);
+    gradient.addColorStop(0.5, `hsla(${hue2}, 20%, 18%, 0.9)`);
+    gradient.addColorStop(1, `hsla(${hue1 + 20}, 18%, 22%, 0.95)`);
+    
+    // Helper function for rounded rectangle (with fallback)
+    const drawRoundedRect = (x, y, width, height, radius) => {
+        ctx.beginPath();
+        if (ctx.roundRect) {
+            // Modern browsers with roundRect support
+            ctx.roundRect(x, y, width, height, radius);
+        } else {
+            // Fallback for older browsers
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+        }
+    };
+    
+    // Draw rounded rectangle with gradient
+    ctx.fillStyle = gradient;
+    drawRoundedRect(x, y, cardWidth, cardHeight, cornerRadius);
+    ctx.fill();
+    
+    // Add subtle border with glow effect
+    ctx.strokeStyle = `hsla(${180 + Math.sin(time) * 30}, 50%, 60%, 0.6)`;
+    ctx.lineWidth = 2;
+    drawRoundedRect(x + 1, y + 1, cardWidth - 2, cardHeight - 2, cornerRadius - 1);
+    ctx.stroke();
+    
+    // Add inner border for depth
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    drawRoundedRect(x + 3, y + 3, cardWidth - 6, cardHeight - 6, cornerRadius - 3);
+    ctx.stroke();
+    
+    // Create dashed border effect for drop zone feel
+    ctx.setLineDash([8, 8]);
+    ctx.strokeStyle = 'rgba(0, 212, 255, 0.4)';
+    ctx.lineWidth = 2;
+    drawRoundedRect(x + 8, y + 8, cardWidth - 16, cardHeight - 16, cornerRadius - 8);
+    ctx.stroke();
+    ctx.setLineDash([]); // Reset line dash
+    
+    // Modern typography setup
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    // Draw text in the center of the half-size rectangle
-    ctx.fillText('Click "Choose Media"', canvas.width / 2, canvas.height / 2 - 15);
-    ctx.fillText('to select an image or video', canvas.width / 2, canvas.height / 2 + 15);
+    // Upload icon (using Unicode)
+    ctx.fillStyle = 'rgba(0, 212, 255, 0.8)';
+    ctx.font = 'bold 48px system-ui, -apple-system, sans-serif';
+    ctx.fillText('📁', canvas.width / 2, canvas.height / 2 - 35);
+    
+    // Primary text with better typography
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('Choose Media', canvas.width / 2, canvas.height / 2 + 5);
+    
+    // Secondary text with subtle color
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.font = '16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('Select an image or video file', canvas.width / 2, canvas.height / 2 + 30);
+    
+    // Add subtle hint text
+    ctx.fillStyle = 'rgba(0, 212, 255, 0.6)';
+    ctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText('PNG, JPG, MP4, WebM supported', canvas.width / 2, canvas.height / 2 + 50);
 }
 
 function drawMediaInfo(ctx, canvas, filename, resolution, scale = 1.0) {
@@ -5276,6 +5582,9 @@ function stopMedia() {
     if (mediaState.mediaElement && mediaState.mediaType === 'video') {
         mediaState.mediaElement.pause();
     }
+    
+    // Clean up full-window drag and drop
+    cleanupFullWindowDragDrop();
     
     // Reset canvas state only
     mediaState.canvas = null;
@@ -5505,6 +5814,7 @@ function initAudioBlobGL() {
         uniform vec3 u_baseColor;
         uniform float u_opacity;
         uniform float u_colorful;
+        uniform float u_edgeSoftness;
         uniform bool u_bloom;
         uniform bool u_sunrays;
         uniform float u_bloomIntensity;
@@ -5629,8 +5939,8 @@ function initAudioBlobGL() {
             // Combine all deformations
             float blobRadius = baseSize + bassWave + midDeform + trebleSpikes + organicChaos + breathe;
             
-            // Create soft blob edge
-            float edge = smoothstep(blobRadius + 0.05, blobRadius - 0.05, dist);
+            // Create soft blob edge with adjustable softness
+            float edge = smoothstep(blobRadius + u_edgeSoftness, blobRadius - u_edgeSoftness, dist);
             
             // Enhanced audio-reactive colors with time-based cycling control
             vec3 baseColor = u_baseColor;
@@ -5692,6 +6002,7 @@ function initAudioBlobGL() {
         baseColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_baseColor'),
         opacity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_opacity'),
         colorful: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_colorful'),
+        edgeSoftness: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_edgeSoftness'),
         bloom: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloom'),
         sunrays: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunrays'),
         backgroundColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_backgroundColor'),
@@ -5866,6 +6177,7 @@ function renderAudioBlob() {
     gl.uniform3f(audioBlobState.uniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
     gl.uniform1f(audioBlobState.uniforms.opacity, audioBlobState.opacity);
     gl.uniform1f(audioBlobState.uniforms.colorful, audioBlobState.colorful);
+    gl.uniform1f(audioBlobState.uniforms.edgeSoftness, audioBlobState.edgeSoftness);
     
     // Set bloom and sunrays uniforms based on global config
     gl.uniform1i(audioBlobState.uniforms.bloom, config.BLOOM ? 1 : 0);
@@ -6543,6 +6855,7 @@ document.addEventListener('DOMContentLoaded', () => {
         audioReactivity: { min: 0.1, max: 3.0, updateFn: updateAudioReactivity, precision: 1 },
         audioOpacity: { min: 0, max: 1, updateFn: updateAudioOpacity, precision: 2 },
         audioColorful: { min: 0, max: 1, updateFn: updateAudioColorful, precision: 1 },
+        audioEdgeSoftness: { min: 0.01, max: 0.2, updateFn: updateAudioEdgeSoftness, precision: 2 },
         
         // Animation controls
         animationInterval: { min: 0, max: 1, updateFn: (v) => updateSliderValue('animationInterval', v/1, false, false), precision: 2 },
@@ -6611,6 +6924,13 @@ function updateAudioColorful(value, updateInput = true) {
     audioBlobState.colorful = value;
     if (updateInput) {
         document.getElementById('audioColorfulValue').value = value.toFixed(1);
+    }
+}
+
+function updateAudioEdgeSoftness(value, updateInput = true) {
+    audioBlobState.edgeSoftness = value;
+    if (updateInput) {
+        document.getElementById('audioEdgeSoftnessValue').value = value.toFixed(2);
     }
 }
 
