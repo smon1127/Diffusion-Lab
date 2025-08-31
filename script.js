@@ -2841,14 +2841,14 @@ function render (target) {
     if (target == null && config.TRANSPARENT)
         drawCheckerboard(target);
     
-    // Draw fluid background media if loaded
-    if (fluidBackgroundMedia.loaded && fluidBackgroundMedia.element) {
-        drawFluidBackgroundMedia(target);
-    }
-    
-    // Draw fluid background camera if active
+    // Draw fluid background camera if active (bottom layer)
     if (fluidBackgroundCamera.active && fluidBackgroundCamera.video) {
         drawFluidBackgroundCamera(target);
+    }
+    
+    // Draw fluid background media if loaded (top layer)
+    if (fluidBackgroundMedia.loaded && fluidBackgroundMedia.element) {
+        drawFluidBackgroundMedia(target);
     }
     
     // Draw background media if loaded
