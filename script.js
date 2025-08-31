@@ -137,6 +137,17 @@ let fluidBackgroundMedia = {
     scale: 1.0
 };
 
+// Fluid Background Camera System (separate from main camera input mode)
+let fluidBackgroundCamera = {
+    active: false,
+    stream: null,
+    video: null,
+    texture: null,
+    width: 0,
+    height: 0,
+    scale: 1.0
+};
+
 // Audio Blob System
 let audioBlobState = {
     active: false,
@@ -1489,6 +1500,7 @@ function clearAllBackground() {
 }
 
 function clearFluidBackgroundMedia() {
+    // Clear uploaded media
     if (fluidBackgroundMedia.loaded) {
         // Clean up texture
         if (fluidBackgroundMedia.texture) {
@@ -1525,6 +1537,24 @@ function clearFluidBackgroundMedia() {
         if (mediaUpload) mediaUpload.value = '';
         
         console.log('🗑️ Fluid background media cleared');
+    }
+    
+    // Clear camera feed
+    if (fluidBackgroundCamera.active) {
+        stopFluidBackgroundCamera();
+        const button = document.getElementById('fluidCameraButton');
+        if (button) {
+            button.textContent = '📷 Camera';
+            button.classList.remove('active');
+        }
+    }
+    
+    // Hide controls if nothing is active
+    if (!fluidBackgroundMedia.loaded && !fluidBackgroundCamera.active) {
+        const clearButton = document.getElementById('clearFluidBackgroundButton');
+        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
+        if (clearButton) clearButton.style.display = 'none';
+        if (scaleControl) scaleControl.style.display = 'none';
     }
 }
 
@@ -2816,6 +2846,11 @@ function render (target) {
         drawFluidBackgroundMedia(target);
     }
     
+    // Draw fluid background camera if active
+    if (fluidBackgroundCamera.active && fluidBackgroundCamera.video) {
+        drawFluidBackgroundCamera(target);
+    }
+    
     // Draw background media if loaded
     if (backgroundMedia.loaded && backgroundMedia.texture) {
         // Update video texture if it's a video
@@ -2917,6 +2952,52 @@ function drawFluidBackgroundMedia(target) {
     gl.uniform1f(backgroundVideoProgram.uniforms.uScale, fluidBackgroundMedia.scale);
     
     // Draw the media
+    blit(target);
+    
+    // Restore blending state
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+}
+
+function drawFluidBackgroundCamera(target) {
+    // Create texture if not exists
+    if (!fluidBackgroundCamera.texture) {
+        fluidBackgroundCamera.texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, fluidBackgroundCamera.texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    
+    // Update texture with current camera frame
+    gl.bindTexture(gl.TEXTURE_2D, fluidBackgroundCamera.texture);
+    try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, fluidBackgroundCamera.video);
+    } catch (e) {
+        console.warn('Failed to update fluid background camera texture:', e);
+        return;
+    }
+    
+    // Enable blending
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    
+    // Use background video program for proper scaling
+    backgroundVideoProgram.bind();
+    gl.uniform1i(backgroundVideoProgram.uniforms.uTexture, 0);
+    
+    // Calculate aspect ratios
+    const canvasWidth = target == null ? gl.drawingBufferWidth : target.width;
+    const canvasHeight = target == null ? gl.drawingBufferHeight : target.height;
+    const canvasAspect = canvasWidth / canvasHeight;
+    const cameraAspect = fluidBackgroundCamera.width / fluidBackgroundCamera.height;
+    
+    // Pass uniforms
+    gl.uniform1f(backgroundVideoProgram.uniforms.uCanvasAspect, canvasAspect);
+    gl.uniform1f(backgroundVideoProgram.uniforms.uVideoAspect, cameraAspect);
+    gl.uniform1f(backgroundVideoProgram.uniforms.uScale, fluidBackgroundCamera.scale);
+    
+    // Draw the camera feed
     blit(target);
     
     // Restore blending state
@@ -4322,6 +4403,103 @@ function toggleCamera() {
     } else {
         activateInputMode('camera');
         startCamera();
+    }
+}
+
+function toggleFluidBackgroundCamera() {
+    const button = document.getElementById('fluidCameraButton');
+    if (!button) return;
+
+    if (fluidBackgroundCamera.active) {
+        stopFluidBackgroundCamera();
+        button.textContent = '📷 Camera';
+        button.classList.remove('active');
+    } else {
+        startFluidBackgroundCamera();
+        button.textContent = '📷 Stop Camera';
+        button.classList.add('active');
+    }
+}
+
+async function startFluidBackgroundCamera() {
+    try {
+        // Request camera access
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                facingMode: 'user'
+            } 
+        });
+        
+        // Create video element
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+        
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+            video.onloadedmetadata = () => {
+                video.play();
+                resolve();
+            };
+        });
+        
+        // Store camera state
+        fluidBackgroundCamera.active = true;
+        fluidBackgroundCamera.stream = stream;
+        fluidBackgroundCamera.video = video;
+        fluidBackgroundCamera.width = video.videoWidth;
+        fluidBackgroundCamera.height = video.videoHeight;
+        
+        // Show controls
+        const scaleControl = document.getElementById('fluidBackgroundScaleControl');
+        const clearButton = document.getElementById('clearFluidBackgroundButton');
+        if (scaleControl) scaleControl.style.display = 'block';
+        if (clearButton) clearButton.style.display = 'inline-block';
+        
+        console.log(`📷 Fluid background camera started: ${video.videoWidth}x${video.videoHeight}`);
+        
+    } catch (error) {
+        console.error('Failed to start fluid background camera:', error);
+        alert('Failed to access camera. Please check permissions.');
+    }
+}
+
+function stopFluidBackgroundCamera() {
+    if (fluidBackgroundCamera.active) {
+        // Clean up texture
+        if (fluidBackgroundCamera.texture) {
+            gl.deleteTexture(fluidBackgroundCamera.texture);
+            fluidBackgroundCamera.texture = null;
+        }
+        
+        // Stop camera stream
+        if (fluidBackgroundCamera.stream) {
+            fluidBackgroundCamera.stream.getTracks().forEach(track => track.stop());
+            fluidBackgroundCamera.stream = null;
+        }
+        
+        // Clean up video element
+        if (fluidBackgroundCamera.video) {
+            fluidBackgroundCamera.video.srcObject = null;
+            fluidBackgroundCamera.video = null;
+        }
+        
+        // Reset state
+        fluidBackgroundCamera.active = false;
+        fluidBackgroundCamera.width = 0;
+        fluidBackgroundCamera.height = 0;
+        
+        // Hide scale control if no other background media is active
+        if (!fluidBackgroundMedia.loaded) {
+            const scaleControl = document.getElementById('fluidBackgroundScaleControl');
+            if (scaleControl) scaleControl.style.display = 'none';
+        }
+        
+        console.log('📷 Fluid background camera stopped');
     }
 }
 
@@ -6413,6 +6591,7 @@ function updateMediaScale(value, updateInput = true) {
 
 function updateFluidBackgroundScale(value, updateInput = true) {
     fluidBackgroundMedia.scale = value;
+    fluidBackgroundCamera.scale = value; // Also update camera scale
     config.FLUID_BACKGROUND_SCALE = value;
     if (updateInput) {
         const inputElement = document.getElementById('fluidBackgroundScaleValue');
