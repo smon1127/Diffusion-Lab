@@ -28,8 +28,23 @@ SOFTWARE.
 
 // Simulation section
 
-const canvas = document.getElementsByTagName('canvas')[0];
-resizeCanvas();
+let canvas = document.getElementById('fluidCanvas') || document.getElementsByTagName('canvas')[0];
+
+// Mobile debugging for canvas initialization
+if (isMobile()) {
+    console.log('🔍 MOBILE DEBUG: Canvas initialization at script load');
+    console.log('🔍 Canvas found:', !!canvas);
+    console.log('🔍 Canvas ID:', canvas ? canvas.id : 'none');
+    console.log('🔍 Total canvas elements:', document.getElementsByTagName('canvas').length);
+    console.log('🔍 All canvas IDs:', Array.from(document.getElementsByTagName('canvas')).map(c => c.id));
+}
+
+// Ensure we have a canvas before proceeding
+if (canvas) {
+    resizeCanvas();
+} else if (isMobile()) {
+    console.log('🔍 MOBILE DEBUG: No canvas found at script load - will retry after DOM ready');
+}
 
 // Slider handle padding to prevent clipping at edges
 const SLIDER_HANDLE_PADDING = 0.035; // 3.5% padding on each side
@@ -495,6 +510,11 @@ function updateSliderFromTouch(e, sliderName) {
 }
 
 function handleSliderClick(event, sliderName, min, max) {
+    if (isMobile()) {
+        console.log('🔍 MOBILE DEBUG: Slider click for', sliderName, 'event type:', event.type);
+        console.log('🔍 Event target:', event.target.className, event.currentTarget.className);
+    }
+    
     event.stopPropagation(); // Prevent event bubbling
     event.preventDefault(); // Prevent default behavior
     
@@ -697,12 +717,24 @@ function initializeMobilePanelGestures() {
     // Skip if not mobile or already initialized
     if (!isMobile()) return;
     
+    console.log('🔍 MOBILE DEBUG: Initializing mobile panel gestures');
+    
     try {
         const panel = document.getElementById('controlPanel');
         const panelHeader = document.querySelector('.panel-header');
         const panelContent = document.querySelector('.panel-content');
         
-        if (!panel || !panelHeader) return;
+        console.log('🔍 MOBILE DEBUG: Panel elements found:', {
+            panel: !!panel,
+            panelHeader: !!panelHeader,
+            panelContent: !!panelContent,
+            panelCollapsed: panel ? panel.classList.contains('collapsed') : 'N/A'
+        });
+        
+        if (!panel || !panelHeader) {
+            console.log('🔍 MOBILE DEBUG: Missing panel elements, aborting gesture setup');
+            return;
+        }
         
         let startY = 0;
         let startTime = 0;
@@ -778,12 +810,18 @@ function initializeMobilePanelGestures() {
 }
 
 function toggleColorful() {
+    if (isMobile()) {
+        console.log('🔍 MOBILE DEBUG: toggleColorful called, current value:', config.COLORFUL);
+    }
     config.COLORFUL = !config.COLORFUL;
     updateToggle('colorfulToggle', config.COLORFUL);
     saveConfig();
 }
 
 function togglePaused() {
+    if (isMobile()) {
+        console.log('🔍 MOBILE DEBUG: togglePaused called, current value:', config.PAUSED);
+    }
     config.PAUSED = !config.PAUSED;
     updateToggle('pausedToggle', config.PAUSED);
     saveConfig();
@@ -820,6 +858,9 @@ function toggleSunrays() {
 }
 
 function toggleVelocityDrawing() {
+    if (isMobile()) {
+        console.log('🔍 MOBILE DEBUG: toggleVelocityDrawing called, current value:', config.VELOCITY_DRAWING);
+    }
     config.VELOCITY_DRAWING = !config.VELOCITY_DRAWING;
     updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
     saveConfig();
@@ -1000,13 +1041,72 @@ function toggleFluidControls() {
 }
 
 function isMobile () {
-    return /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+    const mobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
            ('ontouchstart' in window) || 
            (navigator.maxTouchPoints > 0);
+    
+    // Mobile debugging
+    if (mobile) {
+        console.log('🔍 MOBILE DEBUG: Device detected as mobile');
+        console.log('🔍 User Agent:', navigator.userAgent);
+        console.log('🔍 Touch Support:', 'ontouchstart' in window);
+        console.log('🔍 Max Touch Points:', navigator.maxTouchPoints);
+        console.log('🔍 Screen Size:', window.screen.width, 'x', window.screen.height);
+        console.log('🔍 Viewport Size:', window.innerWidth, 'x', window.innerHeight);
+    }
+    
+    return mobile;
 }
 
 function isTouchDevice() {
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+}
+
+// Mobile Debug Overlay System
+function initializeMobileDebug() {
+    if (!isMobile()) return;
+    
+    const debugOverlay = document.getElementById('mobileDebug');
+    const debugInfo = document.getElementById('debugInfo');
+    
+    if (debugOverlay && debugInfo) {
+        debugOverlay.style.display = 'block';
+        
+        // Initial debug info
+        updateMobileDebugInfo({
+            status: 'Initializing...',
+            panelState: 'unknown',
+            touchEvents: 0,
+            canvasReady: !!document.getElementById('fluidCanvas')
+        });
+        
+        // Update debug info periodically
+        setInterval(() => {
+            const panel = document.getElementById('controlPanel');
+            updateMobileDebugInfo({
+                status: 'Running',
+                panelState: panel ? (panel.classList.contains('collapsed') ? 'collapsed' : 'expanded') : 'missing',
+                touchEvents: window.mobileDebugTouchCount || 0,
+                canvasReady: !!document.getElementById('fluidCanvas'),
+                screenSize: `${window.innerWidth}x${window.innerHeight}`,
+                timestamp: new Date().toLocaleTimeString()
+            });
+        }, 2000);
+    }
+}
+
+function updateMobileDebugInfo(info) {
+    const debugInfo = document.getElementById('debugInfo');
+    if (!debugInfo) return;
+    
+    debugInfo.innerHTML = `
+        <div>Status: ${info.status}</div>
+        <div>Panel: ${info.panelState}</div>
+        <div>Touch Events: ${info.touchEvents}</div>
+        <div>Canvas: ${info.canvasReady ? 'Ready' : 'Missing'}</div>
+        <div>Screen: ${info.screenSize || 'Unknown'}</div>
+        <div>Time: ${info.timestamp || 'N/A'}</div>
+    `;
 }
 
 function getDevicePixelRatio() {
@@ -3558,6 +3658,13 @@ canvas.addEventListener('touchstart', e => {
     
     // Enhanced mobile touch handling
     if (isMobile()) {
+        // Count touch events for debug overlay
+        window.mobileDebugTouchCount = (window.mobileDebugTouchCount || 0) + 1;
+        
+        console.log('🔍 MOBILE DEBUG: Canvas touchstart with', touches.length, 'touches');
+        console.log('🔍 Touch coordinates:', touches[0] ? {x: touches[0].clientX, y: touches[0].clientY} : 'none');
+        console.log('🔍 Canvas dimensions:', {width: canvas.clientWidth, height: canvas.clientHeight});
+        
         // Add haptic feedback if available
         if (navigator.vibrate) {
             navigator.vibrate(10);
@@ -3565,6 +3672,7 @@ canvas.addEventListener('touchstart', e => {
         
         // Optimize for mobile performance
         if (touches.length > 2) {
+            console.log('🔍 MOBILE DEBUG: Too many touches, limiting to 2');
             // Limit to 2 touches on mobile for better performance
             return;
         }
@@ -3576,6 +3684,12 @@ canvas.addEventListener('touchstart', e => {
         const rect = canvas.getBoundingClientRect();
         let posX = touches[i].clientX - rect.left;
         let posY = touches[i].clientY - rect.top;
+        
+        if (isMobile()) {
+            console.log('🔍 MOBILE DEBUG: Processing touch', i, 'at position:', {posX, posY});
+            console.log('🔍 Canvas rect:', rect);
+        }
+        
         updatePointerDownData(pointers[i + 1], touches[i].identifier, posX, posY);
     }
 }, { passive: false }); // Need preventDefault for fluid interaction
@@ -3591,6 +3705,7 @@ canvas.addEventListener('touchmove', e => {
             return;
         }
         canvas.lastTouchMove = e.timeStamp;
+        console.log('🔍 MOBILE DEBUG: Canvas touchmove with', touches.length, 'touches');
     }
     
     for (let i = 0; i < touches.length; i++) {
@@ -7914,6 +8029,24 @@ function setupInputSaveHandlers() {
 // Initialize parameter listeners when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     try {
+        // Re-check canvas after DOM is ready (mobile debugging)
+        if (isMobile()) {
+            const newCanvas = document.getElementById('fluidCanvas') || document.getElementsByTagName('canvas')[0];
+            if (!canvas && newCanvas) {
+                console.log('🔍 MOBILE DEBUG: Canvas found after DOM ready, re-initializing');
+                canvas = newCanvas;
+                resizeCanvas();
+            } else if (canvas !== newCanvas) {
+                console.log('🔍 MOBILE DEBUG: Canvas reference changed after DOM ready');
+                canvas = newCanvas;
+            }
+            
+            console.log('🔍 MOBILE DEBUG: Final canvas check');
+            console.log('🔍 Canvas ready:', !!canvas);
+            console.log('🔍 Canvas dimensions:', canvas ? `${canvas.clientWidth}x${canvas.clientHeight}` : 'N/A');
+            console.log('🔍 Canvas style display:', canvas ? canvas.style.display : 'N/A');
+        }
+        
         initializeStreamParameterListeners();
         initializeLocalStorage();
         initializeColoris();
@@ -7921,6 +8054,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeWelcomeOverlay();
         initializeIdleAnimation();
         initializeMediaUpload();
+        initializeMobileDebug();
         
         // Start with fluid mode active
         activateInputMode('fluid');
@@ -7963,9 +8097,9 @@ function initializeColoris() {
         format: 'hex',
         formatToggle: false,
         swatches: [
-            // Curated 10-color palette
-            '#FFD700', '#FFF400', '#FF4500', '#FF1493', '#8A2BE2', 
-            '#4169E1', '#3B74FF', '#0000FF', '#00BFFF', '#00FFFF'
+            // Electric/neon colors for dynamic effects - last two rows only
+            '#00FF41', '#FF0080', '#8000FF', '#FF8000', '#00BFFF',
+            '#FF6B35', '#F7931E', '#FFE135', '#C3FF00', '#00FFCC'
         ],
         swatchesOnly: false,
         closeButton: false,

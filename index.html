@@ -865,10 +865,15 @@
 
             .clr-picker .clr-swatches {
                 margin: 8px 16px 12px 16px !important;
+                display: block !important;
+                visibility: visible !important;
             }
 
             .clr-picker .clr-swatches div {
                 padding-bottom: 6px !important;
+                display: flex !important;
+                flex-wrap: wrap !important;
+                gap: 2px !important;
             }
 
             /* Completely hide the text input field appearance */
@@ -948,6 +953,8 @@
                 padding: 8px !important;
                 border-radius: 8px !important;
                 border: none !important;
+                display: block !important;
+                visibility: visible !important;
             }
 
             .clr-swatches button {
@@ -957,6 +964,9 @@
                 width: 24px !important;
                 height: 24px !important;
                 background-image: none !important;
+                display: inline-block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
             }
 
             .clr-swatches button:hover {
@@ -1692,6 +1702,12 @@
                     <p class="welcome-note">You can also start without an API key and add it later in settings</p>
                 </div>
             </div>
+        </div>
+
+        <!-- Mobile Debug Overlay -->
+        <div id="mobileDebug" style="display: none; position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 12px; border-radius: 5px; z-index: 9999; max-width: 250px; font-family: monospace;">
+            <div>📱 Mobile Debug</div>
+            <div id="debugInfo"></div>
         </div>
 
         <canvas id="fluidCanvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;"></canvas>
