@@ -3041,7 +3041,6 @@ function applyInputs () {
 
     pointers.forEach(p => {
         if (p.moved) {
-            console.log('Pointer moved - calling splatPointer, velocity drawing:', config.VELOCITY_DRAWING);
             p.moved = false;
             splatPointer(p);
         }
@@ -3400,16 +3399,11 @@ function splatPointer (pointer) {
     let dy = pointer.deltaY * config.SPLAT_FORCE;
     
     if (config.VELOCITY_DRAWING) {
-        // Debug logging
-        console.log('Velocity Drawing - deltaX:', pointer.deltaX, 'deltaY:', pointer.deltaY);
-        
         // Calculate velocity magnitude from deltas
         const velocity = Math.sqrt(pointer.deltaX * pointer.deltaX + pointer.deltaY * pointer.deltaY);
         
         // Scale velocity for reasonable multiplier range (0.5x to 3x)
         const velocityMultiplier = Math.min(3.0, 0.5 + velocity * 25.0);
-        
-        console.log('Velocity:', velocity, 'Multiplier:', velocityMultiplier);
         
         // Apply velocity scaling to force (affects splat size and intensity)
         dx *= velocityMultiplier;
