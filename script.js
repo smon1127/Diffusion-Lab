@@ -3518,8 +3518,22 @@ function drawFluidBackgroundCamera(target) {
     gl.bindTexture(gl.TEXTURE_2D, fluidBackgroundCamera.texture);
     try {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, fluidBackgroundCamera.video);
+        
+        // Mobile debugging for first few frames
+        if (isMobile() && !fluidBackgroundCamera.debugFrameCount) {
+            fluidBackgroundCamera.debugFrameCount = 0;
+        }
+        if (isMobile() && fluidBackgroundCamera.debugFrameCount < 3) {
+            fluidBackgroundCamera.debugFrameCount++;
+            console.log(`📱 Fluid background camera frame ${fluidBackgroundCamera.debugFrameCount}: texture updated successfully`);
+        }
+        
     } catch (e) {
-        console.warn('Failed to update fluid background camera texture:', e);
+        if (isMobile()) {
+            console.warn('📱 Mobile fluid background camera texture update failed:', e);
+        } else {
+            console.warn('Failed to update fluid background camera texture:', e);
+        }
         return;
     }
     
@@ -5101,14 +5115,31 @@ function toggleFluidBackgroundCamera() {
 
 async function startFluidBackgroundCamera() {
     try {
+        console.log('📷 Starting fluid background camera...');
+        
+        // Mobile-optimized camera constraints (same as regular camera)
+        let constraints = {
+            video: {
+                width: { ideal: 1920, min: 640 },
+                height: { ideal: 1080, min: 480 },
+                facingMode: 'user',
+                frameRate: { ideal: 30, min: 15 }
+            }
+        };
+        
+        // Mobile-specific optimizations for better camera access
+        if (isMobile()) {
+            console.log('📱 Applying mobile-specific fluid background camera settings');
+            constraints.video = {
+                width: { ideal: 1280, max: 1920 },
+                height: { ideal: 720, max: 1080 },
+                facingMode: 'user',
+                frameRate: { ideal: 24, max: 30 }
+            };
+        }
+        
         // Request camera access
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                facingMode: 'user'
-            } 
-        });
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         
         // Create video element
         const video = document.createElement('video');
@@ -5139,9 +5170,57 @@ async function startFluidBackgroundCamera() {
         
         console.log(`📷 Fluid background camera started: ${video.videoWidth}x${video.videoHeight}`);
         
+        // Mobile debugging
+        if (isMobile()) {
+            console.log('📱 MOBILE FLUID CAMERA DEBUG: Successfully started');
+            console.log('📱 Resolution:', `${video.videoWidth}x${video.videoHeight}`);
+            console.log('📱 Scale factor:', fluidBackgroundCamera.scale);
+        }
+        
     } catch (error) {
         console.error('Failed to start fluid background camera:', error);
-        alert('Failed to access camera. Please check permissions.');
+        
+        // Mobile-specific error handling with fallback
+        if (isMobile()) {
+            console.log('📱 Mobile fluid background camera failed, trying fallback...');
+            try {
+                // Ultra-simple mobile fallback
+                const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                
+                const video = document.createElement('video');
+                video.srcObject = fallbackStream;
+                video.autoplay = true;
+                video.muted = true;
+                video.playsInline = true;
+                
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        resolve();
+                    };
+                });
+                
+                // Store camera state
+                fluidBackgroundCamera.active = true;
+                fluidBackgroundCamera.stream = fallbackStream;
+                fluidBackgroundCamera.video = video;
+                fluidBackgroundCamera.width = video.videoWidth;
+                fluidBackgroundCamera.height = video.videoHeight;
+                fluidBackgroundCamera.scale = config.FLUID_CAMERA_SCALE || 1.0;
+                
+                // Show controls
+                const cameraScaleControl = document.getElementById('fluidCameraScaleControl');
+                if (cameraScaleControl) cameraScaleControl.style.display = 'block';
+                
+                console.log('📱 Mobile fluid background camera fallback successful:', `${video.videoWidth}x${video.videoHeight}`);
+                return;
+                
+            } catch (fallbackError) {
+                console.error('📱 Mobile fluid background camera fallback also failed:', fallbackError);
+            }
+        }
+        
+        alert('Failed to access camera for fluid background. Please check permissions.');
     }
 }
 
