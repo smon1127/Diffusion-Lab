@@ -118,7 +118,7 @@ const commonParams = {
     AUDIO_DELAY: 0,
     AUDIO_OPACITY: 0.8,
     AUDIO_COLORFUL: 0.3,
-    AUDIO_EDGE_SOFTNESS: 0.05
+    AUDIO_EDGE_SOFTNESS: 0.25
 };
 
 // Initialize config based on device type with common parameters
@@ -207,7 +207,7 @@ let audioBlobState = {
     delay: 0,            // 0-500ms range - Audio delay in milliseconds
     opacity: 0.8,        // 0-1 range - Blob opacity
     colorful: 0.3,       // 0-1 range - Color cycling intensity
-    edgeSoftness: 0.05,  // 0.01-0.2 range - Blob edge softness
+    edgeSoftness: 0.25,  // 0-1 range - Blob edge softness
     
     // Audio processing nodes
     delayNode: null,     // DelayNode for audio delay
@@ -550,7 +550,7 @@ function updateSliderValue(sliderName, percentage, skipSave = false, updateInput
         'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay },
         'audioOpacity': { min: 0, max: 1, prop: 'AUDIO_OPACITY', decimals: 2, handler: updateAudioOpacity },
         'audioColorful': { min: 0, max: 1, prop: 'AUDIO_COLORFUL', decimals: 1, handler: updateAudioColorful },
-        'audioEdgeSoftness': { min: 0.01, max: 0.2, prop: 'AUDIO_EDGE_SOFTNESS', decimals: 2, handler: updateAudioEdgeSoftness }
+        'audioEdgeSoftness': { min: 0, max: 1, prop: 'AUDIO_EDGE_SOFTNESS', decimals: 2, handler: updateAudioEdgeSoftness }
     };
     
     const slider = sliderMap[sliderName];
@@ -641,7 +641,7 @@ function updateSliderPositions() {
         'audioDelay': { prop: 'AUDIO_DELAY', min: 0, max: 500 },
         'audioOpacity': { prop: 'AUDIO_OPACITY', min: 0, max: 1 },
         'audioColorful': { prop: 'AUDIO_COLORFUL', min: 0, max: 1 },
-        'audioEdgeSoftness': { prop: 'AUDIO_EDGE_SOFTNESS', min: 0.01, max: 0.2 }
+        'audioEdgeSoftness': { prop: 'AUDIO_EDGE_SOFTNESS', min: 0, max: 1 }
     };
     
     Object.keys(sliderMap).forEach(sliderName => {
@@ -6177,7 +6177,9 @@ function renderAudioBlob() {
     gl.uniform3f(audioBlobState.uniforms.baseColor, audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
     gl.uniform1f(audioBlobState.uniforms.opacity, audioBlobState.opacity);
     gl.uniform1f(audioBlobState.uniforms.colorful, audioBlobState.colorful);
-    gl.uniform1f(audioBlobState.uniforms.edgeSoftness, audioBlobState.edgeSoftness);
+    // Map 0-1 range to shader range: 0 = sharp (0.001), 1 = soft (0.2)
+    const shaderEdgeSoftness = 0.001 + (audioBlobState.edgeSoftness * 0.199);
+    gl.uniform1f(audioBlobState.uniforms.edgeSoftness, shaderEdgeSoftness);
     
     // Set bloom and sunrays uniforms based on global config
     gl.uniform1i(audioBlobState.uniforms.bloom, config.BLOOM ? 1 : 0);
@@ -6855,7 +6857,7 @@ document.addEventListener('DOMContentLoaded', () => {
         audioReactivity: { min: 0.1, max: 3.0, updateFn: updateAudioReactivity, precision: 1 },
         audioOpacity: { min: 0, max: 1, updateFn: updateAudioOpacity, precision: 2 },
         audioColorful: { min: 0, max: 1, updateFn: updateAudioColorful, precision: 1 },
-        audioEdgeSoftness: { min: 0.01, max: 0.2, updateFn: updateAudioEdgeSoftness, precision: 2 },
+        audioEdgeSoftness: { min: 0, max: 1, updateFn: updateAudioEdgeSoftness, precision: 2 },
         
         // Animation controls
         animationInterval: { min: 0, max: 1, updateFn: (v) => updateSliderValue('animationInterval', v/1, false, false), precision: 2 },
