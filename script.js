@@ -3437,6 +3437,61 @@ function multipleSplats (amount) {
     }
 }
 
+function createVelocityClickEffect(x, y, baseColor) {
+    // Randomized parameters for varied effects each time
+    const centralForceMultiplier = 1.5 + Math.random() * 1.0; // 1.5x to 2.5x (reduced from 4x)
+    const centralBrightness = 1.8 + Math.random() * 0.7; // 1.8x to 2.5x brightness
+    
+    // Create enhanced central splat with randomized strength
+    const centralForce = config.SPLAT_FORCE * centralForceMultiplier;
+    const enhancedColor = {
+        r: Math.min(1.0, baseColor.r * centralBrightness),
+        g: Math.min(1.0, baseColor.g * centralBrightness),
+        b: Math.min(1.0, baseColor.b * centralBrightness)
+    };
+    
+    // Central splat with more randomized direction
+    const centralDx = centralForce * (Math.random() - 0.5) * (0.2 + Math.random() * 0.3);
+    const centralDy = centralForce * (Math.random() - 0.5) * (0.2 + Math.random() * 0.3);
+    splat(x, y, centralDx, centralDy, enhancedColor);
+    
+    // Randomized burst parameters
+    const burstCount = 3 + Math.floor(Math.random() * 3); // 3-5 splats
+    const burstRadius = 0.003 + Math.random() * 0.005; // 0.003-0.008 base radius (much smaller)
+    const burstForceBase = config.SPLAT_FORCE * (0.8 + Math.random() * 0.4); // 0.8x-1.2x force
+    
+    for (let i = 0; i < burstCount; i++) {
+        // Base angle with jitter for irregular pattern
+        const baseAngle = (i / burstCount) * Math.PI * 2;
+        const angleJitter = (Math.random() - 0.5) * 0.4; // ±0.2 radians jitter
+        const angle = baseAngle + angleJitter;
+        
+        // Randomized radius for each splat
+        const splatRadius = burstRadius * (0.3 + Math.random() * 0.5); // 0.3x-0.8x of base radius
+        const burstX = x + Math.cos(angle) * splatRadius;
+        const burstY = y + Math.sin(angle) * splatRadius;
+        
+        // Ensure burst splats stay within canvas bounds
+        const clampedX = Math.max(0, Math.min(1, burstX));
+        const clampedY = Math.max(0, Math.min(1, burstY));
+        
+        // Randomized outward force for each splat
+        const forceVariation = 0.4 + Math.random() * 0.8; // 0.4x-1.2x force variation
+        const outwardDx = Math.cos(angle) * burstForceBase * forceVariation;
+        const outwardDy = Math.sin(angle) * burstForceBase * forceVariation;
+        
+        // More varied color for each burst splat
+        const colorIntensity = 1.3 + Math.random() * 0.7; // 1.3x-2.0x brightness
+        const burstColor = {
+            r: Math.min(1.0, baseColor.r * colorIntensity),
+            g: Math.min(1.0, baseColor.g * colorIntensity),
+            b: Math.min(1.0, baseColor.b * colorIntensity)
+        };
+        
+        splat(clampedX, clampedY, outwardDx, outwardDy, burstColor);
+    }
+}
+
 function splat (x, y, dx, dy, color) {
     splatProgram.bind();
     gl.uniform1i(splatProgram.uniforms.uTarget, velocity.read.attach(0));
@@ -3611,6 +3666,11 @@ function updatePointerDownData (pointer, id, posX, posY) {
     pointer.deltaX = 0;
     pointer.deltaY = 0;
     pointer.color = generateColor();
+    
+    // Create enhanced click effect when velocity drawing is enabled
+    if (config.VELOCITY_DRAWING) {
+        createVelocityClickEffect(pointer.texcoordX, pointer.texcoordY, pointer.color);
+    }
 }
 
 function updatePointerMoveData (pointer, posX, posY) {
