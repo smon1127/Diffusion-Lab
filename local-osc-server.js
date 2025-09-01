@@ -21,6 +21,20 @@ class FluidOSCServer {
         this.wsServer = null;
         this.networkIP = this.getNetworkIP();
         
+        // Throttling for performance - limit OSC message rate
+        this.lastMessageTime = {};
+        this.throttleInterval = 16; // ~60fps (16ms between messages)
+        
+        // Velocity-based fluid parameter adjustment
+        this.lastPositions = {}; // Store last position for each channel
+        this.velocityMultiplier = 15.0; // How much velocity affects parameters
+        
+        // Base fluid parameters (adjusted by velocity)
+        this.baseSplatRadius = 0.01; // Minimum splat size
+        this.maxSplatRadius = 0.15; // Maximum splat size
+        this.baseVorticity = 5; // Minimum vorticity (curl)
+        this.maxVorticity = 30; // Maximum vorticity
+        
         // OSC parameter mapping
         this.oscMap = {
             // Fluid Physics
@@ -258,6 +272,16 @@ class FluidOSCServer {
         const [address, ...args] = msg;
         const value = args.length === 1 ? args[0] : args;
         
+        // Throttle messages for performance
+        const now = Date.now();
+        const lastTime = this.lastMessageTime[address] || 0;
+        
+        if (now - lastTime < this.throttleInterval) {
+            // Skip this message - too frequent
+            return;
+        }
+        
+        this.lastMessageTime[address] = now;
         console.log(`📨 OSC: ${address} = ${value}`);
         
         const mapping = this.oscMap[address];
@@ -305,12 +329,39 @@ class FluidOSCServer {
             // Handle TouchOSC XY pad format
             const channel = mapping.channel;
             
-            // TouchOSC sends two separate arguments: args[0] = x, args[1] = y
+            // TouchOSC sends two separate arguments: args[0] = y, args[1] = x (flipped for multixy)
             if (args.length >= 2 && typeof args[0] === 'number' && typeof args[1] === 'number') {
-                const x = Math.max(0, Math.min(1, args[0]));
-                const y = Math.max(0, Math.min(1, args[1]));
+                const x = 1.0 - Math.max(0, Math.min(1, args[1])); // Flipped X: use args[1] and invert (1-x)
+                const y = Math.max(0, Math.min(1, args[0])); // Flipped: use args[0] for Y
                 
-                // Send both X and Y parameter updates
+                // Calculate velocity-based fluid parameters
+                const channelKey = `multixy_${channel}`;
+                const lastPos = this.lastPositions[channelKey];
+                let splatRadius = this.baseSplatRadius;
+                let vorticity = this.baseVorticity;
+                let velocityInfo = "";
+                
+                if (lastPos) {
+                    // Calculate distance moved
+                    const deltaX = x - lastPos.x;
+                    const deltaY = y - lastPos.y;
+                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    
+                    // Convert distance to velocity (distance per time)
+                    const velocity = distance / (this.throttleInterval / 1000); // distance per second
+                    
+                    // Scale velocity to fluid parameters
+                    const velocityFactor = Math.min(1.0, velocity * this.velocityMultiplier);
+                    splatRadius = this.baseSplatRadius + (velocityFactor * (this.maxSplatRadius - this.baseSplatRadius));
+                    vorticity = this.baseVorticity + (velocityFactor * (this.maxVorticity - this.baseVorticity));
+                    
+                    velocityInfo = `, Radius=${splatRadius.toFixed(3)}, Vorticity=${vorticity.toFixed(1)} (v=${velocity.toFixed(2)})`;
+                }
+                
+                // Store current position for next calculation
+                this.lastPositions[channelKey] = { x, y };
+                
+                // Send X, Y, and velocity-adjusted fluid parameters
                 const xMessage = {
                     type: 'osc_message',
                     parameter: `SPLAT_${channel}_X`,
@@ -321,6 +372,19 @@ class FluidOSCServer {
                     type: 'osc_message',
                     parameter: `SPLAT_${channel}_Y`,
                     value: y
+                };
+                
+                // Send velocity-adjusted parameters for this specific splat channel
+                const radiusMessage = {
+                    type: 'osc_message',
+                    parameter: `SPLAT_${channel}_RADIUS`,
+                    value: splatRadius
+                };
+                
+                const vorticityMessage = {
+                    type: 'osc_message',
+                    parameter: `SPLAT_${channel}_VORTICITY`,
+                    value: vorticity
                 };
                 
                 // Broadcast to WebSocket clients
@@ -328,15 +392,37 @@ class FluidOSCServer {
                     if (client.readyState === 1) { // WebSocket.OPEN
                         client.send(JSON.stringify(xMessage));
                         client.send(JSON.stringify(yMessage));
+                        client.send(JSON.stringify(radiusMessage));
+                        client.send(JSON.stringify(vorticityMessage));
                     }
                 });
                 
-                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)}`);
+                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)}${velocityInfo}`);
                 return; // Already broadcast, don't continue
             } else if (Array.isArray(value) && value.length >= 2) {
-                // Fallback: XY pad sending [x, y] array (less common)
-                const x = Math.max(0, Math.min(1, value[0]));
-                const y = Math.max(0, Math.min(1, value[1]));
+                // Fallback: XY pad sending [y, x] array (flipped for multixy)
+                const x = 1.0 - Math.max(0, Math.min(1, value[1])); // Flipped X: use value[1] and invert (1-x)
+                const y = Math.max(0, Math.min(1, value[0])); // Flipped: use value[0] for Y
+                
+                // Calculate velocity-based fluid parameters (same logic as above)
+                const channelKey = `multixy_${channel}`;
+                const lastPos = this.lastPositions[channelKey];
+                let splatRadius = this.baseSplatRadius;
+                let vorticity = this.baseVorticity;
+                let velocityInfo = "";
+                
+                if (lastPos) {
+                    const deltaX = x - lastPos.x;
+                    const deltaY = y - lastPos.y;
+                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    const velocity = distance / (this.throttleInterval / 1000);
+                    const velocityFactor = Math.min(1.0, velocity * this.velocityMultiplier);
+                    splatRadius = this.baseSplatRadius + (velocityFactor * (this.maxSplatRadius - this.baseSplatRadius));
+                    vorticity = this.baseVorticity + (velocityFactor * (this.maxVorticity - this.baseVorticity));
+                    velocityInfo = `, Radius=${splatRadius.toFixed(3)}, Vorticity=${vorticity.toFixed(1)} (v=${velocity.toFixed(2)})`;
+                }
+                
+                this.lastPositions[channelKey] = { x, y };
                 
                 const xMessage = {
                     type: 'osc_message',
@@ -350,14 +436,28 @@ class FluidOSCServer {
                     value: y
                 };
                 
+                const radiusMessage = {
+                    type: 'osc_message',
+                    parameter: `SPLAT_${channel}_RADIUS`,
+                    value: splatRadius
+                };
+                
+                const vorticityMessage = {
+                    type: 'osc_message',
+                    parameter: `SPLAT_${channel}_VORTICITY`,
+                    value: vorticity
+                };
+                
                 this.clients.forEach(client => {
                     if (client.readyState === 1) {
                         client.send(JSON.stringify(xMessage));
                         client.send(JSON.stringify(yMessage));
+                        client.send(JSON.stringify(radiusMessage));
+                        client.send(JSON.stringify(vorticityMessage));
                     }
                 });
                 
-                console.log(`🎯 TouchOSC XY Pad ${channel}: (${x.toFixed(3)}, ${y.toFixed(3)})`);
+                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)}${velocityInfo}`);
                 return;
             } else {
                 console.log(`⚠️  TouchOSC XY Pad ${channel}: Expected 2 args, got ${args.length}: [${args.join(', ')}]`);

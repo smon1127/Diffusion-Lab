@@ -3817,14 +3817,13 @@ function splat (x, y, dx, dy, color) {
     dye.swap();
 }
 
-function performSplatAtPosition(x, y, force = 1.0) {
-    // Convert normalized coordinates (0-1) to canvas coordinates
-    const canvasX = x * canvas.width;
-    const canvasY = (1.0 - y) * canvas.height; // Flip Y coordinate
+function performSplatAtPosition(x, y, force = 1.0, radius = null, vorticity = null) {
+    // Convert normalized coordinates (0-1) to texture coordinates (same as mouse/touch)
+    const texcoordX = x;
+    const texcoordY = 1.0 - y; // Flip Y coordinate to match WebGL coordinate system
     
-    // Convert to normalized device coordinates
-    const normalizedX = (canvasX / canvas.width) * 2.0 - 1.0;
-    const normalizedY = (canvasY / canvas.height) * 2.0 - 1.0;
+    // Use provided radius or default to global config
+    const splatRadius = radius !== null ? radius : config.SPLAT_RADIUS;
     
     // Generate random velocity direction
     const angle = Math.random() * Math.PI * 2;
@@ -3834,22 +3833,51 @@ function performSplatAtPosition(x, y, force = 1.0) {
     // Generate random color
     const color = generateColor();
     
-    // Perform the splat
-    splat(normalizedX, normalizedY, dx, dy, color);
+    // Temporarily store current vorticity if we're overriding it
+    const originalCurl = config.CURL;
+    if (vorticity !== null) {
+        config.CURL = vorticity;
+    }
+    
+    // Perform the splat using texture coordinates and custom radius
+    splatWithRadius(texcoordX, texcoordY, dx, dy, color, splatRadius);
+    
+    // Restore original vorticity
+    if (vorticity !== null) {
+        config.CURL = originalCurl;
+    }
     
     if (config.DEBUG_MODE) {
-        console.log(`🎯 OSC Splat at (${x.toFixed(2)}, ${y.toFixed(2)}) with force ${force}`);
+        const radiusInfo = radius !== null ? ` radius:${radius.toFixed(3)}` : '';
+        const vorticityInfo = vorticity !== null ? ` vorticity:${vorticity.toFixed(1)}` : '';
+        console.log(`🎯 OSC Splat at (${x.toFixed(2)}, ${y.toFixed(2)}) with force ${force}${radiusInfo}${vorticityInfo}`);
         
         // Update debug overlay with OSC info
         const oscMessages = document.getElementById('oscMessages');
         if (oscMessages) {
             const timestamp = new Date().toLocaleTimeString();
-            // Color-coded splat message: timestamp | action | coordinates | force
-            const messageHTML = `<span style="color: #94a3b8; font-size: 10px;">${timestamp}</span>: <span style="color: #06d6a0;">Splat</span> (<span style="color: #60a5fa;">${x.toFixed(2)}</span>, <span style="color: #60a5fa;">${y.toFixed(2)}</span>) <span style="color: #f472b6;">force:</span> <span style="color: #fbbf24;">${force}</span>`;
+            // Color-coded splat message: timestamp | action | coordinates | force | radius | vorticity
+            const messageHTML = `<span style="color: #94a3b8; font-size: 10px;">${timestamp}</span>: <span style="color: #06d6a0;">Splat</span> (<span style="color: #60a5fa;">${x.toFixed(2)}</span>, <span style="color: #60a5fa;">${y.toFixed(2)}</span>) <span style="color: #f472b6;">force:</span> <span style="color: #fbbf24;">${force}</span>${radiusInfo ? ` <span style="color: #a78bfa;">radius:</span> <span style="color: #34d399;">${radius.toFixed(3)}</span>` : ''}${vorticityInfo ? ` <span style="color: #fb7185;">vorticity:</span> <span style="color: #fde047;">${vorticity.toFixed(1)}</span>` : ''}`;
             oscMessages.innerHTML += `<div style="margin: 1px 0;">${messageHTML}</div>`;
             oscMessages.scrollTop = oscMessages.scrollHeight;
         }
     }
+}
+
+function splatWithRadius(x, y, dx, dy, color, radius) {
+    splatProgram.bind();
+    gl.uniform1i(splatProgram.uniforms.uTarget, velocity.read.attach(0));
+    gl.uniform1f(splatProgram.uniforms.aspectRatio, canvas.width / canvas.height);
+    gl.uniform2f(splatProgram.uniforms.point, x, y);
+    gl.uniform3f(splatProgram.uniforms.color, dx, dy, 0.0);
+    gl.uniform1f(splatProgram.uniforms.radius, correctRadius(radius / 100.0));
+    blit(velocity.write);
+    velocity.swap();
+
+    gl.uniform1i(splatProgram.uniforms.uTarget, dye.read.attach(0));
+    gl.uniform3f(splatProgram.uniforms.color, color.r, color.g, color.b);
+    blit(dye.write);
+    dye.swap();
 }
 
 function correctRadius (radius) {
@@ -3864,7 +3892,7 @@ canvas.addEventListener('mousedown', e => {
     let posY = e.offsetY;
     let pointer = pointers.find(p => p.id == -1);
     if (pointer == null)
-        pointer = new pointerPrototype();
+        pointers.push(pointer = new pointerPrototype());
     updatePointerDownData(pointer, -1, posX, posY);
 });
 
@@ -4009,7 +4037,11 @@ window.addEventListener('keydown', e => {
         }
         if (e.code === 'KeyB') {
             e.preventDefault();
-        splatStack.push(parseInt(Math.random() * 20) + 5);
+            splatStack.push(parseInt(Math.random() * 20) + 5);
+        }
+        if (e.code === 'KeyD') {
+            e.preventDefault();
+            toggleDebug();
         }
     }
 });
@@ -8886,14 +8918,18 @@ function handleOSCMessage(message) {
                 const x = config[`SPLAT_${channelNum}_X`] || 0.5;
                 const y = config[`SPLAT_${channelNum}_Y`] || 0.5;
                 const force = config[`SPLAT_${channelNum}_FORCE`] || 1.0;
+                const radius = config[`SPLAT_${channelNum}_RADIUS`] || null;
+                const vorticity = config[`SPLAT_${channelNum}_VORTICITY`] || null;
                 
-                // Auto-trigger splat for this channel
-                performSplatAtPosition(x, y, force);
-                console.log(`🎯 Multi-splat ${channelNum} (${axis}): ${x}, ${y} @ ${force}`);
-            } else if (message.parameter.match(/^SPLAT_(\d+)_FORCE$/)) {
-                // Multi-splat force change alone doesn't trigger splat
-                const channelNum = message.parameter.match(/^SPLAT_(\d+)_FORCE$/)[1];
-                console.log(`🎯 Multi-splat ${channelNum} force updated to ${message.value}`);
+                // Auto-trigger splat for this channel with velocity-based parameters
+                performSplatAtPosition(x, y, force, radius, vorticity);
+                console.log(`🎯 Multi-splat ${channelNum} (${axis}): ${x}, ${y} @ ${force}${radius ? ` radius:${radius.toFixed(3)}` : ''}${vorticity ? ` vorticity:${vorticity.toFixed(1)}` : ''}`);
+            } else if (message.parameter.match(/^SPLAT_(\d+)_(FORCE|RADIUS|VORTICITY)$/)) {
+                // Multi-splat parameter change alone doesn't trigger splat
+                const match = message.parameter.match(/^SPLAT_(\d+)_(FORCE|RADIUS|VORTICITY)$/);
+                const channelNum = match[1];
+                const paramType = match[2];
+                console.log(`🎯 Multi-splat ${channelNum} ${paramType.toLowerCase()} updated to ${message.value}`);
             } else {
                 // Update UI elements for other parameters
                 updateUIFromConfig(message.parameter, message.value);
