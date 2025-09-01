@@ -150,21 +150,12 @@ const commonParams = {
     // Debug Parameters
     DEBUG_MODE: false,
     
-    // Splat Position Parameters (10 independent splat channels)
-    SPLAT_X: 0.5,
-    SPLAT_Y: 0.5,
-    SPLAT_FORCE: 1.0,
-    // Multi-splat channels (1-10)
-    SPLAT_1_X: 0.1, SPLAT_1_Y: 0.5, SPLAT_1_FORCE: 1.0,
-    SPLAT_2_X: 0.2, SPLAT_2_Y: 0.5, SPLAT_2_FORCE: 1.0,
-    SPLAT_3_X: 0.3, SPLAT_3_Y: 0.5, SPLAT_3_FORCE: 1.0,
-    SPLAT_4_X: 0.4, SPLAT_4_Y: 0.5, SPLAT_4_FORCE: 1.0,
-    SPLAT_5_X: 0.6, SPLAT_5_Y: 0.5, SPLAT_5_FORCE: 1.0,
-    SPLAT_6_X: 0.7, SPLAT_6_Y: 0.5, SPLAT_6_FORCE: 1.0,
-    SPLAT_7_X: 0.8, SPLAT_7_Y: 0.5, SPLAT_7_FORCE: 1.0,
-    SPLAT_8_X: 0.9, SPLAT_8_Y: 0.5, SPLAT_8_FORCE: 1.0,
-    SPLAT_9_X: 0.1, SPLAT_9_Y: 0.3, SPLAT_9_FORCE: 1.0,
-    SPLAT_10_X: 0.9, SPLAT_10_Y: 0.7, SPLAT_10_FORCE: 1.0
+    // OSC Multi-splat channels (only 5 channels needed)
+    OSC_SPLAT_1_X: 0.2, OSC_SPLAT_1_Y: 0.2, OSC_SPLAT_1_FORCE: 1.0,
+    OSC_SPLAT_2_X: 0.8, OSC_SPLAT_2_Y: 0.2, OSC_SPLAT_2_FORCE: 1.0,
+    OSC_SPLAT_3_X: 0.5, OSC_SPLAT_3_Y: 0.5, OSC_SPLAT_3_FORCE: 1.0,
+    OSC_SPLAT_4_X: 0.2, OSC_SPLAT_4_Y: 0.8, OSC_SPLAT_4_FORCE: 1.0,
+    OSC_SPLAT_5_X: 0.8, OSC_SPLAT_5_Y: 0.8, OSC_SPLAT_5_FORCE: 1.0
 };
 
 // Initialize config based on device type with common parameters
@@ -1028,6 +1019,8 @@ function toggleDebug() {
     
     // Control mobile debug overlay visibility
     const debugOverlay = document.getElementById('mobileDebug');
+    const oscMessagesDiv = document.getElementById('oscMessages');
+    
     if (debugOverlay) {
         if (config.DEBUG_MODE) {
             debugOverlay.style.display = 'block';
@@ -1036,6 +1029,10 @@ function toggleDebug() {
         } else {
             debugOverlay.style.display = 'none';
             debugOverlay.style.setProperty('display', 'none', 'important');
+            // Clear OSC messages when debug is disabled
+            if (oscMessagesDiv) {
+                oscMessagesDiv.innerHTML = '';
+            }
             console.log('🔍 Debug mode disabled');
         }
     }
@@ -1267,14 +1264,87 @@ function updateMobileDebugInfo(info) {
     const debugInfo = document.getElementById('debugInfo');
     if (!debugInfo) return;
     
+    // Get OSC status info
+    const oscStatus = getOSCStatusForDebug();
+    
     debugInfo.innerHTML = `
-        <div>Status: ${info.status}</div>
-        <div>Panel: ${info.panelState}</div>
-        <div>Touch Events: ${info.touchEvents}</div>
-        <div>Canvas: ${info.canvasReady ? 'Ready' : 'Missing'}</div>
-        <div>Screen: ${info.screenSize || 'Unknown'}</div>
-        <div>Time: ${info.timestamp || 'N/A'}</div>
+        <div><span style="color: #60a5fa;">Status:</span> <span style="color: #fbbf24;">${info.status}</span></div>
+        <div><span style="color: #60a5fa;">Panel:</span> <span style="color: #fbbf24;">${info.panelState}</span></div>
+        <div><span style="color: #60a5fa;">Touch Events:</span> <span style="color: #fbbf24;">${info.touchEvents}</span></div>
+        <div><span style="color: #60a5fa;">Canvas:</span> <span style="color: #fbbf24;">${info.canvasReady ? 'Ready' : 'Missing'}</span></div>
+        <div><span style="color: #60a5fa;">Screen:</span> <span style="color: #fbbf24;">${info.screenSize || 'Unknown'}</span></div>
+        <div><span style="color: #60a5fa;">Time:</span> <span style="color: #fbbf24;">${info.timestamp || 'N/A'}</span></div>
+        <div><span style="color: #60a5fa;">OSC Server:</span> <span style="color: ${oscStatus.color};">${oscStatus.text}</span></div>
     `;
+}
+
+function getOSCStatusForDebug() {
+    if (oscConnectionStatus === 'connected' && oscServerIP) {
+        return {
+            text: `192.168.178.59:8000`,
+            color: '#22c55e' // Green
+        };
+    } else if (oscConnectionStatus === 'https_blocked') {
+        return {
+            text: 'HTTPS Blocked',
+            color: '#f59e0b' // Orange
+        };
+    } else {
+        return {
+            text: 'Disconnected',
+            color: '#ef4444' // Red
+        };
+    }
+}
+
+function addOSCMessageToDebug(message) {
+    if (!config.DEBUG_MODE) return;
+    
+    const oscMessagesDiv = document.getElementById('oscMessages');
+    if (!oscMessagesDiv) return;
+    
+    const timestamp = new Date().toLocaleTimeString();
+    let messageText = '';
+    let messageColor = '#fbbf24'; // Default yellow
+    
+    if (message.type === 'osc_message') {
+        if (message.parameter) {
+            // Format parameter name for better readability
+            const paramName = message.parameter.replace('OSC_SPLAT_', 'S').replace('_', '');
+            const value = typeof message.value === 'number' ? message.value.toFixed(3) : message.value;
+            messageText = `${paramName} = ${value}`;
+            messageColor = '#60a5fa'; // Blue for parameters
+        } else if (message.action) {
+            messageText = `Action: ${message.action}`;
+            messageColor = '#22c55e'; // Green for actions
+        }
+    } else if (message.type === 'server_info') {
+        messageText = 'Server Info';
+        messageColor = '#a855f7'; // Purple for server info
+    } else {
+        messageText = JSON.stringify(message);
+    }
+    
+    const messageElement = document.createElement('div');
+    messageElement.style.cssText = `
+        margin-bottom: 2px;
+        font-size: 10px;
+        line-height: 1.2;
+    `;
+    messageElement.innerHTML = `
+        <span style="color: #6b7280;">${timestamp}</span> 
+        <span style="color: ${messageColor};">${messageText}</span>
+    `;
+    
+    oscMessagesDiv.appendChild(messageElement);
+    
+    // Keep only the last 20 messages
+    while (oscMessagesDiv.children.length > 20) {
+        oscMessagesDiv.removeChild(oscMessagesDiv.firstChild);
+    }
+    
+    // Auto-scroll to bottom
+    oscMessagesDiv.scrollTop = oscMessagesDiv.scrollHeight;
 }
 
 function getDevicePixelRatio() {
@@ -3810,17 +3880,6 @@ function performSplatAtPosition(x, y, force = 1.0) {
     
     if (config.DEBUG_MODE) {
         console.log(`🎯 OSC Splat at (${x.toFixed(2)}, ${y.toFixed(2)}) with force ${force}`);
-        
-        // Update debug overlay with OSC info
-        const oscMessages = document.getElementById('oscMessages');
-        if (oscMessages) {
-            const timestamp = new Date().toLocaleTimeString();
-            // Color-coded splat message: timestamp | action | coordinates | force
-            const messageHTML = `<span style="color: #94a3b8; font-size: 10px;">${timestamp}</span>: <span style="color: #06d6a0;">Splat</span> (<span style="color: #60a5fa;">${x.toFixed(2)}</span>, <span style="color: #60a5fa;">${y.toFixed(2)}</span>) <span style="color: #f472b6;">force:</span> <span style="color: #fbbf24;">${force}</span>`;
-            
-            oscMessages.innerHTML += messageHTML + '<br>';
-            oscMessages.scrollTop = oscMessages.scrollHeight;
-        }
     }
 }
 
@@ -3975,13 +4034,21 @@ window.addEventListener('keydown', e => {
     if (e.ctrlKey || e.metaKey) { // metaKey for Mac Cmd key
         if (e.code === 'KeyP') {
             e.preventDefault();
-        config.PAUSED = !config.PAUSED;
+            config.PAUSED = !config.PAUSED;
             updateToggle('pausedToggle', config.PAUSED);
             saveConfig();
         }
         if (e.code === 'KeyB') {
             e.preventDefault();
-        splatStack.push(parseInt(Math.random() * 20) + 5);
+            splatStack.push(parseInt(Math.random() * 20) + 5);
+        }
+        if (e.code === 'KeyD') {
+            e.preventDefault();
+            toggleDebug();
+        }
+        if (e.code === 'KeyA') {
+            e.preventDefault();
+            toggleAnimate();
         }
     }
 });
@@ -8798,6 +8865,7 @@ function setupOSCMessageHandling() {
 function handleOSCMessage(message) {
     if (config.DEBUG_MODE) {
         console.log('📨 OSC Message:', message);
+        addOSCMessageToDebug(message);
     }
     
     if (message.type === 'server_info') {
@@ -8813,31 +8881,31 @@ function handleOSCMessage(message) {
             config[message.parameter] = message.value;
             console.log(`🎛️  Updated ${message.parameter} = ${message.value}`);
             
-            // Handle splat position parameters with auto-trigger
-            if (message.parameter === 'SPLAT_X' || message.parameter === 'SPLAT_Y') {
-                const force = config.SPLAT_FORCE || 1.0;
-                performSplatAtPosition(config.SPLAT_X, config.SPLAT_Y, force);
-            } else if (message.parameter === 'SPLAT_FORCE') {
-                console.log(`🎯 Splat force updated to ${message.value}`);
-            } else if (message.parameter.match(/^SPLAT_(\d+)_[XY]$/)) {
-                // Handle multi-splat channels (SPLAT_1_X, SPLAT_2_Y, etc.)
-                const match = message.parameter.match(/^SPLAT_(\d+)_([XY])$/);
+            // Handle OSC splat position parameters with auto-trigger
+            if (message.parameter === 'OSC_SPLAT_X' || message.parameter === 'OSC_SPLAT_Y') {
+                const force = config.OSC_SPLAT_FORCE || 1.0;
+                performSplatAtPosition(config.OSC_SPLAT_X, config.OSC_SPLAT_Y, force);
+            } else if (message.parameter === 'OSC_SPLAT_FORCE') {
+                console.log(`🎯 OSC Splat force updated to ${message.value}`);
+            } else if (message.parameter.match(/^OSC_SPLAT_(\d+)_[XY]$/)) {
+                // Handle multi-splat channels (OSC_SPLAT_1_X, OSC_SPLAT_2_Y, etc.)
+                const match = message.parameter.match(/^OSC_SPLAT_(\d+)_([XY])$/);
                 const channelNum = match[1];
                 const axis = match[2];
                 
                 // Get current values for this channel
-                const x = config[`SPLAT_${channelNum}_X`] || 0.5;
-                const y = config[`SPLAT_${channelNum}_Y`] || 0.5;
-                const force = config[`SPLAT_${channelNum}_FORCE`] || 1.0;
+                const x = config[`OSC_SPLAT_${channelNum}_X`] || 0.5;
+                const y = config[`OSC_SPLAT_${channelNum}_Y`] || 0.5;
+                const force = config[`OSC_SPLAT_${channelNum}_FORCE`] || 1.0;
                 
                 // Auto-trigger splat for this channel
                 performSplatAtPosition(x, y, force);
                 console.log(`🎯 Multi-splat ${channelNum} (${axis}): ${x}, ${y} @ ${force}`);
-            } else if (message.parameter.match(/^SPLAT_(\d+)_FORCE$/)) {
-                const channelNum = message.parameter.match(/^SPLAT_(\d+)_FORCE$/)[1];
+            } else if (message.parameter.match(/^OSC_SPLAT_(\d+)_FORCE$/)) {
+                const channelNum = message.parameter.match(/^OSC_SPLAT_(\d+)_FORCE$/)[1];
                 console.log(`🎯 Multi-splat ${channelNum} force updated to ${message.value}`);
             } else {
-                // Update UI elements for other parameters
+                // Update UI elements for non-OSC parameters
                 updateUIFromConfig(message.parameter, message.value);
             }
             
@@ -8943,40 +9011,13 @@ function executeOSCAction(action, value) {
 function updateOSCStatus(status, ip) {
     oscConnectionStatus = status;
     
-    // Create or update OSC status indicator
+    // Always hide the separate OSC status overlay - only show in debug overlay
     let statusElement = document.getElementById('oscStatus');
-    if (!statusElement) {
-        statusElement = document.createElement('div');
-        statusElement.id = 'oscStatus';
-        statusElement.style.cssText = `
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-family: monospace;
-            z-index: 10000;
-            pointer-events: none;
-            transition: all 0.3s ease;
-        `;
-        document.body.appendChild(statusElement);
+    if (statusElement) {
+        statusElement.style.display = 'none';
     }
     
-    if (status === 'connected') {
-        statusElement.textContent = `🎛️ OSC: ${ip}:8001`;
-        statusElement.style.backgroundColor = 'rgba(34, 197, 94, 0.9)';
-        statusElement.style.color = 'white';
-    } else if (status === 'https_blocked') {
-        statusElement.textContent = `🔒 OSC: HTTPS Blocked`;
-        statusElement.style.backgroundColor = 'rgba(251, 146, 60, 0.9)';
-        statusElement.style.color = 'white';
-        statusElement.title = `HTTPS websites cannot connect to local WebSocket servers. Use HTTP or upload modified files to FTP.`;
-    } else {
-        statusElement.textContent = '🔌 OSC: Disconnected';
-        statusElement.style.backgroundColor = 'rgba(239, 68, 68, 0.9)';
-        statusElement.style.color = 'white';
-    }
+    // The debug overlay will show OSC status when debug mode is enabled
 }
 
 // Initialize OSC connection when page loads

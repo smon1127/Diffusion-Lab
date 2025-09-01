@@ -25,15 +25,7 @@ class FluidOSCServer {
         this.lastMessageTime = {};
         this.throttleInterval = 16; // ~60fps (16ms between messages)
         
-        // Velocity-based fluid parameter adjustment
-        this.lastPositions = {}; // Store last position for each channel
-        this.velocityMultiplier = 15.0; // How much velocity affects parameters
-        
-        // Base fluid parameters (adjusted by velocity)
-        this.baseSplatRadius = 0.01; // Minimum splat size
-        this.maxSplatRadius = 0.15; // Maximum splat size
-        this.baseVorticity = 5; // Minimum vorticity (curl)
-        this.maxVorticity = 30; // Maximum vorticity
+
         
         // OSC parameter mapping
         this.oscMap = {
@@ -42,7 +34,7 @@ class FluidOSCServer {
             '/fluid/velocity': { param: 'VELOCITY_DISSIPATION', min: 0, max: 4, type: 'slider' },
             '/fluid/pressure': { param: 'PRESSURE', min: 0, max: 1, type: 'slider' },
             '/fluid/vorticity': { param: 'CURL', min: 0, max: 50, type: 'slider' },
-            '/fluid/splat': { param: 'SPLAT_RADIUS', min: 0.01, max: 1, type: 'slider' },
+            '/fluid/splat': { param: 'OSC_SPLAT_RADIUS', min: 0.01, max: 1, type: 'slider' },
             
             // Main Toggles
             '/toggle/paused': { param: 'PAUSED', type: 'toggle' },
@@ -128,74 +120,12 @@ class FluidOSCServer {
             '/action/screenshot': { action: 'captureScreenshot', type: 'button' },
             '/action/record': { action: 'toggleVideoRecording', type: 'button' },
             
-            // Splat Position Control (legacy single splat)
-            '/splat/x': { param: 'SPLAT_X', min: 0, max: 1, type: 'slider' },
-            '/splat/y': { param: 'SPLAT_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/force': { param: 'SPLAT_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/trigger': { action: 'splatAt', type: 'position' },
-            
-            // Multi-Splat Control (10 independent channels)
-            '/splat/1/x': { param: 'SPLAT_1_X', min: 0, max: 1, type: 'slider' },
-            '/splat/1/y': { param: 'SPLAT_1_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/1/force': { param: 'SPLAT_1_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/2/x': { param: 'SPLAT_2_X', min: 0, max: 1, type: 'slider' },
-            '/splat/2/y': { param: 'SPLAT_2_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/2/force': { param: 'SPLAT_2_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/3/x': { param: 'SPLAT_3_X', min: 0, max: 1, type: 'slider' },
-            '/splat/3/y': { param: 'SPLAT_3_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/3/force': { param: 'SPLAT_3_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/4/x': { param: 'SPLAT_4_X', min: 0, max: 1, type: 'slider' },
-            '/splat/4/y': { param: 'SPLAT_4_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/4/force': { param: 'SPLAT_4_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/5/x': { param: 'SPLAT_5_X', min: 0, max: 1, type: 'slider' },
-            '/splat/5/y': { param: 'SPLAT_5_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/5/force': { param: 'SPLAT_5_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/6/x': { param: 'SPLAT_6_X', min: 0, max: 1, type: 'slider' },
-            '/splat/6/y': { param: 'SPLAT_6_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/6/force': { param: 'SPLAT_6_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/7/x': { param: 'SPLAT_7_X', min: 0, max: 1, type: 'slider' },
-            '/splat/7/y': { param: 'SPLAT_7_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/7/force': { param: 'SPLAT_7_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/8/x': { param: 'SPLAT_8_X', min: 0, max: 1, type: 'slider' },
-            '/splat/8/y': { param: 'SPLAT_8_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/8/force': { param: 'SPLAT_8_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/9/x': { param: 'SPLAT_9_X', min: 0, max: 1, type: 'slider' },
-            '/splat/9/y': { param: 'SPLAT_9_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/9/force': { param: 'SPLAT_9_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            '/splat/10/x': { param: 'SPLAT_10_X', min: 0, max: 1, type: 'slider' },
-            '/splat/10/y': { param: 'SPLAT_10_Y', min: 0, max: 1, type: 'slider' },
-            '/splat/10/force': { param: 'SPLAT_10_FORCE', min: 0.1, max: 3.0, type: 'slider' },
-            
-            // TouchOSC XY Pad Support (multiple possible formats)
-            '/splats/1': { channel: 1, type: 'xy_pad' },
-            '/splats/2': { channel: 2, type: 'xy_pad' },
-            '/splats/3': { channel: 3, type: 'xy_pad' },
-            '/splats/4': { channel: 4, type: 'xy_pad' },
-            '/splats/5': { channel: 5, type: 'xy_pad' },
-            '/splats/6': { channel: 6, type: 'xy_pad' },
-            '/splats/7': { channel: 7, type: 'xy_pad' },
-            '/splats/8': { channel: 8, type: 'xy_pad' },
-            '/splats/9': { channel: 9, type: 'xy_pad' },
-            '/splats/10': { channel: 10, type: 'xy_pad' },
-            
-            // Alternative TouchOSC XY Pad Support (multixy format)
+            // TouchOSC XY Pad Support (your primary format)
             '/multixy/1': { channel: 1, type: 'xy_pad' },
             '/multixy/2': { channel: 2, type: 'xy_pad' },
             '/multixy/3': { channel: 3, type: 'xy_pad' },
             '/multixy/4': { channel: 4, type: 'xy_pad' },
             '/multixy/5': { channel: 5, type: 'xy_pad' },
-            
-            // TouchOSC might send separate axis messages
-            '/multixy/1/x': { param: 'SPLAT_1_X', min: 0, max: 1, type: 'slider' },
-            '/multixy/1/y': { param: 'SPLAT_1_Y', min: 0, max: 1, type: 'slider' },
-            '/multixy/2/x': { param: 'SPLAT_2_X', min: 0, max: 1, type: 'slider' },
-            '/multixy/2/y': { param: 'SPLAT_2_Y', min: 0, max: 1, type: 'slider' },
-            '/multixy/3/x': { param: 'SPLAT_3_X', min: 0, max: 1, type: 'slider' },
-            '/multixy/3/y': { param: 'SPLAT_3_Y', min: 0, max: 1, type: 'slider' },
-            '/multixy/4/x': { param: 'SPLAT_4_X', min: 0, max: 1, type: 'slider' },
-            '/multixy/4/y': { param: 'SPLAT_4_Y', min: 0, max: 1, type: 'slider' },
-            '/multixy/5/x': { param: 'SPLAT_5_X', min: 0, max: 1, type: 'slider' },
-            '/multixy/5/y': { param: 'SPLAT_5_Y', min: 0, max: 1, type: 'slider' },
             
         };
     }
@@ -326,7 +256,7 @@ class FluidOSCServer {
                 return;
             }
         } else if (mapping.type === 'xy_pad') {
-            // Handle TouchOSC XY pad format
+            // Handle TouchOSC XY pad format - simple X/Y coordinates only
             const channel = mapping.channel;
             
             // TouchOSC sends two separate arguments: args[0] = y, args[1] = x (flipped for multixy)
@@ -334,57 +264,17 @@ class FluidOSCServer {
                 const x = 1.0 - Math.max(0, Math.min(1, args[1])); // Flipped X: use args[1] and invert (1-x)
                 const y = Math.max(0, Math.min(1, args[0])); // Flipped: use args[0] for Y
                 
-                // Calculate velocity-based fluid parameters
-                const channelKey = `multixy_${channel}`;
-                const lastPos = this.lastPositions[channelKey];
-                let splatRadius = this.baseSplatRadius;
-                let vorticity = this.baseVorticity;
-                let velocityInfo = "";
-                
-                if (lastPos) {
-                    // Calculate distance moved
-                    const deltaX = x - lastPos.x;
-                    const deltaY = y - lastPos.y;
-                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                    
-                    // Convert distance to velocity (distance per time)
-                    const velocity = distance / (this.throttleInterval / 1000); // distance per second
-                    
-                    // Scale velocity to fluid parameters
-                    const velocityFactor = Math.min(1.0, velocity * this.velocityMultiplier);
-                    splatRadius = this.baseSplatRadius + (velocityFactor * (this.maxSplatRadius - this.baseSplatRadius));
-                    vorticity = this.baseVorticity + (velocityFactor * (this.maxVorticity - this.baseVorticity));
-                    
-                    velocityInfo = `, Radius=${splatRadius.toFixed(3)}, Vorticity=${vorticity.toFixed(1)} (v=${velocity.toFixed(2)})`;
-                }
-                
-                // Store current position for next calculation
-                this.lastPositions[channelKey] = { x, y };
-                
-                // Send X, Y, and velocity-adjusted fluid parameters
+                // Send simple X/Y coordinates
                 const xMessage = {
                     type: 'osc_message',
-                    parameter: `SPLAT_${channel}_X`,
+                    parameter: `OSC_SPLAT_${channel}_X`,
                     value: x
                 };
                 
                 const yMessage = {
                     type: 'osc_message',
-                    parameter: `SPLAT_${channel}_Y`,
+                    parameter: `OSC_SPLAT_${channel}_Y`,
                     value: y
-                };
-                
-                // Send velocity-adjusted parameters for this specific splat channel
-                const radiusMessage = {
-                    type: 'osc_message',
-                    parameter: `SPLAT_${channel}_RADIUS`,
-                    value: splatRadius
-                };
-                
-                const vorticityMessage = {
-                    type: 'osc_message',
-                    parameter: `SPLAT_${channel}_VORTICITY`,
-                    value: vorticity
                 };
                 
                 // Broadcast to WebSocket clients
@@ -392,72 +282,36 @@ class FluidOSCServer {
                     if (client.readyState === 1) { // WebSocket.OPEN
                         client.send(JSON.stringify(xMessage));
                         client.send(JSON.stringify(yMessage));
-                        client.send(JSON.stringify(radiusMessage));
-                        client.send(JSON.stringify(vorticityMessage));
                     }
                 });
                 
-                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)}${velocityInfo}`);
+                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)}`);
                 return; // Already broadcast, don't continue
             } else if (Array.isArray(value) && value.length >= 2) {
                 // Fallback: XY pad sending [y, x] array (flipped for multixy)
                 const x = 1.0 - Math.max(0, Math.min(1, value[1])); // Flipped X: use value[1] and invert (1-x)
                 const y = Math.max(0, Math.min(1, value[0])); // Flipped: use value[0] for Y
                 
-                // Calculate velocity-based fluid parameters (same logic as above)
-                const channelKey = `multixy_${channel}`;
-                const lastPos = this.lastPositions[channelKey];
-                let splatRadius = this.baseSplatRadius;
-                let vorticity = this.baseVorticity;
-                let velocityInfo = "";
-                
-                if (lastPos) {
-                    const deltaX = x - lastPos.x;
-                    const deltaY = y - lastPos.y;
-                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                    const velocity = distance / (this.throttleInterval / 1000);
-                    const velocityFactor = Math.min(1.0, velocity * this.velocityMultiplier);
-                    splatRadius = this.baseSplatRadius + (velocityFactor * (this.maxSplatRadius - this.baseSplatRadius));
-                    vorticity = this.baseVorticity + (velocityFactor * (this.maxVorticity - this.baseVorticity));
-                    velocityInfo = `, Radius=${splatRadius.toFixed(3)}, Vorticity=${vorticity.toFixed(1)} (v=${velocity.toFixed(2)})`;
-                }
-                
-                this.lastPositions[channelKey] = { x, y };
-                
                 const xMessage = {
                     type: 'osc_message',
-                    parameter: `SPLAT_${channel}_X`,
+                    parameter: `OSC_SPLAT_${channel}_X`,
                     value: x
                 };
                 
                 const yMessage = {
                     type: 'osc_message',
-                    parameter: `SPLAT_${channel}_Y`,
+                    parameter: `OSC_SPLAT_${channel}_Y`,
                     value: y
-                };
-                
-                const radiusMessage = {
-                    type: 'osc_message',
-                    parameter: `SPLAT_${channel}_RADIUS`,
-                    value: splatRadius
-                };
-                
-                const vorticityMessage = {
-                    type: 'osc_message',
-                    parameter: `SPLAT_${channel}_VORTICITY`,
-                    value: vorticity
                 };
                 
                 this.clients.forEach(client => {
                     if (client.readyState === 1) {
                         client.send(JSON.stringify(xMessage));
                         client.send(JSON.stringify(yMessage));
-                        client.send(JSON.stringify(radiusMessage));
-                        client.send(JSON.stringify(vorticityMessage));
                     }
                 });
                 
-                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)}${velocityInfo}`);
+                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)}`);
                 return;
             } else {
                 console.log(`⚠️  TouchOSC XY Pad ${channel}: Expected 2 args, got ${args.length}: [${args.join(', ')}]`);
