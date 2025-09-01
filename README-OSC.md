@@ -111,6 +111,46 @@ You'll see output like:
 - `/action/screenshot` → Take screenshot
 - `/action/record` → Toggle recording
 
+### Splat Position Controls
+
+#### Single Splat (Legacy)
+- `/splat/x` (0.0 - 1.0) → X position (0 = left, 1 = right)
+- `/splat/y` (0.0 - 1.0) → Y position (0 = bottom, 1 = top)
+- `/splat/force` (0.1 - 3.0) → Splat force intensity
+- `/splat/trigger [x, y, force]` → Create splat at position
+
+#### Multi-Splat Control (10 Independent Channels)
+- `/splat/1/x` to `/splat/10/x` (0.0 - 1.0) → X position for channels 1-10
+- `/splat/1/y` to `/splat/10/y` (0.0 - 1.0) → Y position for channels 1-10
+- `/splat/1/force` to `/splat/10/force` (0.1 - 3.0) → Force for channels 1-10
+
+**Real-Time Drawing**: Moving any X or Y slider instantly creates a splat at that position!
+
+### Splat Examples
+```bash
+# Single splat (legacy method)
+/splat/x 0.5
+/splat/y 0.3        # Creates splat immediately at (0.5, 0.3)
+
+# Multi-splat channels - perfect for multi-touch control
+/splat/1/x 0.1      # Creates splat at channel 1 position
+/splat/2/x 0.9      # Creates splat at channel 2 position
+/splat/3/y 0.7      # Creates splat at channel 3 position
+
+# Set forces for different intensities
+/splat/1/force 1.0  # Gentle splat for channel 1
+/splat/2/force 2.5  # Strong splat for channel 2
+
+# Use multiple channels simultaneously
+/splat/1/x 0.2      # Splat on left
+/splat/2/x 0.8      # Splat on right (same time!)
+/splat/3/y 0.1      # Splat at bottom
+/splat/4/y 0.9      # Splat at top
+
+# Traditional trigger method still works
+/splat/trigger [0.5, 0.5, 2.0]
+```
+
 ## 🎯 Example TouchOSC Layout
 
 ### Page 1: Main Controls
@@ -136,6 +176,19 @@ You'll see output like:
 - Audio control sliders
 - Action buttons
 
+### Page 5: Single Splat Controls
+- XY Pad for `/splat/trigger [x, y]`
+- Slider for `/splat/force`
+- Individual sliders for `/splat/x` and `/splat/y`
+- Button to trigger splat at current position
+
+### Page 6: Multi-Splat Performance (10 Channels)
+- **Multi-Touch XY Grid**: 2x5 XY pads mapped to channels 1-10
+  - Top row: `/splat/1/x` & `/splat/1/y` through `/splat/5/x` & `/splat/5/y`
+  - Bottom row: `/splat/6/x` & `/splat/6/y` through `/splat/10/x` & `/splat/10/y`
+- **Force Bank**: 10 mini sliders for `/splat/1/force` through `/splat/10/force`
+- **Quick Presets**: Buttons to set all forces to 0.5, 1.0, 1.5, 2.0, 2.5
+
 ## 🔧 Troubleshooting
 
 ### OSC Status Shows "Disconnected"
@@ -156,7 +209,10 @@ You'll see output like:
 ## 💡 Tips
 - Use TouchOSC's "High Frequency" mode for smooth control
 - Watch the server console for message confirmation
-- The browser shows connection status in top-right corner
+- The browser shows connection status in debug overlay (enable Debug Mode in Settings)
+- For splat controls, use XY Pads in TouchOSC for intuitive position control
+- Splat coordinates: (0,0) = bottom-left, (1,1) = top-right
+- Higher splat force values create more dramatic effects
 
 ---
 

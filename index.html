@@ -1191,6 +1191,11 @@
                 display: block;
             }
 
+            /* Hide scrollbar for OSC messages */
+            #oscMessages::-webkit-scrollbar {
+                display: none;
+            }
+
             .tooltip .tooltiptext::after {
                 content: "";
                 position: absolute;
@@ -1936,10 +1941,18 @@
             </div>
         </div>
 
-        <!-- Mobile Debug Overlay -->
-        <div id="mobileDebug" style="display: none !important; position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 12px; border-radius: 5px; z-index: 9999; max-width: 250px; font-family: monospace;">
-            <div><i class="fas fa-mobile-alt"></i> Mobile Debug</div>
+        <!-- Debug Overlay (OSC & Mobile) -->
+        <div id="mobileDebug" style="display: none !important; position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: white; padding: 12px; font-size: 12px; border-radius: 8px; z-index: 9999; max-width: 300px; font-family: monospace; border: 1px solid rgba(255,255,255,0.2);">
+            <div style="color: #00d4ff; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid rgba(0,212,255,0.3); padding-bottom: 4px;">
+                <i class="fas fa-bug"></i> Debug Info
+            </div>
             <div id="debugInfo"></div>
+            <div id="oscInfo" style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
+                <div style="color: #22c55e; font-weight: bold; margin-bottom: 6px;">
+                    <i class="fas fa-broadcast-tower"></i> OSC Messages:
+                </div>
+                <div id="oscMessages" style="max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px; border-left: 3px solid #22c55e; scrollbar-width: none; -ms-overflow-style: none;"></div>
+            </div>
         </div>
 
         <canvas id="fluidCanvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;"></canvas>
@@ -1960,7 +1973,7 @@
 
         <!-- Modern Control Panel -->
         <div class="control-panel" id="controlPanel">
-            <div class="panel-header" onclick="safeTogglePanel()" ontouchstart="safeTogglePanel()">
+            <div class="panel-header" onclick="safeTogglePanel()" ontouchstart="safeTogglePanel(); event.preventDefault();">
                 <span>AI Controls</span>
                 <span class="toggle-icon">▼</span>
             </div>
@@ -2047,7 +2060,7 @@
                             <span>Negative Prompt</span>
                             <div class="toggle-icon" id="negativePromptIcon">▶</div>
                         </div>
-                        <div class="advanced-content" id="negativePromptContent">
+                        <div class="advanced-content" id="negativePromptContent" style="max-height: 0; overflow: hidden; margin-top: 0;">
                             <div class="control-item">
                                 <input type="text" class="text-input" id="negativePromptInput" placeholder="blurry, low quality" title="Describe what you don't want the AI to generate" />
                             </div>
@@ -2653,7 +2666,19 @@
                     </div>
                     
                     <div class="advanced-content" id="settingsContent">
-                        <!-- API Key at top -->
+                        <!-- Debug Toggle at top -->
+                        <div class="control-item">
+                            <div class="toggle-container" onclick="toggleDebug()" ontouchstart="toggleDebug()">
+                                <span>Debug Mode <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Show OSC messages and debug overlay</span>
+                                </div></span>
+                                <div class="toggle-switch" id="debugToggle">
+                                    <div class="toggle-handle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- API Key -->
                         <div class="control-item">
                             <div class="control-label">
                                 <span>API Key</span>
@@ -2699,17 +2724,6 @@
                             <button class="modern-button secondary" onclick="showWelcomeOverlay()">
                                 About
                             </button>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="toggle-container" onclick="toggleDebug()" ontouchstart="toggleDebug()">
-                                <span>Debug Mode <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Show OSC messages and debug overlay</span>
-                                </div></span>
-                                <div class="toggle-switch" id="debugToggle">
-                                    <div class="toggle-handle"></div>
-                                </div>
-                            </div>
                         </div>
                         
                         <!-- Sliders at bottom -->
@@ -2791,6 +2805,40 @@
         <script src="./script.js"></script>
         
         <script>
+        // Mobile touch handling - prevent double-tap issues
+        document.addEventListener('DOMContentLoaded', function() {
+            // Remove redundant touch events that cause double-firing
+            const elements = document.querySelectorAll('[ontouchstart]');
+            elements.forEach(element => {
+                const touchHandler = element.getAttribute('ontouchstart');
+                const clickHandler = element.getAttribute('onclick');
+                
+                if (touchHandler && clickHandler) {
+                    // Remove the ontouchstart attribute to prevent double-firing
+                    element.removeAttribute('ontouchstart');
+                    
+                    // Add proper touch event listener that prevents default and stops propagation
+                    element.addEventListener('touchstart', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        // Execute the click handler function
+                        try {
+                            if (clickHandler.includes('(')) {
+                                // If it's a function call, evaluate it
+                                eval(clickHandler);
+                            } else {
+                                // If it's just a function name, call it
+                                window[clickHandler](e);
+                            }
+                        } catch (error) {
+                            console.error('Touch handler error:', error);
+                        }
+                    }, { passive: false });
+                }
+            });
+        });
+
         // Dynamic tooltip positioning
         document.addEventListener('DOMContentLoaded', function() {
             function positionTooltip(button, tooltip) {
