@@ -52,6 +52,7 @@ class FluidOSCServer {
             
             // Input Mode Toggles
             '/toggle/velocity_drawing': { param: 'VELOCITY_DRAWING', type: 'toggle' },
+            // FORCE_CLICK removed - mouse-only feature, should not be controlled via OSC
             '/toggle/fluid_drawing': { action: 'toggleFluidDrawing', type: 'button' },
             '/toggle/audio': { action: 'toggleAudioBlob', type: 'button' },
             '/toggle/camera': { action: 'toggleCamera', type: 'button' },
@@ -330,14 +331,20 @@ class FluidOSCServer {
                 const x = 1.0 - Math.max(0, Math.min(1, args[1])); // Flipped X: use args[1] and invert (1-x)
                 const y = Math.max(0, Math.min(1, args[0])); // Flipped: use args[0] for Y
                 
+                // Send velocity-based drawing only (old parameter system removed)
                 this.handleVelocityDrawing(channel, x, y);
-                return; // Already broadcast, don't continue
+                
+                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)} (velocity drawing only)`);
+                return;
             } else if (Array.isArray(value) && value.length >= 2) {
                 // Fallback: XY pad sending [y, x] array (flipped for multixy)
                 const x = 1.0 - Math.max(0, Math.min(1, value[1])); // Flipped X: use value[1] and invert (1-x)
                 const y = Math.max(0, Math.min(1, value[0])); // Flipped: use value[0] for Y
                 
+                // Send velocity-based drawing only (old parameter system removed)
                 this.handleVelocityDrawing(channel, x, y);
+                
+                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)} (velocity drawing only)`);
                 return;
             } else {
                 console.log(`⚠️  TouchOSC XY Pad ${channel}: Expected 2 args, got ${args.length}: [${args.join(', ')}]`);

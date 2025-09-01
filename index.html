@@ -2240,11 +2240,49 @@
                     </div>
                     
                     <div class="control-item">
+                        <div class="toggle-container" onclick="toggleAnimate()">
+                            <span>Animate</span>
+                            <div class="toggle-switch active" id="animateToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="toggleColorful()" ontouchstart="toggleColorful()">
+                            <span>Colorful</span>
+                            <div class="toggle-switch" id="colorfulToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="togglePaused()" ontouchstart="togglePaused()">
+                            <span>Paused</span>
+                            <div class="toggle-switch" id="pausedToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
                         <div class="toggle-container" onclick="toggleVelocityDrawing()" ontouchstart="toggleVelocityDrawing()">
                             <span>Velocity Drawing <div class="tooltip"><span class="info-icon">i</span>
-                                <span class="tooltiptext">Move cursor for velocity-based splats + click for radial burst effects!</span>
+                                <span class="tooltiptext">Move cursor for velocity-based splats (no click needed)</span>
                             </div></span>
                             <div class="toggle-switch" id="velocityDrawingToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="toggleForceClick()" ontouchstart="toggleForceClick()">
+                            <span>Force Click <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Click for radial burst effects!</span>
+                            </div></span>
+                            <div class="toggle-switch" id="forceClickToggle">
                                 <div class="toggle-handle"></div>
                             </div>
                         </div>
@@ -2306,36 +2344,12 @@
                         </div>
                     </div>
                     
-                        <!-- Toggles -->
-                        <div class="control-item">
-                        <div class="toggle-container" onclick="toggleColorful()" ontouchstart="toggleColorful()">
-                            <span>Colorful</span>
-                            <div class="toggle-switch" id="colorfulToggle">
-                                <div class="toggle-handle"></div>
-                            </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                        <div class="toggle-container" onclick="togglePaused()" ontouchstart="togglePaused()">
-                            <span>Paused</span>
-                            <div class="toggle-switch" id="pausedToggle">
-                                <div class="toggle-handle"></div>
-                            </div>
-                                </div>
-                        </div>
+
                         
                                                 <!-- Organic Animation Controls -->
                         <div class="group-title">ANIMATION</div>
                         
-                        <div class="control-item">
-                        <div class="toggle-container" onclick="toggleAnimate()">
-                            <span>Animate</span>
-                            <div class="toggle-switch active" id="animateToggle">
-                                <div class="toggle-handle"></div>
-                            </div>
-                            </div>
-                        </div>
+
                         
                         <div class="control-item">
                             <div class="control-label">
@@ -2793,6 +2807,33 @@
                                 </div>
                                 <div class="shortcut-item">
                                     <span>Ctrl+B:</span> Random Splats
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+C:</span> Toggle Colorful
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+R:</span> Reset Values
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+V:</span> Toggle Velocity Drawing
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+1:</span> Blooming Flower
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+2:</span> Fireworks
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+3:</span> Cotton Candy
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+4:</span> Bouncing Balls
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+5:</span> Forest Leaves
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+6:</span> Chrome Blob Waves
                                 </div>
                             </div>
                         </div>

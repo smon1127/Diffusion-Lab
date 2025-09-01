@@ -79,7 +79,8 @@ const desktopConfig = {
     SUNRAYS: true,              // Enable sunrays for desktop
     SUNRAYS_RESOLUTION: 196,
     SUNRAYS_WEIGHT: 0.4,
-    VELOCITY_DRAWING: false     // Velocity-based drawing intensity
+    VELOCITY_DRAWING: false,    // Velocity-based drawing intensity
+    FORCE_CLICK: false          // Click burst effects (MOUSE ONLY - never affects OSC)
 };
 
 const mobileConfig = {
@@ -109,7 +110,8 @@ const mobileConfig = {
     SUNRAYS: false,             // Disable sunrays for mobile
     SUNRAYS_RESOLUTION: 96,     // Lower sunrays resolution for mobile
     SUNRAYS_WEIGHT: 0.4,
-    VELOCITY_DRAWING: false     // Velocity-based drawing intensity
+    VELOCITY_DRAWING: false,    // Velocity-based drawing intensity
+    FORCE_CLICK: false          // Click burst effects (MOUSE ONLY - never affects OSC)
 };
 
 // Initialize config based on device type
@@ -150,12 +152,7 @@ const commonParams = {
     // Debug Parameters
     DEBUG_MODE: false,
     
-    // OSC Multi-splat channels (only 5 channels needed)
-    OSC_SPLAT_1_X: 0.2, OSC_SPLAT_1_Y: 0.2, OSC_SPLAT_1_FORCE: 1.0,
-    OSC_SPLAT_2_X: 0.8, OSC_SPLAT_2_Y: 0.2, OSC_SPLAT_2_FORCE: 1.0,
-    OSC_SPLAT_3_X: 0.5, OSC_SPLAT_3_Y: 0.5, OSC_SPLAT_3_FORCE: 1.0,
-    OSC_SPLAT_4_X: 0.2, OSC_SPLAT_4_Y: 0.8, OSC_SPLAT_4_FORCE: 1.0,
-    OSC_SPLAT_5_X: 0.8, OSC_SPLAT_5_Y: 0.8, OSC_SPLAT_5_FORCE: 1.0
+    // OSC Multi-splat channels REMOVED - replaced by OSC velocity drawing system
 };
 
 // Initialize config based on device type with common parameters
@@ -720,6 +717,7 @@ function updateToggleStates() {
     updateToggle('bloomToggle', config.BLOOM);
     updateToggle('sunraysToggle', config.SUNRAYS);
     updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
+    updateToggle('forceClickToggle', config.FORCE_CLICK);
     updateToggle('debugToggle', config.DEBUG_MODE);
 }
 
@@ -1000,6 +998,12 @@ function toggleVelocityDrawing() {
     saveConfig();
 }
 
+function toggleForceClick() {
+    config.FORCE_CLICK = !config.FORCE_CLICK;
+    updateToggle('forceClickToggle', config.FORCE_CLICK);
+    saveConfig();
+}
+
 function toggleSettings() {
     const content = document.getElementById('settingsContent');
     const toggle = document.getElementById('settingsIcon');
@@ -1066,6 +1070,16 @@ function toggleNegativePrompt() {
     }
 }
 
+// Prompt presets for keyboard shortcuts
+const PROMPT_PRESETS = [
+    'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere',
+    'spectacular fireworks display, colorful explosions in night sky, bright sparks and trails, celebration atmosphere, dynamic motion, festive lighting',
+    'fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light',
+    'bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere',
+    'autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene',
+    'chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion'
+];
+
 function setPrompt(promptText) {
     const promptInput = document.getElementById('promptInput');
     if (promptInput) {
@@ -1091,6 +1105,12 @@ function setPrompt(promptText) {
         }
         
         console.log('✅ Prompt set to:', promptText);
+    }
+}
+
+function setPromptPreset(presetIndex) {
+    if (presetIndex >= 0 && presetIndex < PROMPT_PRESETS.length) {
+        setPrompt(PROMPT_PRESETS[presetIndex]);
     }
 }
 
@@ -3376,6 +3396,13 @@ function updateColors (dt) {
         pointers.forEach(p => {
             p.color = generateColor();
         });
+        
+        // Update OSC pointer colors when colorful mode is enabled
+        if (window.oscPointers) {
+            Object.values(window.oscPointers).forEach(p => {
+                p.color = generateColor();
+            });
+        }
     }
 }
 
@@ -3851,6 +3878,11 @@ function createVelocityClickEffect(x, y, baseColor) {
 }
 
 function splat (x, y, dx, dy, color) {
+    // Debug logging for OSC splats
+    if (config.DEBUG_MODE) {
+        console.log(`🎨 SPLAT CALLED: pos(${x.toFixed(3)}, ${y.toFixed(3)}) delta(${dx.toFixed(1)}, ${dy.toFixed(1)}) color(${color.r.toFixed(2)}, ${color.g.toFixed(2)}, ${color.b.toFixed(2)})`);
+    }
+    
     splatProgram.bind();
     gl.uniform1i(splatProgram.uniforms.uTarget, velocity.read.attach(0));
     gl.uniform1f(splatProgram.uniforms.aspectRatio, canvas.width / canvas.height);
@@ -3866,26 +3898,8 @@ function splat (x, y, dx, dy, color) {
     dye.swap();
 }
 
-function performSplatAtPosition(x, y, force = 1.0) {
-    // Convert normalized coordinates (0-1) to texture coordinates (same as mouse/touch)
-    const texcoordX = x;
-    const texcoordY = 1.0 - y; // Flip Y coordinate to match WebGL coordinate system
-    
-    // Generate random velocity direction
-    const angle = Math.random() * Math.PI * 2;
-    const dx = Math.cos(angle) * force * config.SPLAT_FORCE;
-    const dy = Math.sin(angle) * force * config.SPLAT_FORCE;
-    
-    // Generate random color
-    const color = generateColor();
-    
-    // Perform the splat using texture coordinates (0-1 range, same as mouse/touch)
-    splat(texcoordX, texcoordY, dx, dy, color);
-    
-    if (config.DEBUG_MODE) {
-        console.log(`🎯 OSC Splat at (${x.toFixed(2)}, ${y.toFixed(2)}) with force ${force}`);
-    }
-}
+// performSplatAtPosition function REMOVED - replaced by OSC velocity drawing system
+// This function created random directional splats (shooting effect) which is unwanted
 
 function correctRadius (radius) {
     let aspectRatio = canvas.width / canvas.height;
@@ -4035,7 +4049,8 @@ window.addEventListener('keydown', e => {
     if (isTyping) return;
     
     // Require Ctrl modifier for shortcuts to avoid conflicts with text input
-    if (e.ctrlKey || e.metaKey) { // metaKey for Mac Cmd key
+    // Use only Ctrl key to avoid interfering with Mac Cmd shortcuts
+    if (e.ctrlKey) {
         if (e.code === 'KeyP') {
             e.preventDefault();
             config.PAUSED = !config.PAUSED;
@@ -4046,13 +4061,53 @@ window.addEventListener('keydown', e => {
             e.preventDefault();
             splatStack.push(parseInt(Math.random() * 20) + 5);
         }
+        if (e.code === 'KeyC') {
+            e.preventDefault();
+            config.COLORFUL = !config.COLORFUL;
+            updateToggle('colorfulToggle', config.COLORFUL);
+            saveConfig();
+        }
         if (e.code === 'KeyD') {
             e.preventDefault();
             toggleDebug();
         }
+        if (e.code === 'KeyR') {
+            e.preventDefault();
+            resetValues();
+        }
         if (e.code === 'KeyA') {
             e.preventDefault();
             toggleAnimate();
+        }
+        if (e.code === 'KeyV') {
+            e.preventDefault();
+            toggleVelocityDrawing();
+        }
+        
+        // Prompt preset shortcuts (Ctrl+1 through Ctrl+6)
+        if (e.code === 'Digit1') {
+            e.preventDefault();
+            setPromptPreset(0); // Blooming flower
+        }
+        if (e.code === 'Digit2') {
+            e.preventDefault();
+            setPromptPreset(1); // Fireworks
+        }
+        if (e.code === 'Digit3') {
+            e.preventDefault();
+            setPromptPreset(2); // Cotton candy
+        }
+        if (e.code === 'Digit4') {
+            e.preventDefault();
+            setPromptPreset(3); // Bouncing balls
+        }
+        if (e.code === 'Digit5') {
+            e.preventDefault();
+            setPromptPreset(4); // Forest leaves
+        }
+        if (e.code === 'Digit6') {
+            e.preventDefault();
+            setPromptPreset(5); // Chrome blob waves
         }
     }
 });
@@ -4069,8 +4124,8 @@ function updatePointerDownData (pointer, id, posX, posY) {
     pointer.deltaY = 0;
     pointer.color = generateColor();
     
-    // Create enhanced click effect when velocity drawing is enabled
-    if (config.VELOCITY_DRAWING) {
+    // Create enhanced click effect when force click is enabled AND not in velocity drawing mode
+    if (config.FORCE_CLICK && !config.VELOCITY_DRAWING) {
         createVelocityClickEffect(pointer.texcoordX, pointer.texcoordY, pointer.color);
     }
 }
@@ -8890,33 +8945,9 @@ function handleOSCMessage(message) {
             config[message.parameter] = message.value;
             console.log(`🎛️  Updated ${message.parameter} = ${message.value}`);
             
-            // Handle OSC splat position parameters with auto-trigger
-            if (message.parameter === 'OSC_SPLAT_X' || message.parameter === 'OSC_SPLAT_Y') {
-                const force = config.OSC_SPLAT_FORCE || 1.0;
-                performSplatAtPosition(config.OSC_SPLAT_X, config.OSC_SPLAT_Y, force);
-            } else if (message.parameter === 'OSC_SPLAT_FORCE') {
-                console.log(`🎯 OSC Splat force updated to ${message.value}`);
-            } else if (message.parameter.match(/^OSC_SPLAT_(\d+)_[XY]$/)) {
-                // Handle multi-splat channels (OSC_SPLAT_1_X, OSC_SPLAT_2_Y, etc.)
-                const match = message.parameter.match(/^OSC_SPLAT_(\d+)_([XY])$/);
-                const channelNum = match[1];
-                const axis = match[2];
-                
-                // Get current values for this channel
-                const x = config[`OSC_SPLAT_${channelNum}_X`] || 0.5;
-                const y = config[`OSC_SPLAT_${channelNum}_Y`] || 0.5;
-                const force = config[`OSC_SPLAT_${channelNum}_FORCE`] || 1.0;
-                
-                // Auto-trigger splat for this channel
-                performSplatAtPosition(x, y, force);
-                console.log(`🎯 Multi-splat ${channelNum} (${axis}): ${x}, ${y} @ ${force}`);
-            } else if (message.parameter.match(/^OSC_SPLAT_(\d+)_FORCE$/)) {
-                const channelNum = message.parameter.match(/^OSC_SPLAT_(\d+)_FORCE$/)[1];
-                console.log(`🎯 Multi-splat ${channelNum} force updated to ${message.value}`);
-            } else {
-                // Update UI elements for non-OSC parameters
-                updateUIFromConfig(message.parameter, message.value);
-            }
+            // OLD OSC splat system REMOVED - now using OSC velocity drawing system only
+            // Update UI elements for parameters
+            updateUIFromConfig(message.parameter, message.value);
             
             // Save config
             saveConfig();
@@ -8966,7 +8997,8 @@ function updateUIFromConfig(parameter, value) {
         'COLORFUL': 'colorfulToggle',
         'PAUSED': 'pausedToggle',
         'ANIMATE': 'animateToggle',
-        'VELOCITY_DRAWING': 'velocityDrawingToggle'
+        'VELOCITY_DRAWING': 'velocityDrawingToggle',
+        'FORCE_CLICK': 'forceClickToggle'
     };
     
     const toggleId = toggleMappings[parameter];
@@ -9002,15 +9034,9 @@ function executeOSCAction(action, value) {
             toggleVideoRecording();
             break;
         case 'splatAt':
-            if (Array.isArray(value) && value.length >= 2) {
-                const x = Math.max(0, Math.min(1, value[0]));
-                const y = Math.max(0, Math.min(1, value[1]));
-                const force = value.length >= 3 ? value[2] : 1.0;
-                performSplatAtPosition(x, y, force);
-                console.log(`🎯 OSC Action Splat at (${x.toFixed(3)}, ${y.toFixed(3)}) with force ${force}`);
-            } else {
-                console.log(`⚠️  Invalid splatAt value format: expected [x, y, force?], got:`, value);
-            }
+            // REMOVED - performSplatAtPosition created shooting effects
+            // Use OSC velocity drawing system instead for smooth directional splats
+            console.log(`⚠️  splatAt action disabled - use OSC velocity drawing system instead`);
             break;
         default:
             console.log(`⚠️  Unknown OSC action: ${action}`);
@@ -9019,6 +9045,9 @@ function executeOSCAction(action, value) {
 
 function handleOSCVelocityDrawing(message) {
     const { channel, x, y, deltaX, deltaY, drawingType } = message;
+    
+    // OSC velocity drawing is completely isolated from mouse click effects
+    // Never triggers FORCE_CLICK or createVelocityClickEffect
     
     // Create or get OSC pointer for this channel
     const pointerId = `osc_${channel}`;
@@ -9049,6 +9078,12 @@ function handleOSCVelocityDrawing(message) {
         if (config.DEBUG_MODE) {
             console.log(`🎯 OSC Velocity Drawing ${channel}: Started at (${x.toFixed(3)}, ${y.toFixed(3)}) -> tex(${texcoordX.toFixed(3)}, ${texcoordY.toFixed(3)})`);
         }
+        
+        // Create a small test splat on start to verify the system is working
+        const testColor = generateColor();
+        splat(texcoordX, texcoordY, 100, 100, testColor);
+        console.log(`🧪 Test splat created at (${texcoordX.toFixed(3)}, ${texcoordY.toFixed(3)}) with color:`, testColor);
+        
         return;
     }
     
@@ -9080,12 +9115,18 @@ function handleOSCVelocityDrawing(message) {
         pointer.deltaY *= velocityMultiplier;
         
         // Create splat using velocity drawing logic
+        if (config.DEBUG_MODE) {
+            console.log(`🎯 OSC Movement Check: deltaX=${deltaX.toFixed(4)}, deltaY=${deltaY.toFixed(4)}, moved=${pointer.moved}`);
+        }
+        
         if (pointer.moved) {
             splat(pointer.texcoordX, pointer.texcoordY, pointer.deltaX, pointer.deltaY, pointer.color);
             
             if (config.DEBUG_MODE) {
                 console.log(`🎯 OSC Splat: pos(${pointer.texcoordX.toFixed(3)}, ${pointer.texcoordY.toFixed(3)}) delta(${pointer.deltaX.toFixed(1)}, ${pointer.deltaY.toFixed(1)}) v=${velocity.toFixed(2)}`);
             }
+        } else if (config.DEBUG_MODE) {
+            console.log(`⚠️ OSC: No movement detected (threshold=0.001)`);
         }
         
         if (config.DEBUG_MODE) {
