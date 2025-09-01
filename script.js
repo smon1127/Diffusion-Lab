@@ -3299,6 +3299,7 @@ multipleSplats(parseInt(Math.random() * 20) + 5);
 
 let lastUpdateTime = Date.now();
 let colorUpdateTimer = 0.0;
+let previousColorfulState = config.COLORFUL;
 let isFluidVisible = true; // Track fluid visibility for performance optimization
 let performanceStats = { skippedFrames: 0, renderedFrames: 0 }; // Performance monitoring
 update();
@@ -3388,6 +3389,29 @@ function resizeCanvas () {
 }
 
 function updateColors (dt) {
+    // Check if colorful mode state has changed
+    if (previousColorfulState !== config.COLORFUL) {
+        // Colorful mode state changed - update all pointer colors immediately
+        pointers.forEach(p => {
+            p.color = generateColor();
+        });
+        
+        if (window.oscPointers) {
+            Object.values(window.oscPointers).forEach(p => {
+                p.color = generateColor();
+                if (config.DEBUG_MODE) {
+                    console.log(`🎨 OSC Color Updated (mode changed):`, p.color);
+                }
+            });
+        }
+        
+        previousColorfulState = config.COLORFUL;
+        
+        if (config.DEBUG_MODE) {
+            console.log(`🎨 Colorful mode changed to: ${config.COLORFUL}`);
+        }
+    }
+    
     if (!config.COLORFUL) return;
 
     colorUpdateTimer += dt * config.COLOR_UPDATE_SPEED;
