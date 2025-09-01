@@ -14,6 +14,14 @@ npm install
 ./start-osc.sh
 ```
 
+> **⚠️ IMPORTANT NOTE FOR DEVELOPMENT:**  
+> When making changes to OSC code, you need to:
+> 1. **Kill the server**: `pkill -f "node local-osc-server.js"`
+> 2. **Reload the web page** (to pick up client-side changes)
+> 3. **Restart the server**: `./start-osc.sh`
+> 
+> This ensures both server-side and client-side changes are loaded and the WebSocket connection is fresh.
+
 You'll see output like:
 ```
 🚀 Fluid OSC Server Started
