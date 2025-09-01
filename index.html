@@ -11,6 +11,9 @@
 
         <!-- Favicon removed - logo.png file not available -->
         <link rel="stylesheet" href="coloris.min.css">
+        
+        <!-- FontAwesome for icons -->
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
         <title>Fluid Diffusion Lab</title>
         <meta name="description" content="Transform fluid dynamics into stunning generative art with real-time AI processing.">
@@ -1003,6 +1006,207 @@
                 box-shadow: 0 0 8px rgba(0, 212, 255, 0.4) !important;
             }
 
+            /* Stream Overlay Styles */
+            .stream-overlay {
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: calc(100vh - 40px);
+                height: calc(100vh - 40px);
+                background: transparent;
+                border: none;
+                border-radius: 12px;
+                box-shadow: none;
+                z-index: 1000;
+                display: none;
+                overflow: hidden;
+                pointer-events: none;
+            }
+
+            .stream-overlay.visible {
+                display: block;
+            }
+
+            .stream-overlay-content {
+                width: 100%;
+                height: 100%;
+                position: relative;
+                pointer-events: none;
+            }
+
+            .stream-overlay iframe {
+                width: 100%;
+                height: 100%;
+                border: none;
+                border-radius: 12px;
+                pointer-events: none;
+                opacity: 0.8;
+                transition: opacity 0.3s ease;
+            }
+
+            /* Hide video UI elements with CSS overlay */
+            .stream-overlay-content::after {
+                content: '';
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 60px;
+                background: transparent;
+                pointer-events: none;
+                z-index: 10;
+            }
+
+            /* Solid overlay to completely hide video UI controls */
+
+
+            .stream-overlay-loading {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                color: var(--text-secondary);
+                font-size: 14px;
+                text-align: center;
+            }
+
+            /* Stream Control Buttons Row */
+            .stream-controls-row {
+                display: flex;
+                flex-direction: row;
+                gap: 8px;
+                align-items: center;
+                justify-content: flex-start;
+                margin-top: 12px;
+            }
+
+            .stream-control-button {
+                position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 36px;
+                height: 36px;
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 8px;
+                color: var(--text-primary);
+                cursor: pointer;
+                transition: all 0.2s ease;
+                font-size: 14px;
+            }
+
+            .stream-control-button:hover {
+                background: rgba(255, 255, 255, 0.2);
+                border-color: var(--accent-color);
+                transform: scale(1.05);
+            }
+
+            .stream-control-button.primary {
+                background: rgba(255, 255, 255, 0.15);
+                border-color: rgba(255, 255, 255, 0.3);
+                color: #fff;
+                flex: 1;
+                justify-content: flex-start;
+                padding: 0 12px;
+                gap: 8px;
+                font-weight: 600;
+                width: 100%;
+                min-width: 0;
+            }
+
+            .stream-control-button.primary:hover {
+                background: rgba(255, 255, 255, 0.25);
+                border-color: rgba(255, 255, 255, 0.4);
+            }
+
+            /* Tooltip System */
+            .tooltip {
+                position: relative;
+                display: inline-block;
+            }
+
+            .tooltip .tooltiptext {
+                visibility: hidden;
+                width: max-content;
+                max-width: 200px;
+                background-color: rgba(0, 0, 0, 0.9);
+                color: #fff;
+                text-align: center;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 11px;
+                font-weight: 500;
+                position: absolute;
+                z-index: 1001;
+                bottom: 110%;
+                left: 50%;
+                transform: translateX(-50%);
+                opacity: 0;
+                transition: opacity 0.2s, visibility 0.2s;
+                pointer-events: none;
+                white-space: nowrap;
+            }
+
+            /* Tooltip inside button positioning - new approach */
+            .stream-control-button {
+                position: relative;
+            }
+
+            .stream-control-button .tooltiptext {
+                visibility: hidden;
+                width: max-content;
+                max-width: 200px;
+                background-color: rgba(0, 0, 0, 0.9);
+                color: #fff;
+                text-align: center;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 11px;
+                font-weight: 500;
+                position: fixed;
+                z-index: 1001;
+                opacity: 0;
+                transition: opacity 0.2s, visibility 0.2s;
+                pointer-events: none;
+                white-space: nowrap;
+                display: none; /* Ensure tooltip is completely hidden by default */
+            }
+
+            .stream-control-button .tooltiptext::after {
+                content: "";
+                position: absolute;
+                top: 100%;
+                left: 50%;
+                margin-left: -5px;
+                border-width: 5px;
+                border-style: solid;
+                border-color: rgba(0, 0, 0, 0.9) transparent transparent transparent;
+            }
+
+            .stream-control-button:hover .tooltiptext {
+                visibility: visible;
+                opacity: 1;
+                display: block;
+            }
+
+            .tooltip .tooltiptext::after {
+                content: "";
+                position: absolute;
+                top: 100%;
+                left: 50%;
+                margin-left: -5px;
+                border-width: 5px;
+                border-style: solid;
+                border-color: rgba(0, 0, 0, 0.9) transparent transparent transparent;
+            }
+
+            .tooltip:hover .tooltiptext {
+                visibility: visible;
+                opacity: 1;
+            }
+
             /* Position hex input to the left of color preview */
             .clr-field {
                 display: flex !important;
@@ -1159,7 +1363,7 @@
             }
             
             .camera-preview::after {
-                content: "📹 LIVE";
+                content: "🔴 LIVE";
                 position: absolute;
                 top: 12px;
                 right: 12px;
@@ -1679,22 +1883,22 @@
                 <div class="welcome-features">
                     <div class="feature-grid">
                         <div class="feature-item">
-                            <div class="feature-icon">🎨</div>
+                            <div class="feature-icon"><i class="fas fa-paint-brush"></i></div>
                             <h3>Fluid Effects</h3>
                             <p>Interactive fluid simulation with customizable physics</p>
                         </div>
                         <div class="feature-item">
-                            <div class="feature-icon">🖼️</div>
+                            <div class="feature-icon"><i class="fas fa-image"></i></div>
                             <h3>Media Backgrounds</h3>
                             <p>Upload images or videos as animated backgrounds</p>
                         </div>
                         <div class="feature-item">
-                            <div class="feature-icon">📷</div>
+                            <div class="feature-icon"><i class="fas fa-camera"></i></div>
                             <h3>Camera Feed</h3>
                             <p>Use your camera as a live background</p>
                         </div>
                         <div class="feature-item">
-                            <div class="feature-icon">🤖</div>
+                            <div class="feature-icon"><i class="fas fa-robot"></i></div>
                             <h3>AI Stream Diffusion</h3>
                             <p>Transform your fluid effects with AI-powered streaming</p>
                         </div>
@@ -1734,7 +1938,7 @@
 
         <!-- Mobile Debug Overlay -->
         <div id="mobileDebug" style="display: none !important; position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 12px; border-radius: 5px; z-index: 9999; max-width: 250px; font-family: monospace;">
-            <div>📱 Mobile Debug</div>
+            <div><i class="fas fa-mobile-alt"></i> Mobile Debug</div>
             <div id="debugInfo"></div>
         </div>
 
@@ -1745,6 +1949,14 @@
         
         <!-- Hidden file input for media selection -->
         <input type="file" id="mediaFileInput" accept="image/*,video/*" style="display: none;" />
+
+        <!-- Stream Overlay -->
+        <div id="streamOverlay" class="stream-overlay">
+            <div class="stream-overlay-content">
+                <div class="stream-overlay-loading" id="streamOverlayLoading">Loading stream...</div>
+                <iframe id="streamOverlayFrame" src="" style="display: none;"></iframe>
+            </div>
+        </div>
 
         <!-- Modern Control Panel -->
         <div class="control-panel" id="controlPanel">
@@ -1765,12 +1977,43 @@
                         <button class="modern-button" id="streamButton" onclick="safeToggleStream()" ontouchstart="safeToggleStream()">
                             Start Stream
                         </button>
-                        <button class="modern-button secondary" id="copyStreamUrlButton" 
-                                onclick="copyStreamUrlToClipboard()" 
-                                oncontextmenu="event.preventDefault(); copyStreamUrlToClipboard(true);"
-                                style="display: none;">
-                            📋 Copy Stream URL
-                        </button>
+                        <div class="stream-controls-row" id="streamControlsRow" style="display: none;">
+                            <div class="tooltip" style="flex: 1; min-width: 0; position: relative;">
+                                <button class="stream-control-button primary" id="copyStreamUrlButton" 
+                                        onclick="copyStreamUrlToClipboard()" 
+                                        oncontextmenu="event.preventDefault(); copyStreamUrlToClipboard(true);">
+                                    <i class="fas fa-copy"></i>
+                                    <span>Copy URL</span>
+                                    <span class="tooltiptext">Copy Stream URL</span>
+                                </button>
+                            </div>
+                            <div class="tooltip">
+                                <button class="stream-control-button" id="popOutStreamButtonUI" 
+                                        onclick="popOutStream()">
+                                    <i class="fas fa-external-link-alt"></i>
+                                </button>
+                                <span class="tooltiptext">Pop-Out Stream</span>
+                            </div>
+                            <div class="tooltip">
+                                <button class="stream-control-button" id="hideStreamToggle" 
+                                        onclick="toggleStreamVisibility()">
+                                    <i class="fas fa-eye" id="hideStreamIcon"></i>
+                                </button>
+                                <span class="tooltiptext" id="hideStreamTooltip">Hide Stream</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item" id="streamOpacityContainer" style="display: none;">
+                        <div class="control-label">
+                            <span>Stream Opacity</span>
+                            <input type="text" class="control-value number-input" id="streamOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                        </div>
+                        <div class="slider-container" onclick="handleSliderClick(event, 'streamOpacity', 0, 1)">
+                            <div class="slider-fill" id="streamOpacityFill" style="width: 80%">
+                                <div class="slider-handle" id="streamOpacityHandle"></div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="control-item">
@@ -1818,25 +2061,25 @@
                     
                     <div class="control-item">
                         <button class="modern-button secondary" id="fluidDrawingButton" onclick="safeToggleFluidDrawing()" ontouchstart="safeToggleFluidDrawing()">
-                            🎨 Fluid Drawing
+                            <i class="fas fa-paint-brush"></i> Fluid Drawing
                         </button>
                     </div>
                     
                     <div class="control-item">
                         <button class="modern-button secondary" id="audioBlobButton" onclick="safeToggleAudioBlob()" ontouchstart="safeToggleAudioBlob()">
-                            🎵 Audio
+                            <i class="fas fa-music"></i> Audio
                         </button>
                     </div>
                     
                     <div class="control-item">
                         <button class="modern-button secondary" id="cameraButton" onclick="toggleCamera()">
-                            📹 Camera
+                            <i class="fas fa-video"></i> Camera
                         </button>
                     </div>
                     
                     <div class="control-item">
                         <button class="modern-button secondary" id="mediaButton" onclick="toggleMedia()">
-                            🎬 Media
+                            <i class="fas fa-video"></i> Media
                         </button>
                     </div>
                     
@@ -1852,7 +2095,7 @@
 
                             <div class="control-item">
                                 <button class="modern-button secondary" id="previewAudioButton" onclick="toggleAudioPreview()" style="display: none;">
-                                    🔊 Preview Audio
+                                    <i class="fas fa-volume-up"></i> Preview Audio
                                 </button>
                             </div>
                             
@@ -2005,13 +2248,13 @@
                             <input type="file" id="mediaUpload" accept=".png,.jpg,.jpeg,.mp4,.webm,.mov" style="display: none;">
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 <button class="modern-button secondary" onclick="document.getElementById('mediaUpload').click()">
-                                    📁 Choose Media
+                                    <i class="fas fa-folder-open"></i> Choose Media
                                 </button>
                                 <button class="modern-button secondary" id="clearFluidMediaButton" onclick="clearFluidBackgroundMediaOnly()" style="display: none;">
-                                    🗑️ Clear Media
+                                    <i class="fas fa-trash-alt"></i> Clear Media
                                 </button>
                                 <button class="modern-button secondary" id="fluidCameraButton" onclick="toggleFluidBackgroundCamera()">
-                                    📷 Camera
+                                    <i class="fas fa-camera"></i> Camera
                                 </button>
                             </div>
 
@@ -2546,6 +2789,50 @@
 
         <script src="coloris.min.js"></script>
         <script src="./script.js"></script>
+        
+        <script>
+        // Dynamic tooltip positioning
+        document.addEventListener('DOMContentLoaded', function() {
+            function positionTooltip(button, tooltip) {
+                const rect = button.getBoundingClientRect();
+                
+                // Make tooltip visible temporarily to measure it
+                tooltip.style.display = 'block';
+                tooltip.style.visibility = 'visible';
+                tooltip.style.opacity = '0';
+                const tooltipRect = tooltip.getBoundingClientRect();
+                tooltip.style.display = 'none';
+                tooltip.style.visibility = 'hidden';
+                tooltip.style.opacity = '';
+                
+                // Calculate center position
+                const centerX = rect.left + (rect.width / 2);
+                const topY = rect.top - tooltipRect.height - 12;
+                
+                // Position tooltip centered above button
+                tooltip.style.left = (centerX - (tooltipRect.width / 2)) + 'px';
+                tooltip.style.top = Math.max(10, topY) + 'px'; // Prevent tooltip from going off-screen
+            }
+            
+            const buttons = document.querySelectorAll('.stream-control-button');
+            
+            buttons.forEach(button => {
+                const tooltip = button.querySelector('.tooltiptext');
+                if (!tooltip) return;
+                
+                button.addEventListener('mouseenter', function() {
+                    positionTooltip(button, tooltip);
+                });
+                
+                // Also reposition on window resize
+                window.addEventListener('resize', function() {
+                    if (tooltip.style.visibility === 'visible') {
+                        positionTooltip(button, tooltip);
+                    }
+                });
+            });
+        });
+        </script>
         <script>
             // Mobile-friendly tooltip system
             document.addEventListener('DOMContentLoaded', function() {

@@ -585,7 +585,8 @@ function updateSliderValue(sliderName, percentage, skipSave = false, updateInput
         'audioDelay': { min: 0, max: 500, prop: 'AUDIO_DELAY', decimals: 0, handler: updateAudioDelay },
         'audioOpacity': { min: 0, max: 1, prop: 'AUDIO_OPACITY', decimals: 2, handler: updateAudioOpacity },
         'audioColorful': { min: 0, max: 1, prop: 'AUDIO_COLORFUL', decimals: 1, handler: updateAudioColorful },
-        'audioEdgeSoftness': { min: 0, max: 1, prop: 'AUDIO_EDGE_SOFTNESS', decimals: 2, handler: updateAudioEdgeSoftness }
+        'audioEdgeSoftness': { min: 0, max: 1, prop: 'AUDIO_EDGE_SOFTNESS', decimals: 2, handler: updateAudioEdgeSoftness },
+        'streamOpacity': { min: 0, max: 1, prop: 'STREAM_OPACITY', decimals: 2, handler: updateStreamOpacity }
     };
     
     const slider = sliderMap[sliderName];
@@ -4311,12 +4312,26 @@ function updateStreamButton(isStreaming) {
         button.className = isStreaming ? 'modern-button streaming' : 'modern-button';
     }
     
-    // Show/hide copy stream URL button based on whether we have a valid stream
-    const copyButton = document.getElementById('copyStreamUrlButton');
-    if (copyButton) {
-        // Show button if we have a playback ID (stream exists), regardless of popup state
-        const hasValidStream = streamState.playbackId && streamState.streamId;
-        copyButton.style.display = hasValidStream ? 'block' : 'none';
+    // Show/hide stream controls row and opacity based on whether we have a valid stream
+    const streamControlsRow = document.getElementById('streamControlsRow');
+    const opacityContainer = document.getElementById('streamOpacityContainer');
+    
+    const hasValidStream = streamState.playbackId && streamState.streamId && isStreaming;
+    
+    if (streamControlsRow) {
+        streamControlsRow.style.display = hasValidStream ? 'flex' : 'none';
+    }
+    
+    if (opacityContainer) {
+        opacityContainer.style.display = hasValidStream ? 'block' : 'none';
+    }
+    
+    // Reset hide button state when stream stops
+    if (!hasValidStream) {
+        const hideIcon = document.getElementById('hideStreamIcon');
+        const hideTooltip = document.getElementById('hideStreamTooltip');
+        if (hideIcon) hideIcon.className = 'fas fa-eye';
+        if (hideTooltip) hideTooltip.textContent = 'Hide Stream';
     }
 }
 
@@ -4692,9 +4707,9 @@ async function startStream() {
         // Update button visibility now that we have a valid stream
         updateStreamButton(false); // Update copy button visibility
         
-        // Open popup window
+        // Open stream overlay instead of popup window
         updateStreamStatus('Opening player...', 'connecting');
-        streamState.popupWindow = openStreamPopup(streamState.playbackId);
+        openStreamOverlay(streamState.playbackId);
         
         // Setup WebRTC connection
         updateStreamStatus('Connecting to stream...', 'connecting');
@@ -4820,6 +4835,9 @@ function stopStream() {
         console.log('🔄 Stopped continuous prompt updates');
     }
     
+    // Close stream overlay when stopping
+    closeStreamOverlay();
+    
     // Reset connection state but preserve stream IDs and popup for reuse
     // streamState.streamId, playbackId, whipUrl, popupWindow are kept for reconnection
     streamState.lastParameterUpdate = 0;
@@ -4836,6 +4854,138 @@ function toggleStream() {
         startStream();
     }
 }
+
+// Stream overlay management
+function openStreamOverlay(playbackId) {
+    const overlay = document.getElementById('streamOverlay');
+    const iframe = document.getElementById('streamOverlayFrame');
+    const loading = document.getElementById('streamOverlayLoading');
+    
+    if (!overlay || !iframe || !loading) {
+        console.error('Stream overlay elements not found');
+        return;
+    }
+    
+    const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force`;
+    console.log('🔄 Loading stream URL in overlay:', streamUrl);
+    
+    // Show overlay
+    overlay.classList.add('visible');
+    
+    // Show loading state
+    loading.style.display = 'block';
+    iframe.style.display = 'none';
+    
+    // Set iframe source and show when loaded
+    iframe.onload = function() {
+        console.log('✅ Stream iframe loaded successfully');
+        loading.style.display = 'none';
+        iframe.style.display = 'block';
+    };
+    
+    // Add error handling
+    iframe.onerror = function() {
+        console.error('❌ Stream iframe failed to load');
+        loading.textContent = 'Failed to load stream';
+    };
+    
+    // Set a timeout to show if loading takes too long
+    setTimeout(() => {
+        if (loading.style.display !== 'none') {
+            console.warn('⚠️ Stream taking longer than expected to load');
+            loading.textContent = 'Stream loading...';
+        }
+    }, 10000);
+    
+    iframe.src = streamUrl;
+    
+    // Try to hide video controls after iframe loads
+    iframe.addEventListener('load', function() {
+        try {
+            // Attempt to hide video controls (may be blocked by CORS)
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            if (iframeDoc) {
+                const style = iframeDoc.createElement('style');
+                style.textContent = `
+                    video::-webkit-media-controls { display: none !important; }
+                    video::-webkit-media-controls-panel { display: none !important; }
+                    video::-webkit-media-controls-play-button { display: none !important; }
+                    video::-webkit-media-controls-volume-slider { display: none !important; }
+                    video::-webkit-media-controls-timeline { display: none !important; }
+                    video::-webkit-media-controls-current-time-display { display: none !important; }
+                    video::-webkit-media-controls-time-remaining-display { display: none !important; }
+                    video::-webkit-media-controls-fullscreen-button { display: none !important; }
+                    video { pointer-events: none !important; }
+                    .video-controls, .controls, .player-controls { display: none !important; }
+                    .vjs-control-bar { display: none !important; }
+                `;
+                iframeDoc.head.appendChild(style);
+                console.log('✅ Successfully injected video control hiding styles');
+            }
+        } catch (e) {
+            console.log('⚠️ Could not inject styles into iframe (CORS restriction):', e.message);
+        }
+    });
+    
+    console.log('🆕 Opened stream overlay');
+}
+
+function closeStreamOverlay(clearIframe = true) {
+    const overlay = document.getElementById('streamOverlay');
+    const iframe = document.getElementById('streamOverlayFrame');
+    
+    if (overlay) {
+        overlay.classList.remove('visible');
+    }
+    
+    // Only clear iframe if explicitly requested (when stopping stream)
+    if (clearIframe && iframe) {
+        iframe.src = '';
+    }
+    
+    console.log('🔄 Closed stream overlay');
+}
+
+function popOutStream() {
+    if (!streamState.playbackId) {
+        console.warn('No stream available to pop out');
+        return;
+    }
+    
+    // Keep the overlay visible, just open popup window
+    streamState.popupWindow = openStreamPopup(streamState.playbackId);
+    
+    console.log('🔄 Popped out stream to new window (overlay stays visible)');
+}
+
+function toggleStreamVisibility() {
+    const overlay = document.getElementById('streamOverlay');
+    const hideIcon = document.getElementById('hideStreamIcon');
+    const hideTooltip = document.getElementById('hideStreamTooltip');
+    
+    if (!overlay) return;
+    
+    const isVisible = overlay.classList.contains('visible');
+    
+    if (isVisible) {
+        overlay.classList.remove('visible');
+        if (hideIcon) hideIcon.className = 'fas fa-eye-slash';
+        if (hideTooltip) hideTooltip.textContent = 'Show Stream';
+    } else {
+        overlay.classList.add('visible');
+        if (hideIcon) hideIcon.className = 'fas fa-eye';
+        if (hideTooltip) hideTooltip.textContent = 'Hide Stream';
+        
+        // Ensure iframe is still loaded when showing again
+        const iframe = document.getElementById('streamOverlayFrame');
+        if (iframe && streamState.playbackId && !iframe.src) {
+            const streamUrl = `https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force`;
+            iframe.src = streamUrl;
+        }
+    }
+}
+
+
 
 // Audio Blob System
 
@@ -7456,6 +7606,16 @@ function updateAudioOpacity(value, updateInput = true) {
     audioBlobState.opacity = value;
     if (updateInput) {
         document.getElementById('audioOpacityValue').value = value.toFixed(2);
+    }
+}
+
+function updateStreamOpacity(value, updateInput = true) {
+    const iframe = document.getElementById('streamOverlayFrame');
+    if (iframe) {
+        iframe.style.opacity = value;
+    }
+    if (updateInput) {
+        document.getElementById('streamOpacityValue').value = value.toFixed(2);
     }
 }
 
