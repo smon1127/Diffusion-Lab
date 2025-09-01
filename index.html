@@ -1994,6 +1994,7 @@
                             <div class="tooltip" style="flex: 1; min-width: 0; position: relative;">
                                 <button class="stream-control-button primary" id="copyStreamUrlButton" 
                                         onclick="copyStreamUrlToClipboard()" 
+                                        ontouchstart="copyStreamUrlToClipboard(); event.preventDefault();"
                                         oncontextmenu="event.preventDefault(); copyStreamUrlToClipboard(true);">
                                     <i class="fas fa-copy"></i>
                                     <span>Copy URL</span>
@@ -2002,14 +2003,16 @@
                             </div>
                             <div class="tooltip">
                                 <button class="stream-control-button" id="popOutStreamButtonUI" 
-                                        onclick="popOutStream()">
+                                        onclick="popOutStream()" 
+                                        ontouchstart="popOutStream(); event.preventDefault();">
                                     <i class="fas fa-external-link-alt"></i>
                                 </button>
                                 <span class="tooltiptext">Pop-Out Stream</span>
                             </div>
                             <div class="tooltip">
                                 <button class="stream-control-button" id="hideStreamToggle" 
-                                        onclick="toggleStreamVisibility()">
+                                        onclick="toggleStreamVisibility()" 
+                                        ontouchstart="toggleStreamVisibility(); event.preventDefault();">
                                     <i class="fas fa-eye" id="hideStreamIcon"></i>
                                 </button>
                                 <span class="tooltiptext" id="hideStreamTooltip">Hide Stream</span>
@@ -2022,7 +2025,7 @@
                             <span>Stream Opacity</span>
                             <input type="text" class="control-value number-input" id="streamOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                         </div>
-                        <div class="slider-container" onclick="handleSliderClick(event, 'streamOpacity', 0, 1)">
+                        <div class="slider-container" onclick="handleSliderClick(event, 'streamOpacity', 0, 1)" ontouchstart="handleSliderClick(event, 'streamOpacity', 0, 1); event.preventDefault();">
                             <div class="slider-fill" id="streamOpacityFill" style="width: 80%">
                                 <div class="slider-handle" id="streamOpacityHandle"></div>
                             </div>
@@ -2038,18 +2041,18 @@
                     
                     <!-- Prompt Presets Section -->
                     <div class="advanced-section">
-                        <div class="advanced-toggle" onclick="togglePromptPresets()">
+                        <div class="advanced-toggle" onclick="togglePromptPresets()" ontouchstart="togglePromptPresets(); event.preventDefault();">
                             <span>Prompt Presets</span>
                             <div class="toggle-icon" id="promptPresetsIcon">▶</div>
                         </div>
                         <div class="advanced-content" id="promptPresetsContent">
                             <div class="prompt-preset-grid">
-                                <button class="preset-btn active" onclick="setPrompt('blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere')">Blooming flower</button>
-                                <button class="preset-btn" onclick="setPrompt('spectacular fireworks display, colorful explosions in night sky, bright sparks and trails, celebration atmosphere, dynamic motion, festive lighting')">Fireworks</button>
-                                <button class="preset-btn" onclick="setPrompt('fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light')">Cotton candy</button>
-                                <button class="preset-btn" onclick="setPrompt('bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere')">Bouncing balls</button>
-                                <button class="preset-btn" onclick="setPrompt('autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene')">Forest leaves</button>
-                                <button class="preset-btn" onclick="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion')">Chrome blob waves</button>
+                                <button class="preset-btn active" onclick="setPrompt('blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere')" ontouchstart="setPrompt('blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere'); event.preventDefault();">Blooming flower</button>
+                                <button class="preset-btn" onclick="setPrompt('spectacular fireworks display, colorful explosions in night sky, bright sparks and trails, celebration atmosphere, dynamic motion, festive lighting')" ontouchstart="setPrompt('spectacular fireworks display, colorful explosions in night sky, bright sparks and trails, celebration atmosphere, dynamic motion, festive lighting'); event.preventDefault();">Fireworks</button>
+                                <button class="preset-btn" onclick="setPrompt('fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light')" ontouchstart="setPrompt('fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light'); event.preventDefault();">Cotton candy</button>
+                                <button class="preset-btn" onclick="setPrompt('bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere')" ontouchstart="setPrompt('bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere'); event.preventDefault();">Bouncing balls</button>
+                                <button class="preset-btn" onclick="setPrompt('autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene')" ontouchstart="setPrompt('autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene'); event.preventDefault();">Forest leaves</button>
+                                <button class="preset-btn" onclick="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion')" ontouchstart="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion'); event.preventDefault();">Chrome blob waves</button>
                             </div>
                         </div>
                     </div>
@@ -2085,13 +2088,13 @@
                     </div>
                     
                     <div class="control-item">
-                        <button class="modern-button secondary" id="cameraButton" onclick="toggleCamera()">
+                        <button class="modern-button secondary" id="cameraButton" onclick="toggleCamera()" ontouchstart="toggleCamera(); event.preventDefault();">
                             <i class="fas fa-video"></i> Camera
                         </button>
                     </div>
                     
                     <div class="control-item">
-                        <button class="modern-button secondary" id="mediaButton" onclick="toggleMedia()">
+                        <button class="modern-button secondary" id="mediaButton" onclick="toggleMedia()" ontouchstart="toggleMedia(); event.preventDefault();">
                             <i class="fas fa-video"></i> Media
                         </button>
                     </div>
@@ -2107,7 +2110,7 @@
                             </div>
 
                             <div class="control-item">
-                                <button class="modern-button secondary" id="previewAudioButton" onclick="toggleAudioPreview()" style="display: none;">
+                                <button class="modern-button secondary" id="previewAudioButton" onclick="toggleAudioPreview()" ontouchstart="toggleAudioPreview(); event.preventDefault();" style="display: none;">
                                     <i class="fas fa-volume-up"></i> Preview Audio
                                 </button>
                             </div>
@@ -2119,7 +2122,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="audioReactivityValue" value="1.0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioReactivity', 0.1, 3.0)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioReactivity', 0.1, 3.0)" ontouchstart="handleSliderClick(event, 'audioReactivity', 0.1, 3.0); event.preventDefault();">
                                 <div class="slider-fill" id="audioReactivityFill" style="width: 30%">
                                     <div class="slider-handle"></div>
                                 </div>
@@ -2133,7 +2136,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="audioDelayValue" value="0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioDelay', 0, 500)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioDelay', 0, 500)" ontouchstart="handleSliderClick(event, 'audioDelay', 0, 500); event.preventDefault();">
                                 <div class="slider-fill" id="audioDelayFill" style="width: 0%">
                                     <div class="slider-handle"></div>
                                 </div>
@@ -2147,7 +2150,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="audioOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioOpacity', 0, 1)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioOpacity', 0, 1)" ontouchstart="handleSliderClick(event, 'audioOpacity', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="audioOpacityFill" style="width: 80%">
                                     <div class="slider-handle"></div>
                                 </div>
@@ -2161,7 +2164,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="audioColorfulValue" value="0.3" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioColorful', 0, 1)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioColorful', 0, 1)" ontouchstart="handleSliderClick(event, 'audioColorful', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="audioColorfulFill" style="width: 30%">
                                     <div class="slider-handle"></div>
                                 </div>
@@ -2175,7 +2178,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="audioEdgeSoftnessValue" value="0.25" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioEdgeSoftness', 0, 1)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioEdgeSoftness', 0, 1)" ontouchstart="handleSliderClick(event, 'audioEdgeSoftness', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="audioEdgeSoftnessFill" style="width: 25%">
                                     <div class="slider-handle" id="audioEdgeSoftnessHandle"></div>
                                 </div>
@@ -2212,7 +2215,7 @@
                             </div></span>
                             <input type="text" class="control-value number-input" id="mediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                         </div>
-                        <div class="slider-container" onclick="handleSliderClick(event, 'mediaScale', 0.1, 2.0)">
+                        <div class="slider-container" onclick="handleSliderClick(event, 'mediaScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'mediaScale', 0.1, 2.0); event.preventDefault();">
                             <div class="slider-fill" id="mediaScaleFill" style="width: 47%">
                                 <div class="slider-handle" id="mediaScaleHandle"></div>
                             </div>
@@ -2240,7 +2243,7 @@
                     </div>
                     
                     <div class="control-item">
-                        <div class="toggle-container" onclick="toggleAnimate()">
+                        <div class="toggle-container" onclick="toggleAnimate()" ontouchstart="toggleAnimate(); event.preventDefault();">
                             <span>Animate</span>
                             <div class="toggle-switch active" id="animateToggle">
                                 <div class="toggle-handle"></div>
@@ -2298,13 +2301,13 @@
                         <div class="image-upload-container">
                             <input type="file" id="mediaUpload" accept=".png,.jpg,.jpeg,.mp4,.webm,.mov" style="display: none;">
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                <button class="modern-button secondary" onclick="document.getElementById('mediaUpload').click()">
+                                <button class="modern-button secondary" onclick="document.getElementById('mediaUpload').click()" ontouchstart="document.getElementById('mediaUpload').click(); event.preventDefault();">
                                     <i class="fas fa-folder-open"></i> Choose Media
                                 </button>
-                                <button class="modern-button secondary" id="clearFluidMediaButton" onclick="clearFluidBackgroundMediaOnly()" style="display: none;">
+                                <button class="modern-button secondary" id="clearFluidMediaButton" onclick="clearFluidBackgroundMediaOnly()" ontouchstart="clearFluidBackgroundMediaOnly(); event.preventDefault();" style="display: none;">
                                     <i class="fas fa-trash-alt"></i> Clear Media
                                 </button>
-                                <button class="modern-button secondary" id="fluidCameraButton" onclick="toggleFluidBackgroundCamera()">
+                                <button class="modern-button secondary" id="fluidCameraButton" onclick="toggleFluidBackgroundCamera()" ontouchstart="toggleFluidBackgroundCamera(); event.preventDefault();">
                                     <i class="fas fa-camera"></i> Camera
                                 </button>
                             </div>
@@ -2322,7 +2325,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="fluidMediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'fluidMediaScale', 0.1, 2.0)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'fluidMediaScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'fluidMediaScale', 0.1, 2.0); event.preventDefault();">
                                 <div class="slider-fill" id="fluidMediaScaleFill" style="width: 47%">
                                     <div class="slider-handle" id="fluidMediaScaleHandle"></div>
                                 </div>
@@ -2336,7 +2339,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="fluidCameraScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'fluidCameraScale', 0.1, 2.0)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'fluidCameraScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'fluidCameraScale', 0.1, 2.0); event.preventDefault();">
                                 <div class="slider-fill" id="fluidCameraScaleFill" style="width: 47%">
                                     <div class="slider-handle" id="fluidCameraScaleHandle"></div>
                                 </div>
@@ -2358,7 +2361,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="animationIntervalValue" value="0.03" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'animationInterval', 0, 1)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'animationInterval', 0, 1)" ontouchstart="handleSliderClick(event, 'animationInterval', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="animationIntervalFill" style="width: 3%">
                                     <div class="slider-handle" id="animationIntervalHandle"></div>
                                 </div>
@@ -2372,7 +2375,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="chaosValue" value="0.73" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'chaos', 0, 1)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'chaos', 0, 1)" ontouchstart="handleSliderClick(event, 'chaos', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="chaosFill" style="width: 73%">
                                     <div class="slider-handle" id="chaosHandle"></div>
                                 </div>
@@ -2386,7 +2389,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="breathingValue" value="0.50" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'breathing', 0, 1)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'breathing', 0, 1)" ontouchstart="handleSliderClick(event, 'breathing', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="breathingFill" style="width: 50%">
                                     <div class="slider-handle" id="breathingHandle"></div>
                                 </div>
@@ -2400,7 +2403,7 @@
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="colorLifeValue" value="0.22" />
                             </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'colorLife', 0, 1)">
+                            <div class="slider-container" onclick="handleSliderClick(event, 'colorLife', 0, 1)" ontouchstart="handleSliderClick(event, 'colorLife', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="colorLifeFill" style="width: 22%">
                                     <div class="slider-handle" id="colorLifeHandle"></div>
                                 </div>
