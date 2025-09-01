@@ -25,6 +25,9 @@ class FluidOSCServer {
         this.lastMessageTime = {};
         this.throttleInterval = 16; // ~60fps (16ms between messages)
         
+        // OSC velocity tracking for velocity-based drawing
+        this.oscPointers = {}; // Track position and movement for each channel
+        
 
         
         // OSC parameter mapping
@@ -128,6 +131,69 @@ class FluidOSCServer {
             '/multixy/5': { channel: 5, type: 'xy_pad' },
             
         };
+    }
+    
+    handleVelocityDrawing(channel, x, y) {
+        const pointerId = `osc_${channel}`;
+        const currentTime = Date.now();
+        
+        // Get or create pointer for this channel
+        if (!this.oscPointers[pointerId]) {
+            this.oscPointers[pointerId] = {
+                x: x,
+                y: y,
+                prevX: x,
+                prevY: y,
+                lastTime: currentTime,
+                isActive: true
+            };
+            
+            // Send initial position without velocity (like mouse down)
+            this.sendVelocityDrawingMessage(channel, x, y, 0, 0, 'start');
+            console.log(`🎯 OSC Velocity Drawing ${channel}: START at (${x.toFixed(3)}, ${y.toFixed(3)})`);
+            return;
+        }
+        
+        const pointer = this.oscPointers[pointerId];
+        const deltaTime = currentTime - pointer.lastTime;
+        
+        // Calculate movement deltas
+        const deltaX = x - pointer.prevX;
+        const deltaY = y - pointer.prevY;
+        
+        // Calculate velocity (movement per second)
+        const velocity = deltaTime > 0 ? Math.sqrt(deltaX * deltaX + deltaY * deltaY) / (deltaTime / 1000) : 0;
+        
+        // Update pointer state
+        pointer.prevX = pointer.x;
+        pointer.prevY = pointer.y;
+        pointer.x = x;
+        pointer.y = y;
+        pointer.lastTime = currentTime;
+        
+        // Send velocity-based drawing message
+        this.sendVelocityDrawingMessage(channel, x, y, deltaX, deltaY, 'move');
+        
+        console.log(`🎯 OSC Velocity Drawing ${channel}: (${x.toFixed(3)}, ${y.toFixed(3)}) v=${velocity.toFixed(2)} Δ(${deltaX.toFixed(3)}, ${deltaY.toFixed(3)})`);
+    }
+    
+    sendVelocityDrawingMessage(channel, x, y, deltaX, deltaY, type) {
+        const message = {
+            type: 'osc_velocity_drawing',
+            channel: channel,
+            x: x,
+            y: y,
+            deltaX: deltaX,
+            deltaY: deltaY,
+            drawingType: type
+        };
+        
+        // Broadcast to WebSocket clients
+        this.clients.forEach(client => {
+            if (client.readyState === 1) { // WebSocket.OPEN
+                client.send(JSON.stringify(message));
+            }
+        });
     }
     
     getNetworkIP() {
@@ -256,7 +322,7 @@ class FluidOSCServer {
                 return;
             }
         } else if (mapping.type === 'xy_pad') {
-            // Handle TouchOSC XY pad format - simple X/Y coordinates only
+            // Handle TouchOSC XY pad format - velocity-based drawing
             const channel = mapping.channel;
             
             // TouchOSC sends two separate arguments: args[0] = y, args[1] = x (flipped for multixy)
@@ -264,54 +330,14 @@ class FluidOSCServer {
                 const x = 1.0 - Math.max(0, Math.min(1, args[1])); // Flipped X: use args[1] and invert (1-x)
                 const y = Math.max(0, Math.min(1, args[0])); // Flipped: use args[0] for Y
                 
-                // Send simple X/Y coordinates
-                const xMessage = {
-                    type: 'osc_message',
-                    parameter: `OSC_SPLAT_${channel}_X`,
-                    value: x
-                };
-                
-                const yMessage = {
-                    type: 'osc_message',
-                    parameter: `OSC_SPLAT_${channel}_Y`,
-                    value: y
-                };
-                
-                // Broadcast to WebSocket clients
-                this.clients.forEach(client => {
-                    if (client.readyState === 1) { // WebSocket.OPEN
-                        client.send(JSON.stringify(xMessage));
-                        client.send(JSON.stringify(yMessage));
-                    }
-                });
-                
-                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)}`);
+                this.handleVelocityDrawing(channel, x, y);
                 return; // Already broadcast, don't continue
             } else if (Array.isArray(value) && value.length >= 2) {
                 // Fallback: XY pad sending [y, x] array (flipped for multixy)
                 const x = 1.0 - Math.max(0, Math.min(1, value[1])); // Flipped X: use value[1] and invert (1-x)
                 const y = Math.max(0, Math.min(1, value[0])); // Flipped: use value[0] for Y
                 
-                const xMessage = {
-                    type: 'osc_message',
-                    parameter: `OSC_SPLAT_${channel}_X`,
-                    value: x
-                };
-                
-                const yMessage = {
-                    type: 'osc_message',
-                    parameter: `OSC_SPLAT_${channel}_Y`,
-                    value: y
-                };
-                
-                this.clients.forEach(client => {
-                    if (client.readyState === 1) {
-                        client.send(JSON.stringify(xMessage));
-                        client.send(JSON.stringify(yMessage));
-                    }
-                });
-                
-                console.log(`🎯 TouchOSC XY Pad ${channel}: X=${x.toFixed(3)}, Y=${y.toFixed(3)}`);
+                this.handleVelocityDrawing(channel, x, y);
                 return;
             } else {
                 console.log(`⚠️  TouchOSC XY Pad ${channel}: Expected 2 args, got ${args.length}: [${args.join(', ')}]`);
