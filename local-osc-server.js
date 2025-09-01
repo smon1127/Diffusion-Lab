@@ -138,6 +138,8 @@ class FluidOSCServer {
         const pointerId = `osc_${channel}`;
         const currentTime = Date.now();
         
+        // Track OSC pointer velocity for smooth drawing
+        
         // Get or create pointer for this channel
         if (!this.oscPointers[pointerId]) {
             this.oscPointers[pointerId] = {
@@ -149,9 +151,11 @@ class FluidOSCServer {
                 isActive: true
             };
             
+
+            
             // Send initial position without velocity (like mouse down)
             this.sendVelocityDrawingMessage(channel, x, y, 0, 0, 'start');
-            console.log(`🎯 OSC Velocity Drawing ${channel}: START at (${x.toFixed(3)}, ${y.toFixed(3)})`);
+
             return;
         }
         

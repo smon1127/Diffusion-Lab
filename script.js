@@ -3401,6 +3401,9 @@ function updateColors (dt) {
         if (window.oscPointers) {
             Object.values(window.oscPointers).forEach(p => {
                 p.color = generateColor();
+                if (config.DEBUG_MODE) {
+                    console.log(`🎨 OSC Color Updated:`, p.color);
+                }
             });
         }
     }
@@ -8914,6 +8917,12 @@ function setupOSCMessageHandling() {
     oscWebSocket.onmessage = (event) => {
         try {
             const message = JSON.parse(event.data);
+            
+            // Debug logging for OSC messages
+            if (config.DEBUG_MODE && message.type === 'osc_velocity_drawing') {
+                console.log(`🔍 WebSocket: Received ${message.drawingType} for channel ${message.channel}`);
+            }
+            
             handleOSCMessage(message);
         } catch (error) {
             console.error('❌ Error parsing OSC message:', error);
@@ -9046,11 +9055,15 @@ function executeOSCAction(action, value) {
 function handleOSCVelocityDrawing(message) {
     const { channel, x, y, deltaX, deltaY, drawingType } = message;
     
-    // OSC velocity drawing is completely isolated from mouse click effects
+        // OSC velocity drawing is completely isolated from mouse click effects
     // Never triggers FORCE_CLICK or createVelocityClickEffect
-    
+
     // Create or get OSC pointer for this channel
     const pointerId = `osc_${channel}`;
+
+    if (config.DEBUG_MODE) {
+        console.log(`🎯 handleOSCVelocityDrawing: channel=${channel}, type=${drawingType}, pos=(${x.toFixed(3)}, ${y.toFixed(3)}), delta=(${deltaX.toFixed(4)}, ${deltaY.toFixed(4)})`);
+    }
     
     if (!window.oscPointers) {
         window.oscPointers = {};
@@ -9060,32 +9073,28 @@ function handleOSCVelocityDrawing(message) {
     const texcoordX = x;
     const texcoordY = 1.0 - y; // Flip Y coordinate to match WebGL coordinate system
     
-    if (drawingType === 'start') {
-        // Initialize OSC pointer (like mouse down)
-        window.oscPointers[pointerId] = {
-            id: pointerId,
-            down: true,
-            moved: false,
-            texcoordX: texcoordX,
-            texcoordY: texcoordY,
-            prevTexcoordX: texcoordX,
-            prevTexcoordY: texcoordY,
-            deltaX: 0,
-            deltaY: 0,
-            color: generateColor()
-        };
-        
-        if (config.DEBUG_MODE) {
-            console.log(`🎯 OSC Velocity Drawing ${channel}: Started at (${x.toFixed(3)}, ${y.toFixed(3)}) -> tex(${texcoordX.toFixed(3)}, ${texcoordY.toFixed(3)})`);
+            if (drawingType === 'start') {
+            // Initialize OSC pointer (like mouse down)
+            window.oscPointers[pointerId] = {
+                id: pointerId,
+                down: true,
+                moved: false,
+                texcoordX: texcoordX,
+                texcoordY: texcoordY,
+                prevTexcoordX: texcoordX,
+                prevTexcoordY: texcoordY,
+                deltaX: 0,
+                deltaY: 0,
+                color: generateColor()
+            };
+
+            if (config.DEBUG_MODE) {
+                console.log(`🎯 OSC Velocity Drawing ${channel}: Started at (${x.toFixed(3)}, ${y.toFixed(3)}) -> tex(${texcoordX.toFixed(3)}, ${texcoordY.toFixed(3)})`);
+            }
+
+            // Don't create test splat or return - let the first real movement create the first splat
+            return;
         }
-        
-        // Create a small test splat on start to verify the system is working
-        const testColor = generateColor();
-        splat(texcoordX, texcoordY, 100, 100, testColor);
-        console.log(`🧪 Test splat created at (${texcoordX.toFixed(3)}, ${texcoordY.toFixed(3)}) with color:`, testColor);
-        
-        return;
-    }
     
     if (drawingType === 'move') {
         const pointer = window.oscPointers[pointerId];
@@ -9102,6 +9111,10 @@ function handleOSCVelocityDrawing(message) {
         const scaledDeltaX = deltaX * config.SPLAT_FORCE; // Same scale as mouse movement
         const scaledDeltaY = -deltaY * config.SPLAT_FORCE; // Flip Y delta and scale same as mouse
         
+        if (config.DEBUG_MODE) {
+            console.log(`🔧 OSC Scaling Step 1: deltaX=${deltaX.toFixed(4)} -> scaledX=${scaledDeltaX.toFixed(1)}, deltaY=${deltaY.toFixed(4)} -> scaledY=${scaledDeltaY.toFixed(1)}`);
+        }
+        
         pointer.deltaX = scaledDeltaX;
         pointer.deltaY = scaledDeltaY;
         pointer.moved = Math.abs(deltaX) > 0.001 || Math.abs(deltaY) > 0.001; // Lower threshold
@@ -9110,23 +9123,29 @@ function handleOSCVelocityDrawing(message) {
         const velocity = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         const velocityMultiplier = Math.min(3.0, 0.5 + velocity * 25.0);
         
+        if (config.DEBUG_MODE) {
+            console.log(`🔧 OSC Scaling Step 2: velocity=${velocity.toFixed(4)}, multiplier=${velocityMultiplier.toFixed(2)}`);
+        }
+        
         // Scale deltas by velocity multiplier
         pointer.deltaX *= velocityMultiplier;
         pointer.deltaY *= velocityMultiplier;
+        
+        if (config.DEBUG_MODE) {
+            console.log(`🔧 OSC Final Deltas: deltaX=${pointer.deltaX.toFixed(1)}, deltaY=${pointer.deltaY.toFixed(1)}`);
+        }
         
         // Create splat using velocity drawing logic
         if (config.DEBUG_MODE) {
             console.log(`🎯 OSC Movement Check: deltaX=${deltaX.toFixed(4)}, deltaY=${deltaY.toFixed(4)}, moved=${pointer.moved}`);
         }
         
-        if (pointer.moved) {
+                if (pointer.moved) {
             splat(pointer.texcoordX, pointer.texcoordY, pointer.deltaX, pointer.deltaY, pointer.color);
-            
+
             if (config.DEBUG_MODE) {
-                console.log(`🎯 OSC Splat: pos(${pointer.texcoordX.toFixed(3)}, ${pointer.texcoordY.toFixed(3)}) delta(${pointer.deltaX.toFixed(1)}, ${pointer.deltaY.toFixed(1)}) v=${velocity.toFixed(2)}`);
+                console.log(`🎯 OSC Splat Channel ${channel}: pos(${pointer.texcoordX.toFixed(3)}, ${pointer.texcoordY.toFixed(3)}) delta(${pointer.deltaX.toFixed(1)}, ${pointer.deltaY.toFixed(1)}) v=${velocity.toFixed(2)}`);
             }
-        } else if (config.DEBUG_MODE) {
-            console.log(`⚠️ OSC: No movement detected (threshold=0.001)`);
         }
         
         if (config.DEBUG_MODE) {
