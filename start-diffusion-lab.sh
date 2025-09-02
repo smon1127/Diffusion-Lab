@@ -3,6 +3,22 @@
 # Diffusion Lab Complete Startup Script
 # Starts OSC server, web server, and opens browser in optimal sequence
 
+# Get the directory where the script is located, resolving symlinks
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+    SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ $SOURCE != /* ]] && SOURCE="$SCRIPT_DIR/$SOURCE"
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+# Change to the script's directory
+cd "$SCRIPT_DIR"
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Could not change to script directory: $SCRIPT_DIR"
+    exit 1
+fi
+
 echo "🌊 Diffusion Lab Startup"
 echo "========================"
 
@@ -49,6 +65,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Check prerequisites
+echo -e "${BLUE}🔍 Running from: $SCRIPT_DIR${NC}"
 echo -e "${BLUE}🔍 Checking prerequisites...${NC}"
 
 # Check Node.js
@@ -138,14 +155,6 @@ for (const name of Object.keys(interfaces)) {
 console.log('localhost');
 ")
 
-echo
-echo -e "${CYAN}🌐 Network Configuration:${NC}"
-echo -e "${CYAN}   Local IP: ${NETWORK_IP}${NC}"
-echo -e "${CYAN}   Web Server: http://localhost:${WEB_PORT}${NC}"
-echo -e "${CYAN}   OSC Server: ${NETWORK_IP}:${OSC_PORT}${NC}"
-echo -e "${CYAN}   WebSocket: ${NETWORK_IP}:${WEBSOCKET_PORT}${NC}"
-echo
-
 # Start OSC Server
 echo -e "${PURPLE}🎛️  Starting OSC Server...${NC}"
 node local-osc-server.js &
@@ -191,36 +200,78 @@ echo -e "${GREEN}✅ Web Server running (PID: $WEB_PID)${NC}"
 echo -e "${YELLOW}⏳ Finalizing server initialization...${NC}"
 sleep 2
 
-# Open browser
-echo -e "${PURPLE}🚀 Opening Diffusion Lab in browser...${NC}"
-if command -v open &> /dev/null; then
-    # macOS
-    open "http://localhost:${WEB_PORT}"
-elif command -v xdg-open &> /dev/null; then
-    # Linux
-    xdg-open "http://localhost:${WEB_PORT}"
-elif command -v start &> /dev/null; then
-    # Windows
-    start "http://localhost:${WEB_PORT}"
+# Show network configuration and get user choice
+echo
+echo -e "${CYAN}🌐 Network Configuration:${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}   Local Access:  http://localhost:${WEB_PORT}${NC}"
+echo -e "${CYAN}   External Access: http://${NETWORK_IP}:${WEB_PORT}${NC}"
+echo -e "${CYAN}   OSC Server:    ${NETWORK_IP}:${OSC_PORT}${NC}"
+echo -e "${CYAN}   WebSocket:     ${NETWORK_IP}:${WEBSOCKET_PORT}${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo
+echo -e "${GREEN}✨ All servers are running and ready!${NC}"
+echo
+
+# Ask user about access method
+echo -e "${YELLOW}How would you like to access Diffusion Lab?${NC}"
+echo -e "1) Open on this computer (launches browser)"
+echo -e "2) Access from another device"
+echo
+read -p "Enter choice (1 or 2): " access_choice
+echo
+
+OPEN_BROWSER=false
+if [ "$access_choice" = "1" ]; then
+    OPEN_BROWSER=true
+elif [ "$access_choice" = "2" ]; then
+    echo -e "${YELLOW}📱 To access from another device:${NC}"
+    echo -e "   Open http://${NETWORK_IP}:${WEB_PORT} in your browser"
+    echo
 else
-    echo -e "${YELLOW}💡 Please open your browser to: http://localhost:${WEB_PORT}${NC}"
+    echo -e "${RED}Invalid choice. Defaulting to external access.${NC}"
+    echo
 fi
 
-# Wait for browser to load
-sleep 3
+# Open browser if requested
+if [ "$OPEN_BROWSER" = true ]; then
+    echo -e "${PURPLE}🚀 Opening Diffusion Lab in browser...${NC}"
+    if command -v open &> /dev/null; then
+        # macOS
+        open "http://localhost:${WEB_PORT}"
+    elif command -v xdg-open &> /dev/null; then
+        # Linux
+        xdg-open "http://localhost:${WEB_PORT}"
+    elif command -v start &> /dev/null; then
+        # Windows
+        start "http://localhost:${WEB_PORT}"
+    else
+        echo -e "${YELLOW}💡 Please open your browser to: http://localhost:${WEB_PORT}${NC}"
+    fi
+    # Wait for browser to load
+    sleep 3
+fi
 
 echo
 echo -e "${GREEN}🎉 Diffusion Lab is ready!${NC}"
 echo
 echo -e "${BLUE}📋 Quick Setup Guide:${NC}"
-echo -e "${BLUE}   🌐 Web Interface: http://localhost:${WEB_PORT}${NC}"
+if [ "$OPEN_BROWSER" = true ]; then
+    echo -e "${BLUE}   🌐 Web Interface: http://localhost:${WEB_PORT}${NC}"
+else
+    echo -e "${BLUE}   🌐 Web Interface: http://${NETWORK_IP}:${WEB_PORT}${NC}"
+fi
 echo -e "${BLUE}   🎛️  OSC Control: ${NETWORK_IP}:${OSC_PORT}${NC}"
 echo -e "${BLUE}   📱 TouchOSC Setup:${NC}"
 echo -e "${BLUE}      Host: ${NETWORK_IP}${NC}"
 echo -e "${BLUE}      Port: ${OSC_PORT}${NC}"
 echo
 echo -e "${PURPLE}💡 Tips:${NC}"
-echo -e "${PURPLE}   • The web interface should open automatically${NC}"
+if [ "$OPEN_BROWSER" = true ]; then
+    echo -e "${PURPLE}   • The web interface will open automatically in your browser${NC}"
+else
+    echo -e "${PURPLE}   • Open the web interface URL in your device's browser${NC}"
+fi
 echo -e "${PURPLE}   • Configure TouchOSC with the IP and port above${NC}"
 echo -e "${PURPLE}   • Look for OSC connection indicator in the web interface${NC}"
 echo -e "${PURPLE}   • Press Ctrl+C to stop all servers${NC}"
