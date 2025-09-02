@@ -407,7 +407,7 @@
                 }
 
                 .panel-content {
-                    padding: 20px 50px 50px 50px;
+                    padding: 20px 60px 50px 50px;
                     max-height: calc(85vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -536,6 +536,7 @@
                 }
                 
                 .panel-header {
+                    /* background: rgba(0, 0, 0, 0.3); */
                     min-height: 44px;
                     touch-action: manipulation;
                     -webkit-tap-highlight-color: transparent;
@@ -552,7 +553,7 @@
                 }
 
                 .panel-content {
-                    padding: 20px 50px 50px 50px;
+                    padding: 20px 60px 50px 50px;
                     max-height: calc(90vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -1864,7 +1865,7 @@
             @media (max-width: 768px) {
                 .welcome-content {
                     padding: 20px;
-                    margin: 20px;
+                    margin: 10px;
                 }
 
                 .welcome-header h1 {
@@ -1906,6 +1907,11 @@
                 /* Hide screenshot and record buttons on mobile */
                 .control-item:has(button[onclick*="captureScreenshot"]),
                 .control-item:has(button[onclick*="toggleVideoRecording"]) {
+                    display: none;
+                }
+                
+                /* Hide camera button in fluid background section on mobile */
+                #fluidCameraButton {
                     display: none;
                 }
                 
