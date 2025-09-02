@@ -4193,6 +4193,10 @@ window.addEventListener('keydown', e => {
             e.preventDefault();
             toggleVelocityDrawing();
         }
+        if (e.code === 'Space') {
+            e.preventDefault();
+            toggleStreamVisibility();
+        }
         
         // Prompt preset shortcuts (Ctrl+1 through Ctrl+6)
         if (e.code === 'Digit1') {
@@ -4217,7 +4221,7 @@ window.addEventListener('keydown', e => {
         }
         if (e.code === 'Digit6') {
             e.preventDefault();
-            setPromptPreset(5); // Chrome blob waves
+            setPromptPreset(5); // Chrome blob
         }
     }
 });
@@ -4698,6 +4702,38 @@ function showShareFeedback(button, message = 'Copied!') {
     }, 2000);
 }
 
+async function copyConsoleCommand() {
+    const command = "window.location.replace(window.location.href.replace('https://', 'http://'));";
+    const textElement = document.querySelector('.console-command-text');
+    
+    // Copy to clipboard using modern API or fallback
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(command);
+            showConsoleCommandFeedback(textElement, 'Copied!');
+        } catch (err) {
+            console.error('Failed to copy with clipboard API:', err);
+            fallbackCopyToClipboard(command, textElement);
+        }
+    } else {
+        // Fallback for older browsers
+        fallbackCopyToClipboard(command, textElement);
+    }
+}
+
+function showConsoleCommandFeedback(element, message = 'Copied!') {
+    if (!element) return;
+    
+    const originalText = element.innerHTML;
+    element.innerHTML = `✓ ${message}`;
+    element.classList.add('copied');
+    
+    setTimeout(() => {
+        element.innerHTML = originalText;
+        element.classList.remove('copied');
+    }, 2000);
+}
+
 
 
 async function createDaydreamStream() {
@@ -4953,7 +4989,7 @@ async function startStream() {
                 toggleSettings();
             }
             
-            // Then scroll to API key input field and show alert
+            // Then scroll to API key input field
             if (apiKeyInput) {
                 // Wait a bit for the settings panel to expand before scrolling
                 setTimeout(() => {
@@ -4961,15 +4997,11 @@ async function startStream() {
                         behavior: 'smooth', 
                         block: 'center' 
                     });
-                    // Focus the input field and show alert after scrolling
+                    // Focus the input field after scrolling
                     setTimeout(() => {
                         apiKeyInput.focus();
-                        alert('Please enter your Daydream API key');
                     }, 500);
                 }, 300);
-            } else {
-                // Fallback if input not found
-                alert('Please enter your Daydream API key');
             }
             
             // Update UI and return without throwing error

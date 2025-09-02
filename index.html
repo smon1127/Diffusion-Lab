@@ -642,6 +642,34 @@
                 color: var(--text-secondary);
             }
             
+            /* Console Command Text */
+            .console-command-text {
+                font-size: 0.8rem;
+                color: var(--text-secondary);
+                margin-top: 8px;
+                cursor: pointer;
+                transition: color 0.2s ease;
+                line-height: 1.4;
+            }
+            
+            .console-command-text:hover {
+                color: var(--text-primary);
+            }
+            
+            .console-command-text code {
+                background: rgba(255, 255, 255, 0.1);
+                padding: 2px 4px;
+                border-radius: 3px;
+                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                font-size: 0.75rem;
+                color: #06a3d7;
+            }
+            
+            .console-command-text.copied {
+                color: #22c55e;
+                font-weight: 500;
+            }
+            
             /* Auto-resize Textarea */
             .auto-resize-textarea {
                 min-height: 40px;
@@ -1458,6 +1486,8 @@
                 color: rgba(255, 255, 255, 0.95);
                 text-align: left;
                 border-radius: 8px;
+                white-space: normal; /* Allow multi-line text */
+                word-wrap: break-word; /* Break long words */
                 padding: 8px 12px;
                 font-size: 11px;
                 line-height: 1.4;
@@ -1640,7 +1670,7 @@
 
             .feature-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                grid-template-columns: repeat(3, 1fr);
                 gap: 15px;
                 margin-bottom: 25px;
             }
@@ -1810,6 +1840,7 @@
                 align-items: center;
                 gap: 8px;
                 margin-top: 12px;
+                margin-bottom: 20px;
                 justify-content: center;
             }
             
@@ -1920,6 +1951,70 @@
                     display: none;
                 }
             }
+
+            .welcome-attribution {
+                text-align: center;
+                margin-top: 20px;
+                padding-top: 15px;
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.7);
+                font-size: 0.85rem;
+            }
+
+            .welcome-attribution a {
+                color: #06a3d7;
+                text-decoration: none;
+                transition: color 0.2s ease;
+            }
+
+            .welcome-attribution a:hover {
+                color: #22c55e;
+                text-decoration: underline;
+            }
+
+            .welcome-attribution .heart {
+                color: #ef4444;
+                font-size: 1rem;
+                margin: 0 2px;
+            }
+
+            .settings-attribution {
+                text-align: center;
+                margin-top: 15px;
+                padding-top: 10px;
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.6);
+                font-size: 0.8rem;
+            }
+
+            .settings-attribution a {
+                color: #06a3d7;
+                text-decoration: none;
+                transition: color 0.2s ease;
+            }
+
+            .settings-attribution a:hover {
+                color: #22c55e;
+                text-decoration: underline;
+            }
+
+            .settings-attribution .heart {
+                color: #ef4444;
+                font-size: 0.9rem;
+                margin: 0 2px;
+            }
+
+            /* Tablet Responsive */
+            @media (min-width: 769px) and (max-width: 1024px) {
+                .panel-content {
+                    padding: 20px 50px 50px 50px;
+                }
+                
+                /* Hide camera button in fluid background section on tablet */
+                #fluidCameraButton {
+                    display: none;
+                }
+            }
         </style>
         <script>
             window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
@@ -1934,36 +2029,48 @@
             <div class="welcome-content">
                 <div class="welcome-header">
                     <h1>🌊 Diffusion Lab</h1>
-                    <p class="welcome-subtitle">Transform fluid dynamics into stunning generative art with real-time AI processing</p>
+                    <p class="welcome-subtitle">Transform fluid dynamics and more into stunning generative art with real-time AI processing</p>
                 </div>
                 
                 <div class="welcome-features">
                     <div class="feature-grid">
                         <div class="feature-item">
-                            <div class="feature-icon"><i class="fas fa-paint-brush"></i></div>
-                            <h3>Fluid Effects</h3>
-                            <p>Interactive fluid simulation with customizable physics</p>
+                            <div class="feature-icon"><i class="fas fa-robot"></i></div>
+                            <h3>AI Stream Diffusion</h3>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon"><i class="fas fa-external-link-alt"></i></div>
+                            <h3>Pop-Out Window</h3>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon"><i class="fas fa-tablet-alt"></i></div>
+                            <h3>Tablet Optimized</h3>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon"><i class="fas fa-broadcast-tower"></i></div>
+                            <h3>OSC Integration</h3>
                         </div>
                         <div class="feature-item">
                             <div class="feature-icon"><i class="fas fa-image"></i></div>
                             <h3>Media Backgrounds</h3>
-                            <p>Upload images or videos as animated backgrounds</p>
                         </div>
                         <div class="feature-item">
                             <div class="feature-icon"><i class="fas fa-camera"></i></div>
                             <h3>Camera Feed</h3>
-                            <p>Use your camera as a live background</p>
-                        </div>
-                        <div class="feature-item">
-                            <div class="feature-icon"><i class="fas fa-robot"></i></div>
-                            <h3>AI Stream Diffusion</h3>
-                            <p>Transform your fluid effects with AI-powered streaming</p>
                         </div>
                     </div>
                 </div>
                 
                 <div class="welcome-api-section">
                     <h3>🔑 Your API Key</h3>
+                    
+                    <div class="welcome-api-input">
+                        <input type="password" id="welcomeApiKey" class="welcome-input" placeholder="sk_..." />
+                        <div class="welcome-consent">
+                            <input type="checkbox" id="welcomeApiConsent" class="checkbox-input">
+                            <label for="welcomeApiConsent" class="checkbox-label">Remember API key (stored locally)</label>
+                        </div>
+                    </div>
                     
                     <div class="api-links">
                         <a href="https://discord.com/channels/1368975848123666553/1399823418240663592/1410359887950516224" target="_blank" class="api-link">
@@ -1973,15 +2080,6 @@
                             🔗 Get API Key
                         </a>
                     </div>
-                    
-                    <div class="welcome-api-input">
-                        <label for="welcomeApiKey">Enter your API Key:</label>
-                        <input type="password" id="welcomeApiKey" class="welcome-input" placeholder="sk_..." />
-                        <div class="welcome-consent">
-                            <input type="checkbox" id="welcomeApiConsent" class="checkbox-input">
-                            <label for="welcomeApiConsent" class="checkbox-label">Remember API key (stored locally)</label>
-                        </div>
-                    </div>
                 </div>
                 
                 <div class="welcome-actions">
@@ -1989,6 +2087,10 @@
                     <button id="welcomeStartButton" class="welcome-start-btn">
                         Start Creating
                     </button>
+                </div>
+                
+                <div class="welcome-attribution">
+                    Made with <span class="heart">❤️</span> by <a href="https://www.linkedin.com/in/simonfrubis/" target="_blank">Simon Frübis</a> using <a href="https://daydream.live/" target="_blank">Daydream.live</a>
                 </div>
             </div>
         </div>
@@ -2104,7 +2206,7 @@
                                 <button class="preset-btn" onclick="setPrompt('fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light')" ontouchstart="setPrompt('fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light'); event.preventDefault();">Cotton candy</button>
                                 <button class="preset-btn" onclick="setPrompt('bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere')" ontouchstart="setPrompt('bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere'); event.preventDefault();">Bouncing balls</button>
                                 <button class="preset-btn" onclick="setPrompt('autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene')" ontouchstart="setPrompt('autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene'); event.preventDefault();">Forest leaves</button>
-                                <button class="preset-btn" onclick="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion')" ontouchstart="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion'); event.preventDefault();">Chrome blob preset</button>
+                                <button class="preset-btn" onclick="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion')" ontouchstart="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion'); event.preventDefault();">Chrome blob</button>
                             </div>
                         </div>
                     </div>
@@ -2710,8 +2812,6 @@
                 
                 <!-- ControlNet Presets Section -->
                 <div class="control-group">
-                    <div class="group-title">PRESETS</div>
-                    
                     <div class="control-item">
                         <div class="control-label">
                             <span>ControlNet Presets <div class="tooltip"><span class="info-icon">i</span>
@@ -2785,6 +2885,9 @@
                             <button class="modern-button secondary" onclick="forceHTTPRedirect()" ontouchstart="forceHTTPRedirect(); event.preventDefault();">
                                 <i class="fas fa-external-link-alt"></i> Force HTTP
                             </button>
+                            <div class="console-command-text" onclick="copyConsoleCommand()" ontouchstart="copyConsoleCommand(); event.preventDefault();">
+                                or run this command into your console: <code>window.location.replace(window.location.href.replace('https://', 'http://'));</code>
+                            </div>
                         </div>
                         
                         <!-- Buttons below API key -->
@@ -2883,6 +2986,9 @@
                                     <span>Ctrl+V:</span> Toggle Velocity Drawing
                                 </div>
                                 <div class="shortcut-item">
+                                    <span>Ctrl+Space:</span> Toggle Hide Stream
+                                </div>
+                                <div class="shortcut-item">
                                     <span>Ctrl+1:</span> Blooming Flower
                                 </div>
                                 <div class="shortcut-item">
@@ -2898,8 +3004,12 @@
                                     <span>Ctrl+5:</span> Forest Leaves
                                 </div>
                                 <div class="shortcut-item">
-                                    <span>Ctrl+6:</span> Chrome Blob Waves
+                                    <span>Ctrl+6:</span> Chrome Blob
                                 </div>
+                            </div>
+                            
+                            <div class="settings-attribution">
+                                Made with <span class="heart">❤️</span> by <a href="https://www.linkedin.com/in/simonfrubis/" target="_blank">Simon Frübis</a> using <a href="https://daydream.live/" target="_blank">Daydream.live</a>
                             </div>
                         </div>
                     </div>
