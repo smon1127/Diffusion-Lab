@@ -15,11 +15,11 @@
         <!-- FontAwesome for icons -->
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-        <title>Fluid Diffusion Lab</title>
+        <title>Diffusion Lab</title>
         <meta name="description" content="Transform fluid dynamics into stunning generative art with real-time AI processing.">
 
         <meta property="og:type" content="website">
-        <meta property="og:title" content="Fluid Diffusion Lab">
+        <meta property="og:title" content="Diffusion Lab">
         <meta property="og:description" content="Transform fluid dynamics into stunning generative art with real-time AI processing.">
         <meta property="og:url" content="https://paveldogreat.github.io/WebGL-Fluid-Simulation/">
         <!-- Open Graph image removed - logo.png file not available -->
@@ -38,7 +38,7 @@
                 --primary-bg: #0a0a0a;
                 --secondary-bg: rgba(20, 20, 30, 0.95);
                 --control-bg: rgba(40, 40, 50, 0.9);
-                --accent-color: #00d4ff;
+                --accent-color: #06a3d7;
                 --accent-hover: #00b8e6;
                 --text-primary: #ffffff;
                 --text-secondary: #b0b0b0;
@@ -90,9 +90,9 @@
             /* Header */
             .panel-header {
                 padding: 15px 20px;
-                backdrop-filter: blur(40px);
+                /* backdrop-filter: blur(40px); */
                 -webkit-backdrop-filter: blur(40px);
-                background: rgba(0, 0, 0, 0.3);
+                /* background: rgba(0, 0, 0, 0.3); */
                 color: white;
                 font-weight: 600;
                 font-size: 14px;
@@ -117,7 +117,7 @@
 
             /* Content */
             .panel-content {
-                padding: 20px 60px;
+                padding: 20px 30px 30px 50px;
                 max-height: calc(80vh - 50px);
                 overflow-y: auto;
                 overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -175,7 +175,7 @@
                 font-size: 12px;
                 color: var(--accent-color);
                 font-weight: 600;
-                background: rgba(0, 212, 255, 0.1);
+                background: rgba(6, 163, 215, 0.1);
                 padding: 2px 8px;
                 border-radius: 4px;
             }
@@ -190,7 +190,8 @@
             .slider-container {
                 position: relative;
                 height: 6px;
-                background: var(--control-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border-radius: 3px;
                 cursor: pointer;
                 transition: var(--transition);
@@ -226,7 +227,7 @@
 
             .slider-handle:hover {
                 transform: translateY(-50%) scale(1.2);
-                box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+                box-shadow: 0 4px 12px rgba(6, 163, 215, 0.4);
             }
 
             /* Modern Toggles */
@@ -252,7 +253,8 @@
             .toggle-switch {
                 width: 44px;
                 height: 24px;
-                background: var(--control-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border-radius: 12px;
                 position: relative;
                 transition: var(--transition);
@@ -329,7 +331,7 @@
                 
                 /* Touch feedback */
                 .advanced-toggle:active {
-                    background: rgba(0, 212, 255, 0.1);
+                    background: rgba(6, 163, 215, 0.1);
                     transform: scale(0.98);
                     transition: all 0.1s ease;
                 }
@@ -364,7 +366,7 @@
 
             .modern-button:hover {
                 transform: translateY(-2px);
-                box-shadow: 0 8px 20px rgba(0, 212, 255, 0.3);
+                box-shadow: 0 8px 20px rgba(6, 163, 215, 0.3);
             }
 
             .modern-button:active {
@@ -405,7 +407,7 @@
                 }
 
                 .panel-content {
-                    padding: 20px 60px; /* Enhanced padding with extra left/right space */
+                    padding: 20px 50px 50px 50px;
                     max-height: calc(85vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -550,7 +552,7 @@
                 }
 
                 .panel-content {
-                    padding: 20px 60px; /* Enhanced padding with extra left/right space */
+                    padding: 20px 50px 50px 50px;
                     max-height: calc(90vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -618,7 +620,8 @@
             .api-input, .text-input {
                 width: 100%;
                 padding: 8px 12px;
-                background: var(--control-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border: 1px solid var(--border-color);
                 border-radius: 6px;
                 color: var(--text-primary);
@@ -631,7 +634,7 @@
             .api-input:focus, .text-input:focus {
                 outline: none;
                 border-color: var(--accent-color);
-                box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+                box-shadow: 0 0 0 2px rgba(6, 163, 215, 0.2);
             }
 
             .api-input::placeholder, .text-input::placeholder {
@@ -675,7 +678,8 @@
             .preset-btn,
             .preset-button {
                 padding: 10px 14px;
-                background: var(--control-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border: 1px solid var(--border-color);
                 border-radius: 8px;
                 color: var(--text-primary);
@@ -700,20 +704,20 @@
                 border-color: var(--accent-color);
                 color: white;
                 transform: translateY(-1px);
-                box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+                box-shadow: 0 4px 12px rgba(6, 163, 215, 0.3);
             }
 
             .preset-btn:active,
             .preset-button:active {
                 transform: translateY(0);
-                box-shadow: 0 2px 6px rgba(0, 212, 255, 0.2);
+                box-shadow: 0 2px 6px rgba(6, 163, 215, 0.2);
             }
 
             .preset-button.active {
                 background: var(--accent-color);
                 border-color: var(--accent-color);
                 color: white;
-                box-shadow: 0 2px 8px rgba(0, 212, 255, 0.4);
+                box-shadow: 0 2px 8px rgba(6, 163, 215, 0.4);
             }
 
             @media (max-width: 768px) {
@@ -1011,7 +1015,7 @@
             .clr-swatches button:hover {
                 transform: scale(1.1) !important;
                 border-color: var(--accent-color) !important;
-                box-shadow: 0 0 8px rgba(0, 212, 255, 0.4) !important;
+                box-shadow: 0 0 8px rgba(6, 163, 215, 0.4) !important;
             }
 
             /* Stream Overlay Styles */
@@ -1241,7 +1245,7 @@
             .clr-field input:focus {
                 border-color: var(--accent-color) !important;
                 outline: none !important;
-                box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2) !important;
+                box-shadow: 0 0 0 2px rgba(6, 163, 215, 0.2) !important;
             }
 
             /* Remove background images from all color picker elements */
@@ -1262,6 +1266,8 @@
                 height: 16px;
                 accent-color: var(--accent-color);
                 cursor: pointer;
+                margin: 0;
+                vertical-align: middle;
             }
 
             .checkbox-label {
@@ -1269,6 +1275,8 @@
                 color: var(--text-secondary);
                 cursor: pointer;
                 user-select: none;
+                line-height: 16px;
+                vertical-align: middle;
             }
 
             .checkbox-label:hover {
@@ -1277,7 +1285,8 @@
 
             /* Secondary Button */
             .modern-button.secondary {
-                background: var(--control-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border: 1px solid var(--border-color);
                 color: var(--text-primary);
             }
@@ -1412,7 +1421,8 @@
                 width: 18px;
                 height: 18px;
                 margin-left: 4px;
-                background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border: 1px solid rgba(255, 255, 255, 0.3);
                 border-radius: 50%;
                 text-align: center;
@@ -1578,9 +1588,9 @@
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0, 0, 0, 0.3);
-                backdrop-filter: blur(25px);
-                -webkit-backdrop-filter: blur(25px);
+                background: rgba(0, 0, 0, 0.5);
+                backdrop-filter: blur(40px);
+                -webkit-backdrop-filter: blur(40px);
                 z-index: 10000;
                 display: flex;
                 align-items: center;
@@ -1590,7 +1600,8 @@
             }
 
             .welcome-content {
-                background: var(--secondary-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border-radius: var(--radius);
                 padding: 30px;
                 max-width: 750px;
@@ -1613,7 +1624,7 @@
                 color: var(--text-primary);
                 font-size: 2rem;
                 margin-bottom: 8px;
-                background: linear-gradient(135deg, var(--accent-color), #ff6b6b);
+                background: linear-gradient(166deg, #ffffff, #06a3d7);
                 -webkit-background-clip: text;
                 -webkit-text-fill-color: transparent;
                 background-clip: text;
@@ -1634,7 +1645,8 @@
             }
 
             .feature-item {
-                background: var(--control-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border-radius: var(--radius);
                 padding: 15px;
                 border: 1px solid var(--border-color);
@@ -1643,7 +1655,7 @@
 
             .feature-item:hover {
                 transform: translateY(-2px);
-                box-shadow: 0 8px 25px rgba(0, 212, 255, 0.15);
+                box-shadow: 0 8px 25px rgba(6, 163, 215, 0.15);
             }
 
             .feature-icon {
@@ -1664,7 +1676,8 @@
             }
 
             .welcome-api-section {
-                background: var(--control-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border-radius: var(--radius);
                 padding: 20px;
                 margin: 20px 0;
@@ -1697,7 +1710,8 @@
                 align-items: center;
                 gap: 6px;
                 padding: 10px 16px;
-                background: var(--control-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 color: var(--text-primary);
                 text-decoration: none;
                 border-radius: var(--radius);
@@ -1741,7 +1755,8 @@
                 align-items: center;
                 gap: 4px;
                 padding: 6px 12px;
-                background: var(--control-bg);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 color: var(--text-primary);
                 text-decoration: none;
                 border-radius: var(--radius);
@@ -1774,7 +1789,8 @@
             .welcome-input {
                 width: 100%;
                 padding: 12px 16px;
-                background: rgba(255, 255, 255, 0.05);
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
                 border: 1px solid var(--border-color);
                 border-radius: var(--radius);
                 color: var(--text-primary);
@@ -1785,7 +1801,7 @@
             .welcome-input:focus {
                 outline: none;
                 border-color: var(--accent-color);
-                box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+                box-shadow: 0 0 0 3px rgba(6, 163, 215, 0.1);
             }
 
             .welcome-consent {
@@ -1794,6 +1810,16 @@
                 gap: 8px;
                 margin-top: 12px;
                 justify-content: center;
+            }
+            
+            .welcome-consent .checkbox-input {
+                flex-shrink: 0;
+                margin: 0;
+            }
+            
+            .welcome-consent .checkbox-label {
+                margin: 0;
+                align-self: center;
             }
 
             .welcome-start-btn {
@@ -1820,6 +1846,7 @@
                 color: var(--text-secondary);
                 font-size: 0.9rem;
                 font-style: italic;
+                margin: 20px;
             }
 
             @keyframes fadeIn {
@@ -1836,8 +1863,8 @@
             /* Mobile responsiveness for welcome overlay */
             @media (max-width: 768px) {
                 .welcome-content {
-                    padding: 15px;
-                    margin: 5px;
+                    padding: 20px;
+                    margin: 20px;
                 }
 
                 .welcome-header h1 {
@@ -1875,6 +1902,17 @@
                     max-width: 250px;
                     justify-content: center;
                 }
+                
+                /* Hide screenshot and record buttons on mobile */
+                .control-item:has(button[onclick*="captureScreenshot"]),
+                .control-item:has(button[onclick*="toggleVideoRecording"]) {
+                    display: none;
+                }
+                
+                /* Hide keyboard shortcuts on mobile */
+                .keyboard-shortcuts-info {
+                    display: none;
+                }
             }
         </style>
         <script>
@@ -1889,7 +1927,7 @@
         <div id="welcomeOverlay" class="welcome-overlay" style="display: none;">
             <div class="welcome-content">
                 <div class="welcome-header">
-                    <h1>🌊 Fluid Diffusion Lab</h1>
+                    <h1>🌊 Diffusion Lab</h1>
                     <p class="welcome-subtitle">Transform fluid dynamics into stunning generative art with real-time AI processing</p>
                 </div>
                 
@@ -1941,17 +1979,17 @@
                 </div>
                 
                 <div class="welcome-actions">
+                    <p class="welcome-note">You can also start without an API key and add it later in settings</p>
                     <button id="welcomeStartButton" class="welcome-start-btn">
                         Start Creating
                     </button>
-                    <p class="welcome-note">You can also start without an API key and add it later in settings</p>
                 </div>
             </div>
         </div>
 
         <!-- Debug Overlay (OSC & Mobile) -->
         <div id="mobileDebug" style="display: none !important; position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: white; padding: 12px; font-size: 12px; border-radius: 8px; z-index: 9999; max-width: 300px; font-family: monospace; border: 1px solid rgba(255,255,255,0.2);">
-            <div style="color: #00d4ff; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid rgba(0,212,255,0.3); padding-bottom: 4px;">
+            <div style="color: #06a3d7; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid rgba(6,163,215,0.3); padding-bottom: 4px;">
                 <i class="fas fa-bug"></i> Debug Info
             </div>
             <div id="debugInfo"></div>
@@ -2031,7 +2069,7 @@
                     <div class="control-item" id="streamOpacityContainer" style="display: none;">
                         <div class="control-label">
                             <span>Stream Opacity</span>
-                            <input type="text" class="control-value number-input" id="streamOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            <input type="text" class="control-value number-input" id="streamOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'streamOpacity', 0, 1)" ontouchstart="handleSliderClick(event, 'streamOpacity', 0, 1); event.preventDefault();">
                             <div class="slider-fill" id="streamOpacityFill" style="width: 80%">
@@ -2128,7 +2166,7 @@
                                 <span>Reactivity <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Audio sensitivity: higher values make blob more responsive to quiet sounds</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="audioReactivityValue" value="1.0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                                <input type="text" class="control-value number-input" id="audioReactivityValue" value="1.0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'audioReactivity', 0.1, 3.0)" ontouchstart="handleSliderClick(event, 'audioReactivity', 0.1, 3.0); event.preventDefault();">
                                 <div class="slider-fill" id="audioReactivityFill" style="width: 30%">
@@ -2142,7 +2180,7 @@
                                 <span>Delay <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Audio processing delay in milliseconds (0-500ms)</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="audioDelayValue" value="0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                                <input type="text" class="control-value number-input" id="audioDelayValue" value="0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'audioDelay', 0, 500)" ontouchstart="handleSliderClick(event, 'audioDelay', 0, 500); event.preventDefault();">
                                 <div class="slider-fill" id="audioDelayFill" style="width: 0%">
@@ -2156,7 +2194,7 @@
                                 <span>Opacity <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Audio blob transparency (0.0 = invisible, 1.0 = opaque)</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="audioOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                                <input type="text" class="control-value number-input" id="audioOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'audioOpacity', 0, 1)" ontouchstart="handleSliderClick(event, 'audioOpacity', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="audioOpacityFill" style="width: 80%">
@@ -2170,7 +2208,7 @@
                                 <span>Colorful <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Color cycling speed: 0.0 = base color only, higher values = faster cycling through random colors</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="audioColorfulValue" value="0.3" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                                <input type="text" class="control-value number-input" id="audioColorfulValue" value="0.3" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'audioColorful', 0, 1)" ontouchstart="handleSliderClick(event, 'audioColorful', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="audioColorfulFill" style="width: 30%">
@@ -2184,7 +2222,7 @@
                                 <span>Edge Softness <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Controls how soft or sharp the blob edges appear (0 = sharp, 1 = very soft)</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="audioEdgeSoftnessValue" value="0.25" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                                <input type="text" class="control-value number-input" id="audioEdgeSoftnessValue" value="0.25" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'audioEdgeSoftness', 0, 1)" ontouchstart="handleSliderClick(event, 'audioEdgeSoftness', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="audioEdgeSoftnessFill" style="width: 25%">
@@ -2198,7 +2236,7 @@
                                 <span>Blob Color <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Base color for the audio blob</span>
                                 </div></span>
-                                <input type="text" id="audioBlobColorPicker" class="color-input" value="#00d4ff" data-coloris readonly inputmode="none">
+                                <input type="text" id="audioBlobColorPicker" class="color-input" value="#06a3d7" data-coloris readonly inputmode="none">
                             </div>
                         </div>
                     </div>
@@ -2211,7 +2249,7 @@
                     
                     <!-- Choose Media Button -->
                     <div class="control-item" style="margin-bottom: 12px;">
-                        <button id="chooseMediaButton" class="control-button" style="width: 100%; padding: 8px; font-size: 12px; background: rgba(0, 212, 255, 0.1); color: var(--accent-color); border: none; border-radius: 4px; cursor: pointer; transition: var(--transition);">
+                        <button id="chooseMediaButton" class="control-button" style="width: 100%; padding: 8px; font-size: 12px; background: rgba(6, 163, 215, 0.1); color: var(--accent-color); border: none; border-radius: 4px; cursor: pointer; transition: var(--transition);">
                             Choose Media
                         </button>
                     </div>
@@ -2221,7 +2259,7 @@
                             <span>Scale <div class="tooltip"><span class="info-icon">i</span>
                                 <span class="tooltiptext">Media size: 0.1 = very small, 1.0 = fit viewport, 2.0 = very large</span>
                             </div></span>
-                            <input type="text" class="control-value number-input" id="mediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            <input type="text" class="control-value number-input" id="mediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'mediaScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'mediaScale', 0.1, 2.0); event.preventDefault();">
                             <div class="slider-fill" id="mediaScaleFill" style="width: 47%">
@@ -2241,7 +2279,7 @@
                         <div class="color-row">
                             <div class="color-container full">
                                 <span class="color-label">Brush</span>
-                                <input type="text" id="staticColorPicker" class="color-input" value="#00d4ff" data-coloris readonly inputmode="none">
+                                <input type="text" id="staticColorPicker" class="color-input" value="#06a3d7" data-coloris readonly inputmode="none">
                             </div>
                             <div class="color-container full">
                                 <span class="color-label">Background</span>
@@ -2331,7 +2369,7 @@
                                 <span>Media Scale <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Background media size: 0.1 = very small, 1.0 = fit viewport, 2.0 = large</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="fluidMediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                                <input type="text" class="control-value number-input" id="fluidMediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'fluidMediaScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'fluidMediaScale', 0.1, 2.0); event.preventDefault();">
                                 <div class="slider-fill" id="fluidMediaScaleFill" style="width: 47%">
@@ -2345,7 +2383,7 @@
                                 <span>Camera Scale <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Background camera size: 0.1 = very small, 1.0 = fit viewport, 2.0 = large</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="fluidCameraScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(0, 212, 255, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                                <input type="text" class="control-value number-input" id="fluidCameraScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'fluidCameraScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'fluidCameraScale', 0.1, 2.0); event.preventDefault();">
                                 <div class="slider-fill" id="fluidCameraScaleFill" style="width: 47%">
@@ -2710,16 +2748,6 @@
                             </div>
                         </div>
                         
-                        <!-- OSC Remote Control -->
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>OSC Remote Control</span>
-                            </div>
-                            <button class="modern-button secondary" onclick="forceHTTPRedirect()" ontouchstart="forceHTTPRedirect(); event.preventDefault();">
-                                <i class="fas fa-external-link-alt"></i> Force HTTP
-                            </button>
-                        </div>
-                        
                         <!-- API Key -->
                         <div class="control-item">
                             <div class="control-label">
@@ -2743,15 +2771,25 @@
                             </div>
                         </div>
                         
+                        <!-- OSC Remote Control -->
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>OSC Remote Control</span>
+                            </div>
+                            <button class="modern-button secondary" onclick="forceHTTPRedirect()" ontouchstart="forceHTTPRedirect(); event.preventDefault();">
+                                <i class="fas fa-external-link-alt"></i> Force HTTP
+                            </button>
+                        </div>
+                        
                         <!-- Buttons below API key -->
                         <div class="control-item">
-                            <button class="modern-button" onclick="captureScreenshot()">
+                            <button class="modern-button secondary" onclick="captureScreenshot()">
                                 Take Screenshot
                             </button>
                         </div>
                         
                         <div class="control-item">
-                            <button class="modern-button" id="recordButton" onclick="toggleVideoRecording()">
+                            <button class="modern-button secondary" id="recordButton" onclick="toggleVideoRecording()">
                                 Record Video
                             </button>
                         </div>
@@ -3054,7 +3092,7 @@
                     const advancedToggles = document.querySelectorAll('.advanced-toggle');
                     advancedToggles.forEach(toggle => {
                         toggle.addEventListener('touchstart', function(e) {
-                            this.style.background = 'rgba(0, 212, 255, 0.1)';
+                            this.style.background = 'rgba(6, 163, 215, 0.1)';
                         });
                         
                         toggle.addEventListener('touchend', function(e) {
