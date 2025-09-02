@@ -68,10 +68,11 @@
                 position: fixed;
                 bottom: 20px;
                 left: 20px;
-                width: 280px;
+                width: 360px;
                 max-height: 80vh;
-                background: var(--secondary-bg);
-                backdrop-filter: blur(20px);
+                backdrop-filter: blur(40px);
+                -webkit-backdrop-filter: blur(40px);
+                background: rgba(0, 0, 0, 0.4);
                 border: 1px solid var(--border-color);
                 border-radius: var(--radius);
                 box-shadow: var(--shadow);
@@ -89,7 +90,9 @@
             /* Header */
             .panel-header {
                 padding: 15px 20px;
-                background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+                backdrop-filter: blur(40px);
+                -webkit-backdrop-filter: blur(40px);
+                background: rgba(0, 0, 0, 0.3);
                 color: white;
                 font-weight: 600;
                 font-size: 14px;
@@ -101,7 +104,6 @@
             }
 
             .panel-header:hover {
-                background: linear-gradient(135deg, var(--accent-hover), var(--accent-color));
             }
 
             .panel-header .toggle-icon {
@@ -115,7 +117,7 @@
 
             /* Content */
             .panel-content {
-                padding: 20px;
+                padding: 20px 60px;
                 max-height: calc(80vh - 50px);
                 overflow-y: auto;
                 overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -192,6 +194,7 @@
                 border-radius: 3px;
                 cursor: pointer;
                 transition: var(--transition);
+                margin: 20px 0;
             }
 
             .slider-container:hover {
@@ -339,7 +342,7 @@
             }
 
             .advanced-content.expanded {
-                max-height: none; /* Remove height restriction to allow full content */
+                max-height: none; /* Remove height restriction to show all content */
                 margin-top: 16px;
             }
 
@@ -402,7 +405,7 @@
                 }
 
                 .panel-content {
-                    padding: 20px; /* Finger-width padding inside controls */
+                    padding: 20px 60px; /* Enhanced padding with extra left/right space */
                     max-height: calc(85vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -460,8 +463,8 @@
                 }
 
                 .slider-container {
-                    height: 44px;
-                    padding: 12px 0;
+                    height: 6px;
+                    margin: 20px 0;
                 }
 
                 .toggle-container {
@@ -492,7 +495,7 @@
                     right: 20px; /* Finger-width padding from right */
                     bottom: 20px; /* Finger-width padding from bottom */
                     left: auto;
-                    width: 320px;
+                    width: 400px;
                     max-height: calc(100vh - 40px); /* Adjust for top/bottom padding */
                     border-radius: 16px;
                     box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
@@ -525,6 +528,11 @@
                     user-select: none;
                 }
                 
+                /* Reduce spacing between input buttons on mobile */
+                .modern-button.secondary {
+                    margin-top: 4px;
+                }
+                
                 .panel-header {
                     min-height: 44px;
                     touch-action: manipulation;
@@ -542,7 +550,7 @@
                 }
 
                 .panel-content {
-                    padding: 20px; /* Finger-width padding inside controls */
+                    padding: 20px 60px; /* Enhanced padding with extra left/right space */
                     max-height: calc(90vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -2052,18 +2060,18 @@
                                 <button class="preset-btn" onclick="setPrompt('fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light')" ontouchstart="setPrompt('fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light'); event.preventDefault();">Cotton candy</button>
                                 <button class="preset-btn" onclick="setPrompt('bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere')" ontouchstart="setPrompt('bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere'); event.preventDefault();">Bouncing balls</button>
                                 <button class="preset-btn" onclick="setPrompt('autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene')" ontouchstart="setPrompt('autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene'); event.preventDefault();">Forest leaves</button>
-                                <button class="preset-btn" onclick="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion')" ontouchstart="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion'); event.preventDefault();">Chrome blob waves</button>
+                                <button class="preset-btn" onclick="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion')" ontouchstart="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion'); event.preventDefault();">Chrome blob preset</button>
                             </div>
                         </div>
                     </div>
                     
                     <!-- Negative Prompt Section -->
                     <div class="advanced-section">
-                        <div class="advanced-toggle" onclick="safeToggleNegativePrompt()" ontouchstart="safeToggleNegativePrompt()">
+                        <div class="advanced-toggle" onclick="safeToggleNegativePrompt()" ontouchstart="safeToggleNegativePrompt(); event.preventDefault();">
                             <span>Negative Prompt</span>
                             <div class="toggle-icon" id="negativePromptIcon">▶</div>
                         </div>
-                        <div class="advanced-content" id="negativePromptContent" style="max-height: 0; overflow: hidden; margin-top: 0;">
+                        <div class="advanced-content" id="negativePromptContent">
                             <div class="control-item">
                                 <input type="text" class="text-input" id="negativePromptInput" placeholder="blurry, low quality" title="Describe what you don't want the AI to generate" />
                             </div>
@@ -2124,7 +2132,7 @@
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'audioReactivity', 0.1, 3.0)" ontouchstart="handleSliderClick(event, 'audioReactivity', 0.1, 3.0); event.preventDefault();">
                                 <div class="slider-fill" id="audioReactivityFill" style="width: 30%">
-                                    <div class="slider-handle"></div>
+                                    <div class="slider-handle" id="audioReactivityHandle"></div>
                                 </div>
                             </div>
                         </div>
@@ -2138,7 +2146,7 @@
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'audioDelay', 0, 500)" ontouchstart="handleSliderClick(event, 'audioDelay', 0, 500); event.preventDefault();">
                                 <div class="slider-fill" id="audioDelayFill" style="width: 0%">
-                                    <div class="slider-handle"></div>
+                                    <div class="slider-handle" id="audioDelayHandle"></div>
                                 </div>
                             </div>
                         </div>
@@ -2152,7 +2160,7 @@
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'audioOpacity', 0, 1)" ontouchstart="handleSliderClick(event, 'audioOpacity', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="audioOpacityFill" style="width: 80%">
-                                    <div class="slider-handle"></div>
+                                    <div class="slider-handle" id="audioOpacityHandle"></div>
                                 </div>
                             </div>
                         </div>
@@ -2166,7 +2174,7 @@
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'audioColorful', 0, 1)" ontouchstart="handleSliderClick(event, 'audioColorful', 0, 1); event.preventDefault();">
                                 <div class="slider-fill" id="audioColorfulFill" style="width: 30%">
-                                    <div class="slider-handle"></div>
+                                    <div class="slider-handle" id="audioColorfulHandle"></div>
                                 </div>
                             </div>
                         </div>
@@ -2700,6 +2708,16 @@
                                     <div class="toggle-handle"></div>
                                 </div>
                             </div>
+                        </div>
+                        
+                        <!-- OSC Remote Control -->
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>OSC Remote Control</span>
+                            </div>
+                            <button class="modern-button secondary" onclick="forceHTTPRedirect()" ontouchstart="forceHTTPRedirect(); event.preventDefault();">
+                                <i class="fas fa-external-link-alt"></i> Force HTTP
+                            </button>
                         </div>
                         
                         <!-- API Key -->

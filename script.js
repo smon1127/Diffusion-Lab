@@ -420,7 +420,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale', 'audioReactivity', 'audioDelay', 'audioOpacity', 'audioColorful', 'audioEdgeSoftness'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale', 'streamOpacity', 'audioReactivity', 'audioDelay', 'audioOpacity', 'audioColorful', 'audioEdgeSoftness'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -1041,10 +1041,93 @@ function toggleDebug() {
         }
     }
     
-    saveConfig();
-}
+          saveConfig();
+  }
+  
 
-function togglePromptPresets() {
+  
+  function forceHTTPRedirect() {
+      const currentUrl = window.location.href;
+      
+      if (currentUrl.startsWith('https://')) {
+          const httpUrl = currentUrl.replace('https://', 'http://');
+          
+          // Show confirmation dialog
+          if (confirm(`Redirect to HTTP version for OSC compatibility?\n\n${httpUrl}\n\nNote: This may show security warnings in your browser.`)) {
+              showOSCFeedback('Redirecting to HTTP version...', 'info');
+              
+              // Close any existing WebSocket connections before redirect
+              if (typeof oscWebSocket !== 'undefined' && oscWebSocket) {
+                  oscWebSocket.close();
+              }
+              
+              // Force immediate redirect
+              window.location.replace(httpUrl);
+          }
+      } else {
+          showOSCFeedback('Already on HTTP - OSC should work!', 'success');
+          
+          // Try to reinitialize OSC connection if on HTTP
+          if (typeof initOSCConnection === 'function') {
+              setTimeout(initOSCConnection, 1000);
+          }
+      }
+  }
+  
+  function showOSCFeedback(message, type) {
+      // Create or update feedback element
+      let feedback = document.getElementById('oscFeedback');
+      if (!feedback) {
+          feedback = document.createElement('div');
+          feedback.id = 'oscFeedback';
+          feedback.style.cssText = `
+              position: fixed;
+              top: 20px;
+              right: 20px;
+              padding: 12px 16px;
+              border-radius: 6px;
+              font-size: 13px;
+              font-weight: 500;
+              z-index: 10000;
+              max-width: 300px;
+              word-wrap: break-word;
+              transition: all 0.3s ease;
+              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+          `;
+          document.body.appendChild(feedback);
+      }
+      
+      // Set colors based on type
+      const colors = {
+          success: { bg: 'rgba(34, 197, 94, 0.95)', border: '#22c55e', text: '#ffffff' },
+          error: { bg: 'rgba(239, 68, 68, 0.95)', border: '#ef4444', text: '#ffffff' },
+          info: { bg: 'rgba(0, 212, 255, 0.95)', border: '#00d4ff', text: '#ffffff' }
+      };
+      
+      const color = colors[type] || colors.info;
+      feedback.style.background = color.bg;
+      feedback.style.border = `1px solid ${color.border}`;
+      feedback.style.color = color.text;
+      feedback.textContent = message;
+      
+      // Show and auto-hide
+      feedback.style.opacity = '1';
+      feedback.style.transform = 'translateX(0)';
+      
+      setTimeout(() => {
+          if (feedback) {
+              feedback.style.opacity = '0';
+              feedback.style.transform = 'translateX(100%)';
+              setTimeout(() => {
+                  if (feedback && feedback.parentNode) {
+                      feedback.parentNode.removeChild(feedback);
+                  }
+              }, 300);
+          }
+      }, 4000);
+  }
+  
+  function togglePromptPresets() {
     const content = document.getElementById('promptPresetsContent');
     const toggle = document.getElementById('promptPresetsIcon');
     
@@ -4861,7 +4944,38 @@ async function startStream() {
         // Validate API key
         const apiKey = document.getElementById('apiKeyInput').value.trim();
         if (!apiKey) {
-            throw new Error('Please enter your Daydream API key');
+            // First, ensure settings panel is open
+            const settingsContent = document.getElementById('settingsContent');
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            
+            if (settingsContent && !settingsContent.classList.contains('expanded')) {
+                // Open settings panel first
+                toggleSettings();
+            }
+            
+            // Then scroll to API key input field and show alert
+            if (apiKeyInput) {
+                // Wait a bit for the settings panel to expand before scrolling
+                setTimeout(() => {
+                    apiKeyInput.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'center' 
+                    });
+                    // Focus the input field and show alert after scrolling
+                    setTimeout(() => {
+                        apiKeyInput.focus();
+                        alert('Please enter your Daydream API key');
+                    }, 500);
+                }, 300);
+            } else {
+                // Fallback if input not found
+                alert('Please enter your Daydream API key');
+            }
+            
+            // Update UI and return without throwing error
+            updateStreamStatus('API key required', 'error');
+            updateStreamButton(false);
+            return;
         }
         
         // Create canvas media stream from appropriate canvas (audio blob or fluid)
@@ -4967,6 +5081,12 @@ async function startStream() {
         // Provide user-friendly error messages
         if (error.message.includes('API key')) {
             errorMessage = 'Invalid API key';
+            // For API key errors, just update status and return - don't show confirm dialog
+            // The user experience is already handled by opening settings and scrolling to input
+            updateStreamStatus('Error: ' + errorMessage, 'error');
+            updateStreamButton(false);
+            stopStream();
+            return;
         } else if (error.message.includes('Popup blocked')) {
             errorMessage = 'Popup blocked - please allow popups';
         } else if (error.message.includes('WHIP connection')) {
@@ -6544,8 +6664,7 @@ async function startAudioBlob() {
         
         // Update button state and show controls
         const button = document.getElementById('audioBlobButton');
-        button.textContent = '🎵 Audio';
-        button.classList.add('streaming');
+        button.classList.add('active');
         
         // Show audio controls and preview button
         const audioControls = document.getElementById('audioControls');
@@ -6604,8 +6723,7 @@ function stopAudioBlob() {
     const previewButton = document.getElementById('previewAudioButton');
     if (previewButton) {
         previewButton.style.display = 'none';
-        previewButton.textContent = '🔊 Preview Audio';
-        previewButton.classList.remove('streaming');
+        previewButton.classList.remove('active');
     }
     if (audioBlobState.audioContext) {
         audioBlobState.audioContext.close();
@@ -6629,8 +6747,7 @@ function stopAudioBlob() {
     
     // Update button state
     const button = document.getElementById('audioBlobButton');
-    button.textContent = '🎵 Audio';
-    button.classList.remove('streaming');
+    button.classList.remove('active');
     
     // Switch streaming canvas back to fluid canvas if streaming is active
     switchStreamingCanvas(false);
@@ -7341,13 +7458,11 @@ function toggleAudioPreview() {
     if (isPreviewOn) {
         // Turn off preview
         audioBlobState.previewGain.gain.value = 0;
-        button.textContent = '🔊 Preview Audio';
-        button.classList.remove('streaming');
+        button.classList.remove('active');
     } else {
         // Turn on preview
         audioBlobState.previewGain.gain.value = 1;
-        button.textContent = '🔇 Stop Preview';
-        button.classList.add('streaming');
+        button.classList.add('active');
     }
 }
 
@@ -8876,6 +8991,8 @@ function tryConnectToOSCServer(ips, index) {
     // For HTTPS sites connecting to local IP, we'll try both protocols
     const isHTTPS = window.location.protocol === 'https:';
     const isLocalIP = ip.startsWith('192.168.') || ip.startsWith('10.0.') || ip.startsWith('172.') || ip === 'localhost' || ip === '127.0.0.1';
+    
+    console.log(`🔍 OSC Debug: Current protocol: ${window.location.protocol}, Target IP: ${ip}, Is Local: ${isLocalIP}`);
     
     let wsUrl;
     if (isHTTPS && isLocalIP) {
