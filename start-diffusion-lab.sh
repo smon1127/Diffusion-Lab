@@ -35,6 +35,75 @@ NC='\033[0m' # No Color
 WEB_PORT=3000
 OSC_PORT=8000
 WEBSOCKET_PORT=8001
+DEBUG=false  # Set to true for verbose logging
+
+# Function to kill process using a port
+kill_port() {
+    local port=$1
+    local pid=$(lsof -ti :$port 2>/dev/null)
+    if [ ! -z "$pid" ]; then
+        echo -e "${YELLOW}Found process ${pid} using port ${port}${NC}"
+        local process_name=$(ps -p $pid -o comm= 2>/dev/null)
+        if [[ "$process_name" == *"Google Chrome"* ]] || [[ "$process_name" == *"firefox"* ]] || [[ "$process_name" == *"Safari"* ]]; then
+            echo -e "${YELLOW}⚠️  Browser process detected. Try closing your browser tabs.${NC}"
+        fi
+        echo -e "${YELLOW}🔧 Killing process...${NC}"
+        kill -9 $pid 2>/dev/null
+        sleep 1
+        if lsof -i :$port >/dev/null 2>&1; then
+            echo -e "${RED}❌ Could not free port ${port}${NC}"
+            return 1
+        else
+            echo -e "${GREEN}✅ Port ${port} freed${NC}"
+            return 0
+        fi
+    else
+        echo -e "${GREEN}✅ Port ${port} is not in use${NC}"
+        return 0
+    fi
+}
+
+# Function to test if a port is open and clean it if needed
+test_port() {
+    local port=$1
+    local description=$2
+    echo -e "${YELLOW}Testing ${description} port ${port}...${NC}"
+    
+    # Use lsof to check if port is in use
+    if lsof -i :$port >/dev/null 2>&1; then
+        echo -e "${RED}❌ Port ${port} is in use${NC}"
+        echo -e "${YELLOW}🔍 Checking what's using it...${NC}"
+        kill_port $port
+        return $?
+    fi
+    
+    echo -e "${GREEN}✅ Port ${port} is available${NC}"
+    return 0
+}
+
+# Function to check network connectivity
+check_network() {
+    echo -e "${BLUE}🔍 Testing network connectivity...${NC}"
+    
+    # Get network interfaces without using netcat
+    local interfaces=$(ifconfig 2>/dev/null || ip addr)
+    if [ $? -ne 0 ]; then
+        echo -e "${YELLOW}⚠️  Could not check network interfaces${NC}"
+        echo -e "${YELLOW}💡 Continuing anyway...${NC}"
+        return 0
+    fi
+    
+    # Show available network interfaces (non-loopback IPv4)
+    echo -e "${BLUE}Available network interfaces:${NC}"
+    echo "$interfaces" | grep "inet " | grep -v "127.0.0.1" || {
+        echo -e "${YELLOW}⚠️  No external network interfaces found${NC}"
+        echo -e "${YELLOW}💡 Check your network connection${NC}"
+    }
+    
+    return 0
+}
+
+
 
 # Cleanup function
 cleanup() {
@@ -52,10 +121,15 @@ cleanup() {
         echo -e "${GREEN}✅ Web Server stopped${NC}"
     fi
     
-    # Kill any remaining processes on our ports
-    lsof -ti:$WEB_PORT | xargs kill -9 2>/dev/null
-    lsof -ti:$OSC_PORT | xargs kill -9 2>/dev/null
-    lsof -ti:$WEBSOCKET_PORT | xargs kill -9 2>/dev/null
+    # Kill any remaining processes on our ports (more robust cleanup)
+    echo -e "${YELLOW}🧹 Cleaning up ports...${NC}"
+    for port in $WEB_PORT $OSC_PORT $WEBSOCKET_PORT; do
+        local pids=$(lsof -ti:$port 2>/dev/null)
+        if [ ! -z "$pids" ]; then
+            echo "$pids" | xargs kill -9 2>/dev/null
+            echo -e "${GREEN}✅ Cleaned up port ${port}${NC}"
+        fi
+    done
     
     echo -e "${PURPLE}👋 Diffusion Lab stopped. Goodbye!${NC}"
     exit 0
@@ -67,6 +141,30 @@ trap cleanup SIGINT SIGTERM
 # Check prerequisites
 echo -e "${BLUE}🔍 Running from: $SCRIPT_DIR${NC}"
 echo -e "${BLUE}🔍 Checking prerequisites...${NC}"
+
+# Check network connectivity
+check_network
+
+# Test ports before starting servers
+echo
+echo -e "${BLUE}🔍 Testing port availability...${NC}"
+if ! test_port $WEB_PORT "Web Server"; then
+    echo -e "${RED}❌ Could not free Web Server port ${WEB_PORT}${NC}"
+    echo -e "${YELLOW}💡 Try changing WEB_PORT in the script or restart your computer${NC}"
+    exit 1
+fi
+
+if ! test_port $OSC_PORT "OSC Server"; then
+    echo -e "${RED}❌ Could not free OSC Server port ${OSC_PORT}${NC}"
+    echo -e "${YELLOW}💡 Try changing OSC_PORT in the script or restart your computer${NC}"
+    exit 1
+fi
+
+if ! test_port $WEBSOCKET_PORT "WebSocket"; then
+    echo -e "${RED}❌ Could not free WebSocket port ${WEBSOCKET_PORT}${NC}"
+    echo -e "${YELLOW}💡 Try changing WEBSOCKET_PORT in the script or restart your computer${NC}"
+    exit 1
+fi
 
 # Check Node.js
 if ! command -v node &> /dev/null; then
@@ -175,11 +273,13 @@ echo -e "${GREEN}✅ OSC Server running (PID: $OSC_PID)${NC}"
 # Start Web Server
 echo -e "${PURPLE}🌐 Starting Web Server...${NC}"
 if [[ $WEB_SERVER_CMD == *"http-server"* ]]; then
-    $WEB_SERVER_CMD -p $WEB_PORT -c-1 --cors &
+    $WEB_SERVER_CMD -p $WEB_PORT -c-1 --cors --silent -a 0.0.0.0 &
 elif [[ $WEB_SERVER_CMD == *"python3"* ]]; then
-    $WEB_SERVER_CMD $WEB_PORT &
+    # Redirect stdout to /dev/null to suppress access logs, bind to all interfaces
+    python3 -m http.server $WEB_PORT --bind 0.0.0.0 >/dev/null 2>&1 &
 else
-    $WEB_SERVER_CMD $WEB_PORT &
+    # For Python 2 server - bind to all interfaces
+    python -m SimpleHTTPServer $WEB_PORT >/dev/null 2>&1 &
 fi
 WEB_PID=$!
 
@@ -202,79 +302,68 @@ sleep 2
 
 # Show network configuration and get user choice
 echo
-echo -e "${CYAN}🌐 Network Configuration:${NC}"
+echo -e "${CYAN}🌐 iPad + Mac Setup:${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${CYAN}   Local Access:  http://localhost:${WEB_PORT}${NC}"
-echo -e "${CYAN}   External Access: http://${NETWORK_IP}:${WEB_PORT}${NC}"
-echo -e "${CYAN}   OSC Server:    ${NETWORK_IP}:${OSC_PORT}${NC}"
-echo -e "${CYAN}   WebSocket:     ${NETWORK_IP}:${WEBSOCKET_PORT}${NC}"
+echo -e "${CYAN}1. On your iPad (for viewing):${NC}"
+echo -e "${CYAN}   • Open Safari/Chrome and go to:${NC}"
+echo -e "${CYAN}   • http://${NETWORK_IP}:${WEB_PORT}${NC}"
+echo
+echo -e "${CYAN}2. On your Mac (OSC bridge):${NC}"
+echo -e "${CYAN}   • Keep this terminal window open${NC}"
+echo -e "${CYAN}   • The Mac handles all OSC messages${NC}"
+echo
+echo -e "${CYAN}3. In TouchOSC (control):${NC}"
+echo -e "${CYAN}   • Host: ${NETWORK_IP}   ← Mac's IP address${NC}"
+echo -e "${CYAN}   • Port: ${OSC_PORT}     ← OSC port${NC}"
+echo
+echo -e "${CYAN}Connection Flow:${NC}"
+echo -e "${CYAN}   TouchOSC → Mac Bridge (${NETWORK_IP}:${OSC_PORT}) → iPad Browser${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo
 echo -e "${GREEN}✨ All servers are running and ready!${NC}"
-echo
 
-# Ask user about access method
-echo -e "${YELLOW}How would you like to access Diffusion Lab?${NC}"
-echo -e "1) Open on this computer (launches browser)"
-echo -e "2) Access from another device"
-echo
-read -p "Enter choice (1 or 2): " access_choice
-echo
-
-OPEN_BROWSER=false
-if [ "$access_choice" = "1" ]; then
-    OPEN_BROWSER=true
-elif [ "$access_choice" = "2" ]; then
-    echo -e "${YELLOW}📱 To access from another device:${NC}"
-    echo -e "   Open http://${NETWORK_IP}:${WEB_PORT} in your browser"
-    echo
+# Open browser automatically
+echo -e "${PURPLE}🚀 Opening Diffusion Lab in browser...${NC}"
+if command -v open &> /dev/null; then
+    # macOS
+    open "http://localhost:${WEB_PORT}"
+elif command -v xdg-open &> /dev/null; then
+    # Linux
+    xdg-open "http://localhost:${WEB_PORT}"
+elif command -v start &> /dev/null; then
+    # Windows
+    start "http://localhost:${WEB_PORT}"
 else
-    echo -e "${RED}Invalid choice. Defaulting to external access.${NC}"
-    echo
+    echo -e "${YELLOW}💡 Please open your browser to: http://localhost:${WEB_PORT}${NC}"
 fi
 
-# Open browser if requested
-if [ "$OPEN_BROWSER" = true ]; then
-    echo -e "${PURPLE}🚀 Opening Diffusion Lab in browser...${NC}"
-    if command -v open &> /dev/null; then
-        # macOS
-        open "http://localhost:${WEB_PORT}"
-    elif command -v xdg-open &> /dev/null; then
-        # Linux
-        xdg-open "http://localhost:${WEB_PORT}"
-    elif command -v start &> /dev/null; then
-        # Windows
-        start "http://localhost:${WEB_PORT}"
-    else
-        echo -e "${YELLOW}💡 Please open your browser to: http://localhost:${WEB_PORT}${NC}"
-    fi
-    # Wait for browser to load
-    sleep 3
-fi
+# Wait for browser to load
+sleep 2
 
 echo
 echo -e "${GREEN}🎉 Diffusion Lab is ready!${NC}"
 echo
 echo -e "${BLUE}📋 Quick Setup Guide:${NC}"
-if [ "$OPEN_BROWSER" = true ]; then
-    echo -e "${BLUE}   🌐 Web Interface: http://localhost:${WEB_PORT}${NC}"
-else
-    echo -e "${BLUE}   🌐 Web Interface: http://${NETWORK_IP}:${WEB_PORT}${NC}"
-fi
+echo -e "${BLUE}   🌐 Local Access:    http://localhost:${WEB_PORT}${NC}"
+echo -e "${BLUE}   🌐 External Access: http://${NETWORK_IP}:${WEB_PORT}${NC}"
 echo -e "${BLUE}   🎛️  OSC Control: ${NETWORK_IP}:${OSC_PORT}${NC}"
 echo -e "${BLUE}   📱 TouchOSC Setup:${NC}"
 echo -e "${BLUE}      Host: ${NETWORK_IP}${NC}"
 echo -e "${BLUE}      Port: ${OSC_PORT}${NC}"
 echo
 echo -e "${PURPLE}💡 Tips:${NC}"
-if [ "$OPEN_BROWSER" = true ]; then
-    echo -e "${PURPLE}   • The web interface will open automatically in your browser${NC}"
-else
-    echo -e "${PURPLE}   • Open the web interface URL in your device's browser${NC}"
-fi
-echo -e "${PURPLE}   • Configure TouchOSC with the IP and port above${NC}"
-echo -e "${PURPLE}   • Look for OSC connection indicator in the web interface${NC}"
-echo -e "${PURPLE}   • Press Ctrl+C to stop all servers${NC}"
+echo -e "${PURPLE}   • Use localhost URL on this Mac, or external IP on other devices${NC}"
+echo -e "${PURPLE}   • Keep this Mac running as the OSC bridge${NC}"
+echo -e "${PURPLE}   • On your iPad, check that the page loads correctly${NC}"
+echo -e "${PURPLE}   • Make sure your iPad and Mac are on the same WiFi${NC}"
+echo -e "${PURPLE}   • In TouchOSC, ALWAYS use the Mac's IP: ${NETWORK_IP}${NC}"
+echo -e "${PURPLE}   • Watch for the OSC connection indicator on your iPad${NC}"
+echo -e "${PURPLE}   • Press Ctrl+C on the Mac to stop all servers${NC}"
+echo
+echo -e "${YELLOW}🔧 Port Issues?${NC}"
+echo -e "${YELLOW}   • Try closing browser tabs using these ports${NC}"
+echo -e "${YELLOW}   • Run this command to kill ports:${NC}"
+echo -e "${YELLOW}   • lsof -ti :$WEB_PORT :$OSC_PORT :$WEBSOCKET_PORT | xargs kill -9${NC}"
 echo
 echo -e "${YELLOW}🔄 Servers running... Press Ctrl+C to stop${NC}"
 
