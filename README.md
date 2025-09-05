@@ -1,5 +1,10 @@
 # 🌊 Diffusion Lab
 
+<video width="100%" autoplay muted loop>
+  <source src="diffusion_lab_teaser.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
 **Transform fluid dynamics and more into stunning generative art with real-time AI processing**
 
 Diffusion Lab is an advanced WebGL fluid simulation combined with real-time AI stream diffusion, designed for interactive art creation, live performances, and creative exploration. Control it through touch, remote devices, or Telegram commands.
