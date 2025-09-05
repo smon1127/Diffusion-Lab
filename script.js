@@ -1103,18 +1103,111 @@ function toggleTelegramReceive() {
     console.log(`📱 Telegram receive ${config.TELEGRAM_RECEIVE ? 'enabled' : 'disabled'}`);
 }
 
+function toggleTelegramConfig() {
+    const content = document.getElementById('telegramConfigContent');
+    const toggle = document.getElementById('telegramConfigIcon');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
+        toggle.textContent = '▼';
+    }
+}
+
+function toggleTelegramQR() {
+    const content = document.getElementById('telegramQRContent');
+    const toggle = document.getElementById('telegramQRIcon');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
+        toggle.textContent = '▼';
+        
+        // Generate QR code when showing for the first time
+        generateTelegramQR();
+    }
+}
+
+function generateTelegramQR(retryCount = 0) {
+    const canvas = document.getElementById('telegramQRCanvas');
+    if (!canvas) {
+        console.error('QR Canvas element not found');
+        return;
+    }
+    
+    // Check if QRious library is loaded
+    if (typeof QRious === 'undefined') {
+        if (retryCount < 5) { // Limit to 5 retries (2.5 seconds)
+            console.warn(`QRious library not loaded yet, retrying in 500ms... (${retryCount + 1}/5)`);
+            setTimeout(() => generateTelegramQR(retryCount + 1), 500);
+            return;
+        } else {
+            console.error('QRious library failed to load after 5 attempts');
+            // Show fallback message
+            const ctx = canvas.getContext('2d');
+            canvas.width = 300;
+            canvas.height = 300;
+            ctx.fillStyle = '#ffeeee';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#cc0000';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('QR Library Failed to Load', canvas.width/2, canvas.height/2 - 20);
+            ctx.font = '12px Arial';
+            ctx.fillText('https://t.me/DiffusionPromptBot', canvas.width/2, canvas.height/2 + 10);
+            return;
+        }
+    }
+    
+    const telegramBotUrl = 'https://t.me/DiffusionPromptBot';
+    console.log('📱 Generating QR code for:', telegramBotUrl);
+    
+    try {
+        // Create QR code using QRious
+        const qr = new QRious({
+            element: canvas,
+            value: telegramBotUrl,
+            size: 300,
+            background: 'white',
+            foreground: 'black',
+            level: 'M'
+        });
+        
+        console.log('📱 Telegram QR code generated successfully with QRious');
+        canvas.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Failed to generate QR code with QRious:', error);
+        // Fallback: show error message on canvas
+        const ctx = canvas.getContext('2d');
+        canvas.width = 300;
+        canvas.height = 300;
+        ctx.fillStyle = '#ffcccc';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ff0000';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('QR Generation Error:', canvas.width/2, canvas.height/2 - 20);
+        ctx.font = '12px Arial';
+        ctx.fillText(error.message, canvas.width/2, canvas.height/2);
+        ctx.fillText('https://t.me/DiffusionPromptBot', canvas.width/2, canvas.height/2 + 20);
+    }
+}
+
 // Telegram Waitlist System
 let telegramWaitlist = [];
 let telegramProcessingTimer = null;
 
 function updateTelegramControlsVisibility() {
-    const waitlistControls = document.getElementById('telegramWaitlistControls');
-    const clearButton = document.getElementById('telegramClearButton');
+    const configSection = document.getElementById('telegramConfigSection');
     
-    if (waitlistControls && clearButton) {
+    if (configSection) {
         const isVisible = config.TELEGRAM_RECEIVE === true;
-        waitlistControls.style.display = isVisible ? 'block' : 'none';
-        clearButton.style.display = isVisible ? 'block' : 'none';
+        configSection.style.display = isVisible ? 'block' : 'none';
     }
 }
 
@@ -8513,7 +8606,9 @@ const STORAGE_KEYS = {
     PROMPTS: STORAGE_PREFIX + 'prompts',
     API_KEY_CONSENT: STORAGE_PREFIX + 'apiKeyConsent',
     STREAM_STATE: STORAGE_PREFIX + 'streamState',
-    TELEGRAM_SETTINGS: STORAGE_PREFIX + 'telegramSettings'
+    TELEGRAM_SETTINGS: STORAGE_PREFIX + 'telegramSettings',
+    TELEGRAM_TOKEN: STORAGE_PREFIX + 'telegramToken',
+    TELEGRAM_TOKEN_CONSENT: STORAGE_PREFIX + 'telegramTokenConsent'
 };
 
 function isLocalStorageAvailable() {
@@ -8841,6 +8936,81 @@ function updateApiInstructions() {
     }
 }
 
+function saveTelegramToken() {
+    const tokenInput = document.getElementById('telegramTokenInput');
+    const consentCheckbox = document.getElementById('telegramTokenConsent');
+
+    if (tokenInput && consentCheckbox && consentCheckbox.checked) {
+        const token = tokenInput.value.trim();
+        if (token) {
+            saveToLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN, obfuscateApiKey(token));
+            saveToLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN_CONSENT, true);
+            
+            // Send token to server
+            if (typeof sendToServer === 'function') {
+                sendToServer({
+                    type: 'telegram_token_updated',
+                    token: token
+                });
+                console.log('📱 Sent Telegram token to server');
+            }
+        }
+    } else {
+        // Clear token if consent is not checked
+        saveToLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN, '');
+        saveToLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN_CONSENT, false);
+        
+        // Send empty token to server
+        if (typeof sendToServer === 'function') {
+            sendToServer({
+                type: 'telegram_token_updated',
+                token: ''
+            });
+            console.log('📱 Cleared Telegram token on server');
+        }
+    }
+}
+
+function getTelegramToken() {
+    const consent = loadFromLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN_CONSENT, false);
+    if (consent) {
+        const savedToken = loadFromLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN);
+        if (savedToken) {
+            return deobfuscateApiKey(savedToken);
+        }
+    }
+    return null;
+}
+
+function loadTelegramToken() {
+    const consent = loadFromLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN_CONSENT, false);
+    if (consent) {
+        const savedToken = loadFromLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN);
+        if (savedToken) {
+            const tokenInput = document.getElementById('telegramTokenInput');
+            const consentCheckbox = document.getElementById('telegramTokenConsent');
+            
+            if (tokenInput) {
+                tokenInput.value = deobfuscateApiKey(savedToken);
+            }
+            if (consentCheckbox) {
+                consentCheckbox.checked = true;
+            }
+            
+            // Send token to server on load (with delay to ensure WebSocket is connected)
+            setTimeout(() => {
+                if (typeof sendToServer === 'function') {
+                    sendToServer({
+                        type: 'telegram_token_updated',
+                        token: deobfuscateApiKey(savedToken)
+                    });
+                    console.log('📱 Sent stored Telegram token to server on load');
+                }
+            }, 1500); // Wait 1.5 seconds for WebSocket connection
+        }
+    }
+}
+
 // Welcome overlay functions
 function showWelcomeOverlay() {
     const overlay = document.getElementById('welcomeOverlay');
@@ -9101,11 +9271,15 @@ function clearAllSettings() {
         const negativePromptInput = document.getElementById('negativePromptInput');
         const apiKeyInput = document.getElementById('apiKeyInput');
         const consentCheckbox = document.getElementById('apiKeyConsent');
+        const telegramTokenInput = document.getElementById('telegramTokenInput');
+        const telegramTokenConsent = document.getElementById('telegramTokenConsent');
         
         if (promptInput) promptInput.value = 'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere';
         if (negativePromptInput) negativePromptInput.value = 'blurry, low quality, flat, 2d';
         if (apiKeyInput) apiKeyInput.value = '';
         if (consentCheckbox) consentCheckbox.checked = false;
+        if (telegramTokenInput) telegramTokenInput.value = '';
+        if (telegramTokenConsent) telegramTokenConsent.checked = false;
         
         alert('Settings cleared! Page will reload to apply defaults.');
         window.location.reload();
@@ -9129,6 +9303,7 @@ function initializeLocalStorage() {
         updateToggleStates();
         loadPrompts();
         loadApiKey();
+        loadTelegramToken();
         loadTelegramSettings();
         setupInputSaveHandlers();
         initializeStreamRecovery();
@@ -9202,6 +9377,8 @@ function setupInputSaveHandlers() {
     const negativePromptInput = document.getElementById('negativePromptInput');
     const apiKeyInput = document.getElementById('apiKeyInput');
     const consentCheckbox = document.getElementById('apiKeyConsent');
+    const telegramTokenInput = document.getElementById('telegramTokenInput');
+    const telegramTokenConsent = document.getElementById('telegramTokenConsent');
     
     // Save prompts on change
     if (promptInput) {
@@ -9229,6 +9406,18 @@ function setupInputSaveHandlers() {
     
     if (consentCheckbox) {
         consentCheckbox.addEventListener('change', saveApiKey);
+    }
+    
+    // Save Telegram token on change
+    if (telegramTokenInput) {
+        telegramTokenInput.addEventListener('blur', saveTelegramToken);
+        telegramTokenInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveTelegramToken();
+        });
+    }
+    
+    if (telegramTokenConsent) {
+        telegramTokenConsent.addEventListener('change', saveTelegramToken);
     }
 }
 
@@ -9261,6 +9450,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeIdleAnimation();
         initializeMediaUpload();
         initializeMobileDebug();
+        
         
         // Start with fluid mode active
         activateInputMode('fluid');

@@ -16,7 +16,7 @@ const WEBSOCKET_PORT = 8001;
 const CORS_ORIGINS = ['*']; // Allow all origins for local network
 
 // Telegram Bot Configuration
-const TELEGRAM_BOT_TOKEN = '8281059100:AAHC7ZX_yt_PdJQ_NfYDmJI5ngtaq1kz_5I';
+let TELEGRAM_BOT_TOKEN = '';
 
 class FluidOSCServer {
     constructor() {
@@ -410,6 +410,11 @@ class FluidOSCServer {
                 console.log('📱 Server waitlist cleared by client');
                 break;
                 
+            case 'telegram_token_updated':
+                // Client sends updated Telegram token
+                this.updateTelegramToken(message.token);
+                break;
+                
             default:
                 console.log('📱 Unknown client message type:', message.type);
         }
@@ -420,8 +425,30 @@ class FluidOSCServer {
         
         const position = this.telegramWaitlist.findIndex(item => item.id === waitlistEntry.id) + 1;
         const queueLength = this.telegramWaitlist.length;
-        const estimatedWaitSeconds = (position - 1) * this.waitlistInterval;
-        const expectedTime = new Date(Date.now() + estimatedWaitSeconds * 1000);
+        
+        // Calculate actual estimated wait time based on processing timeline
+        let estimatedWaitSeconds = 0;
+        let expectedTime = new Date();
+        
+        if (position === 1) {
+            // First in queue - will be processed within the current interval
+            estimatedWaitSeconds = 0;
+            expectedTime = new Date(Date.now() + (this.waitlistInterval * 1000));
+        } else {
+            // Calculate based on when this item will actually be processed
+            // If there's a first item, calculate from when it was added
+            const firstItem = this.telegramWaitlist[0];
+            if (firstItem && firstItem.addedAt) {
+                const firstItemWaitTime = (Date.now() - firstItem.addedAt) / 1000;
+                const remainingTimeForFirst = Math.max(0, this.waitlistInterval - firstItemWaitTime);
+                // This item will be processed after (position-1) intervals, minus time already elapsed
+                estimatedWaitSeconds = remainingTimeForFirst + ((position - 2) * this.waitlistInterval);
+            } else {
+                // Fallback to old calculation if addedAt is not available
+                estimatedWaitSeconds = (position - 1) * this.waitlistInterval;
+            }
+            expectedTime = new Date(Date.now() + (estimatedWaitSeconds * 1000));
+        }
         
         // Customize message based on preset type
         const isControlNetPreset = waitlistEntry.type === 'controlnet_preset';
@@ -439,7 +466,8 @@ class FluidOSCServer {
             
             // Show seconds if less than 60 seconds, otherwise show minutes
             if (estimatedWaitSeconds < 60) {
-                message += `⏳ Estimated wait: ~${Math.ceil(estimatedWaitSeconds)} second${Math.ceil(estimatedWaitSeconds) !== 1 ? 's' : ''}\n`;
+                const displaySeconds = Math.max(0, Math.ceil(estimatedWaitSeconds));
+                message += `⏳ Estimated wait: ~${displaySeconds} second${displaySeconds !== 1 ? 's' : ''}\n`;
             } else {
                 const estimatedWaitMinutes = Math.ceil(estimatedWaitSeconds / 60);
                 message += `⏳ Estimated wait: ~${estimatedWaitMinutes} minute${estimatedWaitMinutes !== 1 ? 's' : ''}\n`;
@@ -469,8 +497,28 @@ class FluidOSCServer {
         
         const position = this.telegramWaitlist.findIndex(item => item.id === waitlistEntry.id) + 1;
         const queueLength = this.telegramWaitlist.length;
-        const estimatedWaitSeconds = (position - 1) * this.waitlistInterval;
-        const expectedTime = new Date(Date.now() + estimatedWaitSeconds * 1000);
+        
+        // Use the same improved calculation as in sendQueueStatusFeedback
+        let estimatedWaitSeconds = 0;
+        let expectedTime = new Date();
+        
+        if (position === 1) {
+            // First in queue - will be processed within the current interval
+            estimatedWaitSeconds = 0;
+            expectedTime = new Date(Date.now() + (this.waitlistInterval * 1000));
+        } else {
+            // Calculate based on when this item will actually be processed
+            const firstItem = this.telegramWaitlist[0];
+            if (firstItem && firstItem.addedAt) {
+                const firstItemWaitTime = (Date.now() - firstItem.addedAt) / 1000;
+                const remainingTimeForFirst = Math.max(0, this.waitlistInterval - firstItemWaitTime);
+                estimatedWaitSeconds = remainingTimeForFirst + ((position - 2) * this.waitlistInterval);
+            } else {
+                // Fallback to old calculation if addedAt is not available
+                estimatedWaitSeconds = (position - 1) * this.waitlistInterval;
+            }
+            expectedTime = new Date(Date.now() + (estimatedWaitSeconds * 1000));
+        }
         
         // Customize message based on preset type
         const isControlNetPreset = waitlistEntry.type === 'controlnet_preset';
@@ -486,7 +534,8 @@ class FluidOSCServer {
         } else {
             // Show seconds if less than 60 seconds, otherwise show minutes
             if (estimatedWaitSeconds < 60) {
-                message += `⏳ Estimated wait: ~${Math.ceil(estimatedWaitSeconds)} second${Math.ceil(estimatedWaitSeconds) !== 1 ? 's' : ''}\n`;
+                const displaySeconds = Math.max(0, Math.ceil(estimatedWaitSeconds));
+                message += `⏳ Estimated wait: ~${displaySeconds} second${displaySeconds !== 1 ? 's' : ''}\n`;
             } else {
                 const estimatedWaitMinutes = Math.ceil(estimatedWaitSeconds / 60);
                 message += `⏳ Estimated wait: ~${estimatedWaitMinutes} minute${estimatedWaitMinutes !== 1 ? 's' : ''}\n`;
@@ -507,6 +556,19 @@ class FluidOSCServer {
     updateWaitlistInterval(newInterval) {
         this.waitlistInterval = newInterval;
         console.log(`📱 Updated waitlist interval to ${newInterval} seconds`);
+    }
+    
+    updateTelegramToken(newToken) {
+        TELEGRAM_BOT_TOKEN = newToken || '';
+        console.log(`📱 Updated Telegram bot token: ${newToken && newToken.trim() ? 'Token set' : 'Token cleared'}`);
+        
+        // Stop current bot first
+        this.stopTelegramBot();
+        
+        // Start bot with new token if provided and not empty
+        if (newToken && newToken.trim()) {
+            this.startTelegramBot();
+        }
     }
     
     removeFromWaitlist(promptId) {
@@ -545,6 +607,12 @@ class FluidOSCServer {
     }
     
     startTelegramBot() {
+        // Check if token is provided before attempting to start
+        if (!TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN.trim() === '') {
+            console.log('📱 Telegram bot token not provided - Telegram functionality disabled');
+            return;
+        }
+        
         try {
             this.telegramBot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
             
@@ -563,7 +631,8 @@ class FluidOSCServer {
                         from: msg.from.first_name || 'Unknown User',
                         chatId: chatId,
                         timestamp: new Date().toISOString(),
-                        id: Date.now() + Math.random()
+                        id: Date.now() + Math.random(),
+                        addedAt: Date.now() // Add timestamp for accurate wait calculations
                     };
                     
                     this.telegramWaitlist.push(waitlistEntry);
@@ -684,6 +753,18 @@ class FluidOSCServer {
         } catch (error) {
             console.error('❌ Failed to start Telegram Bot:', error);
             console.log('⚠️  Continuing without Telegram Bot functionality...');
+        }
+    }
+    
+    stopTelegramBot() {
+        if (this.telegramBot) {
+            try {
+                this.telegramBot.stopPolling();
+                this.telegramBot = null;
+                console.log('📱 Telegram Bot stopped successfully');
+            } catch (error) {
+                console.error('❌ Error stopping Telegram Bot:', error);
+            }
         }
     }
     
@@ -954,6 +1035,7 @@ class FluidOSCServer {
             chatId: chatId,
             timestamp: new Date().toISOString(),
             id: Date.now() + Math.random(),
+            addedAt: Date.now(), // Add timestamp for accurate wait calculations
             type: 'controlnet_preset', // Mark as ControlNet preset
             presetKey: presetKey,
             presetName: preset.name,

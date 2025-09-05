@@ -2248,31 +2248,71 @@
                         </div>
                     </div>
                     
-                    <!-- Telegram Waitlist Controls (shown only when Telegram is enabled) -->
-                    <div id="telegramWaitlistControls" class="control-item" style="display: none;">
-                        <div class="control-label">
-                            <span>Waitlist Interval <div class="tooltip"><span class="info-icon">i</span>
-                                <span class="tooltiptext">Time between processing Telegram prompts (1-30 seconds)</span>
-                            </div></span>
-                            <input type="text" class="control-value number-input" id="telegramWaitlistIntervalValue" value="5.0" />
+                    <!-- Telegram Bot Configuration Section -->
+                    <div id="telegramConfigSection" class="advanced-section" style="display: none;">
+                        <div class="advanced-toggle" onclick="toggleTelegramConfig()" ontouchstart="toggleTelegramConfig(); event.preventDefault();">
+                            <span>Telegram Bot Configuration</span>
+                            <div class="toggle-icon" id="telegramConfigIcon">▶</div>
                         </div>
-                        <div class="slider-container" onclick="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30)" ontouchstart="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30); event.preventDefault();">
-                            <div class="slider-fill" id="telegramWaitlistIntervalFill" style="width: 13%">
-                                <div class="slider-handle" id="telegramWaitlistIntervalHandle"></div>
+                        <div class="advanced-content" id="telegramConfigContent">
+                            <!-- Waitlist Controls -->
+                            <div id="telegramWaitlistControls" class="control-item">
+                                <div class="control-label">
+                                    <span>Waitlist Interval <div class="tooltip"><span class="info-icon">i</span>
+                                        <span class="tooltiptext">Time between processing Telegram prompts (1-30 seconds)</span>
+                                    </div></span>
+                                    <input type="text" class="control-value number-input" id="telegramWaitlistIntervalValue" value="5.0" />
+                                </div>
+                                <div class="slider-container" onclick="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30)" ontouchstart="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30); event.preventDefault();">
+                                    <div class="slider-fill" id="telegramWaitlistIntervalFill" style="width: 13%">
+                                        <div class="slider-handle" id="telegramWaitlistIntervalHandle"></div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Clear Waitlist Button -->
-                    <div id="telegramClearButton" class="control-item" style="display: none;">
-                        <button class="modern-button secondary" onclick="clearTelegramWaitlist()" ontouchstart="clearTelegramWaitlist(); event.preventDefault();">
-                            <i class="fas fa-trash"></i> Clear Waitlist
-                        </button>
-                        <div style="margin-top: 8px; text-align: center;">
-                            <a href="https://t.me/DiffusionPromptBot" target="_blank" class="telegram-bot-link">
-                                <i class="fas fa-external-link-alt" style="font-size: 10px; margin-right: 4px; opacity: 0.7;"></i>
-                                Open Telegram Bot
-                            </a>
+                            
+                            <!-- Clear Waitlist Button -->
+                            <div id="telegramClearButton" class="control-item">
+                                <button class="modern-button secondary" onclick="clearTelegramWaitlist()" ontouchstart="clearTelegramWaitlist(); event.preventDefault();">
+                                    <i class="fas fa-trash"></i> Clear Waitlist
+                                </button>
+                            </div>
+                            
+                            <!-- Bot Token -->
+                            <div class="control-item">
+                                <div class="control-label">
+                                    <span>Bot Token</span>
+                                </div>
+                                <input type="password" class="api-input" id="telegramTokenInput" placeholder="Enter your Telegram bot token..." title="Enter your Telegram bot token" />
+                                <div class="checkbox-container">
+                                    <input type="checkbox" id="telegramTokenConsent" class="checkbox-input">
+                                    <label for="telegramTokenConsent" class="checkbox-label">Remember token (stored locally)</label>
+                                </div>
+                            </div>
+                            
+                            <!-- QR Code Section -->
+                            <div class="advanced-section" style="margin-top: 8px;">
+                                <div class="advanced-toggle" onclick="toggleTelegramQR()" ontouchstart="toggleTelegramQR(); event.preventDefault();">
+                                    <span>Show QR Code</span>
+                                    <div class="toggle-icon" id="telegramQRIcon">▶</div>
+                                </div>
+                                <div class="advanced-content" id="telegramQRContent">
+                                    <div class="control-item">
+                                        <div style="text-align: center; margin-bottom: 10px;">
+                                            <span style="font-size: 16px; font-weight: 600; color: var(--text-primary); font-family: monospace;">@DiffusionPromptBot</span>
+                                        </div>
+                                        <div class="qr-code-container">
+                                            <canvas id="telegramQRCanvas" style="width: 100%; max-width: 300px; height: auto; margin: 10px auto; display: block; border-radius: 8px; background: white; padding: 8px;"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="control-item" style="margin-top: 8px; text-align: center;">
+                                <a href="https://t.me/DiffusionPromptBot" target="_blank" class="telegram-bot-link">
+                                    <i class="fas fa-external-link-alt" style="font-size: 10px; margin-right: 4px; opacity: 0.7;"></i>
+                                    Open Telegram Bot
+                                </a>
+                            </div>
                         </div>
                     </div>
                     
@@ -3345,6 +3385,11 @@
                 setupAutoResizeTextarea();
             });
         </script>
+        
+        <!-- QRious - Simple and reliable QR code library -->
+        <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js" 
+                onload="console.log('✅ QRious library loaded successfully')" 
+                onerror="console.error('❌ Failed to load QRious library')"></script>
 
     </body>
 </html>
