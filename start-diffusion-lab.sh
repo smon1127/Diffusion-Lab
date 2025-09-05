@@ -36,6 +36,78 @@ WEB_PORT=3000
 OSC_PORT=8000
 WEBSOCKET_PORT=8001
 DEBUG=false  # Set to true for verbose logging
+AUTO_CLOSE_BROWSER_TABS=true  # Set to false to disable automatic browser tab closure
+
+# Function to close specific browser tabs using AppleScript (macOS)
+close_browser_tabs() {
+    local port=$1
+    local url_localhost="http://localhost:${port}"
+    local url_network="http://${NETWORK_IP}:${port}"
+    
+    if [ "$AUTO_CLOSE_BROWSER_TABS" != "true" ]; then
+        return 0
+    fi
+    
+    # Only run on macOS
+    if [[ "$OSTYPE" != "darwin"* ]]; then
+        return 0
+    fi
+    
+    echo -e "${YELLOW}🔍 Checking for browser tabs using port ${port}...${NC}"
+    
+    local tabs_closed=false
+    
+    # Close Chrome tabs
+    if pgrep -f "Google Chrome" >/dev/null 2>&1; then
+        osascript -e "
+        tell application \"Google Chrome\"
+            if it is running then
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        set tab_url to URL of t
+                        if tab_url starts with \"$url_localhost\" or tab_url starts with \"$url_network\" then
+                            close t
+                            set tabs_closed to true
+                        end if
+                    end repeat
+                end repeat
+            end if
+        end tell
+        " 2>/dev/null && tabs_closed=true
+    fi
+    
+    # Close Safari tabs
+    if pgrep -f "Safari" >/dev/null 2>&1; then
+        osascript -e "
+        tell application \"Safari\"
+            if it is running then
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        set tab_url to URL of t
+                        if tab_url starts with \"$url_localhost\" or tab_url starts with \"$url_network\" then
+                            close t
+                            set tabs_closed to true
+                        end if
+                    end repeat
+                end repeat
+            end if
+        end tell
+        " 2>/dev/null && tabs_closed=true
+    fi
+    
+    # Close Firefox tabs (Firefox AppleScript support is limited, so we'll use a different approach)
+    if pgrep -f "firefox" >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  Firefox detected. Please manually close any tabs using port ${port}${NC}"
+    fi
+    
+    if [ "$tabs_closed" = true ]; then
+        echo -e "${GREEN}✅ Closed browser tabs using port ${port}${NC}"
+        sleep 2  # Give browsers time to close tabs
+        return 0
+    fi
+    
+    return 1
+}
 
 # Function to kill process using a port
 kill_port() {
@@ -45,7 +117,16 @@ kill_port() {
         echo -e "${YELLOW}Found process ${pid} using port ${port}${NC}"
         local process_name=$(ps -p $pid -o comm= 2>/dev/null)
         if [[ "$process_name" == *"Google Chrome"* ]] || [[ "$process_name" == *"firefox"* ]] || [[ "$process_name" == *"Safari"* ]]; then
-            echo -e "${YELLOW}⚠️  Browser process detected. Try closing your browser tabs.${NC}"
+            echo -e "${YELLOW}🌐 Browser process detected. Attempting to close tabs first...${NC}"
+            # Try to close specific browser tabs first
+            if close_browser_tabs $port; then
+                # Check if port is now free after closing tabs
+                if ! lsof -i :$port >/dev/null 2>&1; then
+                    echo -e "${GREEN}✅ Port ${port} freed by closing browser tabs${NC}"
+                    return 0
+                fi
+            fi
+            echo -e "${YELLOW}⚠️  Browser tabs couldn't be closed automatically. Killing browser process...${NC}"
         fi
         echo -e "${YELLOW}🔧 Killing process...${NC}"
         kill -9 $pid 2>/dev/null
@@ -145,6 +226,29 @@ echo -e "${BLUE}🔍 Checking prerequisites...${NC}"
 # Check network connectivity
 check_network
 
+# Get network IP early (needed for browser tab detection)
+NETWORK_IP=$(node -e "
+const os = require('os');
+const interfaces = os.networkInterfaces();
+for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+            console.log(iface.address);
+            process.exit(0);
+        }
+    }
+}
+console.log('localhost');
+" 2>/dev/null || echo "localhost")
+
+# Proactively close any existing browser tabs that might interfere
+if [ "$AUTO_CLOSE_BROWSER_TABS" = "true" ]; then
+    echo -e "${BLUE}🧹 Checking for existing browser tabs on required ports...${NC}"
+    for port in $WEB_PORT $OSC_PORT $WEBSOCKET_PORT; do
+        close_browser_tabs $port >/dev/null 2>&1
+    done
+fi
+
 # Test ports before starting servers
 echo
 echo -e "${BLUE}🔍 Testing port availability...${NC}"
@@ -238,20 +342,7 @@ if [ ! -d "node_modules" ] || [ ! -f "node_modules/.package-lock.json" ]; then
     echo -e "${GREEN}✅ Dependencies installed${NC}"
 fi
 
-# Get network IP
-NETWORK_IP=$(node -e "
-const os = require('os');
-const interfaces = os.networkInterfaces();
-for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-        if (iface.family === 'IPv4' && !iface.internal) {
-            console.log(iface.address);
-            process.exit(0);
-        }
-    }
-}
-console.log('localhost');
-")
+# Network IP already determined earlier for browser tab detection
 
 # Start OSC Server
 echo -e "${PURPLE}🎛️  Starting OSC Server...${NC}"
@@ -361,8 +452,8 @@ echo -e "${PURPLE}   • Watch for the OSC connection indicator on your iPad${NC
 echo -e "${PURPLE}   • Press Ctrl+C on the Mac to stop all servers${NC}"
 echo
 echo -e "${YELLOW}🔧 Port Issues?${NC}"
-echo -e "${YELLOW}   • Try closing browser tabs using these ports${NC}"
-echo -e "${YELLOW}   • Run this command to kill ports:${NC}"
+echo -e "${YELLOW}   • Browser tabs are automatically closed (set AUTO_CLOSE_BROWSER_TABS=false to disable)${NC}"
+echo -e "${YELLOW}   • If issues persist, run this command to kill ports:${NC}"
 echo -e "${YELLOW}   • lsof -ti :$WEB_PORT :$OSC_PORT :$WEBSOCKET_PORT | xargs kill -9${NC}"
 echo
 echo -e "${YELLOW}🔄 Servers running... Press Ctrl+C to stop${NC}"

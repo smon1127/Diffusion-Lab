@@ -1,5 +1,6 @@
 # History files from VS Code/Cursor
 .history/
+.history
 
 # Node modules
 node_modules/

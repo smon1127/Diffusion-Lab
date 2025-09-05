@@ -220,6 +220,11 @@ class FluidOSCServer {
             '/action/screenshot': { action: 'captureScreenshot', type: 'button' },
             '/action/record': { action: 'toggleVideoRecording', type: 'button' },
             
+            // Telegram Controls
+            '/telegram/receive': { action: 'toggleTelegramReceive', type: 'toggle' },
+            '/telegram/clear': { action: 'clearTelegramWaitlist', type: 'button' },
+            '/telegram/interval': { param: 'TELEGRAM_WAITLIST_INTERVAL', min: 1, max: 30, type: 'slider' },
+            
             // TouchOSC XY Pad Support (your primary format)
             '/multixy/1': { channel: 1, type: 'xy_pad' },
             '/multixy/2': { channel: 2, type: 'xy_pad' },
