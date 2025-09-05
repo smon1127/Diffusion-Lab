@@ -49,11 +49,12 @@ The startup script automatically:
 
 ### 4. Configure Telegram Bot (Optional)
 1. Create a bot via [@BotFather](https://t.me/BotFather) on Telegram
-2. Edit `local-osc-server.js` and add your token:
-   ```javascript
-   const TELEGRAM_BOT_TOKEN = 'YOUR_BOT_TOKEN_HERE';
-   ```
-3. Restart the system: `./start-diffusion-lab.sh`
+2. In the web interface:
+   - Enable "Receive from Telegram" toggle
+   - Open "Telegram Bot Configuration" section
+   - Enter your bot token in the "Bot Token" field
+   - Check "Remember token" to save it locally
+3. Use the QR code or bot link to access @DiffusionPromptBot
 
 ## 🎨 Core Features
 
