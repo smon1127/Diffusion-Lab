@@ -39,6 +39,93 @@ class FluidOSCServer {
         
 
         
+        // Preset definitions
+        this.promptPresets = [
+            {
+                name: 'Blooming Flower',
+                prompt: 'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere'
+            },
+            {
+                name: 'Fireworks',
+                prompt: 'spectacular fireworks display, colorful explosions in night sky, bright sparks and trails, celebration atmosphere, dynamic motion, festive lighting'
+            },
+            {
+                name: 'Cotton Candy',
+                prompt: 'fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light'
+            },
+            {
+                name: 'Bouncing Balls',
+                prompt: 'bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere'
+            },
+            {
+                name: 'Forest Leaves',
+                prompt: 'autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene'
+            },
+            {
+                name: 'Chrome Blob',
+                prompt: 'chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion'
+            }
+        ];
+
+        this.controlNetPresets = {
+            balanced: {
+                name: 'Balanced',
+                description: 'Good for general use with moderate control',
+                params: {
+                    CONTROLNET_POSE_SCALE: 0.65,
+                    CONTROLNET_HED_SCALE: 0.41,
+                    CONTROLNET_CANNY_SCALE: 0.00,
+                    CONTROLNET_DEPTH_SCALE: 0.21,
+                    CONTROLNET_COLOR_SCALE: 0.26,
+                    DENOISE_X: 3,
+                    DENOISE_Y: 6,
+                    DENOISE_Z: 6
+                }
+            },
+            portrait: {
+                name: 'Portrait',
+                description: 'Optimized for human subjects with strong pose control',
+                params: {
+                    CONTROLNET_POSE_SCALE: 0.85,
+                    CONTROLNET_HED_SCALE: 0.70,
+                    CONTROLNET_CANNY_SCALE: 0.40,
+                    CONTROLNET_DEPTH_SCALE: 0.60,
+                    CONTROLNET_COLOR_SCALE: 0.75,
+                    DENOISE_X: 2,
+                    DENOISE_Y: 4,
+                    DENOISE_Z: 6
+                }
+            },
+            composition: {
+                name: 'Composition',
+                description: 'Strong structural control with Canny and Depth',
+                params: {
+                    CONTROLNET_POSE_SCALE: 0.40,
+                    CONTROLNET_HED_SCALE: 0.45,
+                    CONTROLNET_CANNY_SCALE: 0.80,
+                    CONTROLNET_DEPTH_SCALE: 0.75,
+                    CONTROLNET_COLOR_SCALE: 0.35,
+                    DENOISE_X: 4,
+                    DENOISE_Y: 8,
+                    DENOISE_Z: 12
+                }
+            },
+            artistic: {
+                name: 'Artistic',
+                description: 'More creative freedom with subtle controls',
+                params: {
+                    CONTROLNET_POSE_SCALE: 0.30,
+                    CONTROLNET_HED_SCALE: 0.75,
+                    CONTROLNET_CANNY_SCALE: 0.25,
+                    CONTROLNET_DEPTH_SCALE: 0.35,
+                    CONTROLNET_COLOR_SCALE: 0.40,
+                    DENOISE_X: 6,
+                    DENOISE_Y: 12,
+                    DENOISE_Z: 18
+                }
+            }
+        };
+
         // OSC parameter mapping
         this.oscMap = {
             // Fluid Physics
@@ -299,6 +386,14 @@ class FluidOSCServer {
                 }
                 break;
                 
+            case 'controlnet_preset_applied':
+                // Client notifies that a ControlNet preset has been applied
+                const appliedPreset = this.removeFromWaitlistByPreset(message.presetName, message.chatId);
+                if (appliedPreset && appliedPreset.chatId) {
+                    this.sendControlNetPresetAppliedFeedback(appliedPreset.chatId, appliedPreset.presetName, appliedPreset.presetDescription, appliedPreset.from);
+                }
+                break;
+                
             case 'telegram_waitlist_interval_changed':
                 // Client notifies of interval change
                 this.updateWaitlistInterval(message.interval);
@@ -323,7 +418,12 @@ class FluidOSCServer {
         const estimatedWaitSeconds = (position - 1) * this.waitlistInterval;
         const expectedTime = new Date(Date.now() + estimatedWaitSeconds * 1000);
         
-        let message = `📝 Prompt added to queue: "${waitlistEntry.prompt}"\n\n`;
+        // Customize message based on preset type
+        const isControlNetPreset = waitlistEntry.type === 'controlnet_preset';
+        const icon = isControlNetPreset ? '⚙️' : '📝';
+        const itemType = isControlNetPreset ? 'ControlNet preset' : 'Prompt';
+        
+        let message = `${icon} ${itemType} added to queue: "${waitlistEntry.prompt}"\n\n`;
         
         if (position === 1) {
             message += `🎯 Position: #${position} (next to be processed)\n`;
@@ -367,7 +467,12 @@ class FluidOSCServer {
         const estimatedWaitSeconds = (position - 1) * this.waitlistInterval;
         const expectedTime = new Date(Date.now() + estimatedWaitSeconds * 1000);
         
-        let message = `🎨 New prompt in queue: "${waitlistEntry.prompt}"\n`;
+        // Customize message based on preset type
+        const isControlNetPreset = waitlistEntry.type === 'controlnet_preset';
+        const icon = isControlNetPreset ? '⚙️' : '🎨';
+        const itemType = isControlNetPreset ? 'ControlNet preset' : 'prompt';
+        
+        let message = `${icon} New ${itemType} in queue: "${waitlistEntry.prompt}"\n`;
         message += `👤 From: ${waitlistEntry.from}\n`;
         message += `📍 Position: #${position} of ${queueLength}\n`;
         
@@ -407,6 +512,31 @@ class FluidOSCServer {
             return removed;
         }
         return null;
+    }
+
+    removeFromWaitlistByPreset(presetName, chatId) {
+        const index = this.telegramWaitlist.findIndex(item => 
+            item.type === 'controlnet_preset' && 
+            item.presetKey === presetName && 
+            item.chatId === chatId
+        );
+        if (index !== -1) {
+            const removed = this.telegramWaitlist.splice(index, 1)[0];
+            console.log(`📱 Removed ControlNet preset from server waitlist: "${removed.presetName}" from ${removed.from}`);
+            return removed;
+        }
+        return null;
+    }
+
+    sendControlNetPresetAppliedFeedback(chatId, presetName, presetDescription, from) {
+        if (!this.telegramBot) return;
+        
+        const message = `✅ **${presetName}** preset has been applied!\n\n` +
+                       `⚙️ ${presetDescription}\n\n` +
+                       `The fluid simulation parameters have been updated! 🌊`;
+        
+        this.telegramBot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        console.log(`📱 Sent ControlNet preset application confirmation to ${from}`);
     }
     
     startTelegramBot() {
@@ -458,12 +588,85 @@ class FluidOSCServer {
                 this.telegramBot.sendMessage(chatId, 
                     '🌊 Welcome to Diffusion Prompt Bot!\n\n' +
                     'Send me any text message and I\'ll use it as a prompt for the fluid simulation.\n\n' +
+                    'Commands:\n' +
+                    '• /preset - View and apply preset configurations\n' +
+                    '• Just type your prompt and send it!\n\n' +
                     'Examples:\n' +
                     '• "cosmic nebula with swirling colors"\n' +
                     '• "underwater coral reef scene"\n' +
                     '• "abstract geometric patterns"\n\n' +
-                    'Just type your prompt and send it! 🎨'
+                    'Let\'s create something amazing! 🎨'
                 );
+            });
+
+            // Handle /preset command
+            this.telegramBot.onText(/\/preset/, (msg) => {
+                const chatId = msg.chat.id;
+                
+                const keyboard = {
+                    inline_keyboard: [
+                        [
+                            { text: '🎨 Prompt Presets', callback_data: 'show_prompt_presets' },
+                            { text: '⚙️ ControlNet Presets', callback_data: 'show_controlnet_presets' }
+                        ]
+                    ]
+                };
+
+                this.telegramBot.sendMessage(chatId, 
+                    '🎛️ **Preset Categories**\n\n' +
+                    '**Prompt Presets**: Ready-made visual themes and styles\n' +
+                    '**ControlNet Presets**: Parameter configurations for different control modes\n\n' +
+                    'Choose a category to see available presets:', 
+                    { 
+                        reply_markup: keyboard,
+                        parse_mode: 'Markdown'
+                    }
+                );
+            });
+
+            // Handle callback queries for preset interactions
+            this.telegramBot.on('callback_query', (callbackQuery) => {
+                const msg = callbackQuery.message;
+                const chatId = msg.chat.id;
+                const data = callbackQuery.data;
+
+                // Answer the callback query to remove loading state
+                this.telegramBot.answerCallbackQuery(callbackQuery.id);
+
+                if (data === 'show_prompt_presets') {
+                    this.sendPromptPresets(chatId);
+                } else if (data === 'show_controlnet_presets') {
+                    this.sendControlNetPresets(chatId);
+                } else if (data.startsWith('apply_prompt_')) {
+                    const presetIndex = parseInt(data.split('_')[2]);
+                    this.applyPromptPreset(chatId, presetIndex);
+                } else if (data.startsWith('apply_controlnet_')) {
+                    const presetKey = data.split('_')[2];
+                    this.applyControlNetPreset(chatId, presetKey);
+                } else if (data === 'back_to_presets') {
+                    // Show main preset menu again
+                    const keyboard = {
+                        inline_keyboard: [
+                            [
+                                { text: '🎨 Prompt Presets', callback_data: 'show_prompt_presets' },
+                                { text: '⚙️ ControlNet Presets', callback_data: 'show_controlnet_presets' }
+                            ]
+                        ]
+                    };
+
+                    this.telegramBot.editMessageText(
+                        '🎛️ **Preset Categories**\n\n' +
+                        '**Prompt Presets**: Ready-made visual themes and styles\n' +
+                        '**ControlNet Presets**: Parameter configurations for different control modes\n\n' +
+                        'Choose a category to see available presets:', 
+                        {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: keyboard,
+                            parse_mode: 'Markdown'
+                        }
+                    );
+                }
             });
             
             // Handle errors
@@ -637,6 +840,146 @@ class FluidOSCServer {
         
         console.log('✅ Server stopped');
         process.exit(0);
+    }
+
+    sendPromptPresets(chatId) {
+        const keyboard = {
+            inline_keyboard: []
+        };
+
+        // Add preset buttons (2 per row)
+        for (let i = 0; i < this.promptPresets.length; i += 2) {
+            const row = [];
+            row.push({ text: this.promptPresets[i].name, callback_data: `apply_prompt_${i}` });
+            if (i + 1 < this.promptPresets.length) {
+                row.push({ text: this.promptPresets[i + 1].name, callback_data: `apply_prompt_${i + 1}` });
+            }
+            keyboard.inline_keyboard.push(row);
+        }
+
+        // Add back button
+        keyboard.inline_keyboard.push([{ text: '← Back to Categories', callback_data: 'back_to_presets' }]);
+
+        this.telegramBot.sendMessage(chatId, 
+            '🎨 **Prompt Presets**\n\n' +
+            'Choose a visual theme to apply to your fluid simulation:\n\n' +
+            this.promptPresets.map((preset, index) => `**${index + 1}.** ${preset.name}`).join('\n'), 
+            { 
+                reply_markup: keyboard,
+                parse_mode: 'Markdown'
+            }
+        );
+    }
+
+    sendControlNetPresets(chatId) {
+        const keyboard = {
+            inline_keyboard: []
+        };
+
+        // Add preset buttons (2 per row)
+        const presetKeys = Object.keys(this.controlNetPresets);
+        for (let i = 0; i < presetKeys.length; i += 2) {
+            const row = [];
+            row.push({ text: this.controlNetPresets[presetKeys[i]].name, callback_data: `apply_controlnet_${presetKeys[i]}` });
+            if (i + 1 < presetKeys.length) {
+                row.push({ text: this.controlNetPresets[presetKeys[i + 1]].name, callback_data: `apply_controlnet_${presetKeys[i + 1]}` });
+            }
+            keyboard.inline_keyboard.push(row);
+        }
+
+        // Add back button
+        keyboard.inline_keyboard.push([{ text: '← Back to Categories', callback_data: 'back_to_presets' }]);
+
+        let message = '⚙️ **ControlNet Presets**\n\n' +
+                     'Choose a parameter configuration:\n\n';
+        
+        Object.entries(this.controlNetPresets).forEach(([key, preset]) => {
+            message += `**${preset.name}**: ${preset.description}\n`;
+        });
+
+        this.telegramBot.sendMessage(chatId, message, { 
+            reply_markup: keyboard,
+            parse_mode: 'Markdown'
+        });
+    }
+
+    applyPromptPreset(chatId, presetIndex) {
+        if (presetIndex < 0 || presetIndex >= this.promptPresets.length) {
+            this.telegramBot.sendMessage(chatId, '❌ Invalid preset selection.');
+            return;
+        }
+
+        const preset = this.promptPresets[presetIndex];
+        
+        // Send prompt as if it was a regular text message
+        const promptMessage = {
+            type: 'telegram_prompt',
+            prompt: preset.prompt,
+            from: 'Preset Bot',
+            timestamp: new Date().toISOString(),
+            chatId: chatId,
+            isPreset: true,
+            presetName: preset.name
+        };
+
+        this.broadcastToClients(promptMessage);
+
+        // Send confirmation
+        this.telegramBot.sendMessage(chatId, 
+            `✅ **${preset.name}** preset applied!\n\n` +
+            `🎨 "${preset.prompt}"\n\n` +
+            'The fluid simulation is now using this visual theme! 🌊'
+        );
+
+        console.log(`📱 Applied prompt preset "${preset.name}" for chat ${chatId}`);
+    }
+
+    applyControlNetPreset(chatId, presetKey) {
+        if (!this.controlNetPresets[presetKey]) {
+            this.telegramBot.sendMessage(chatId, '❌ Invalid preset selection.');
+            return;
+        }
+
+        const preset = this.controlNetPresets[presetKey];
+        
+        // Add to server-side waitlist tracking (same as regular prompts)
+        const waitlistEntry = {
+            prompt: `ControlNet: ${preset.name}`, // Display name for queue
+            from: 'Preset Bot',
+            chatId: chatId,
+            timestamp: new Date().toISOString(),
+            id: Date.now() + Math.random(),
+            type: 'controlnet_preset', // Mark as ControlNet preset
+            presetKey: presetKey,
+            presetName: preset.name,
+            presetDescription: preset.description,
+            parameters: preset.params
+        };
+        
+        this.telegramWaitlist.push(waitlistEntry);
+        
+        // Send ControlNet preset to clients via queue system
+        const presetMessage = {
+            type: 'controlnet_preset',
+            presetName: presetKey,
+            presetDisplayName: preset.name,
+            presetDescription: preset.description,
+            parameters: preset.params,
+            from: 'Preset Bot',
+            timestamp: new Date().toISOString(),
+            chatId: chatId,
+            isPreset: true
+        };
+
+        this.broadcastToClients(presetMessage);
+
+        // Send queue status feedback (same as regular prompts)
+        this.sendQueueStatusFeedback(chatId, waitlistEntry);
+        
+        // Also send to public group
+        this.sendToPublicGroup(waitlistEntry);
+
+        console.log(`📱 Added ControlNet preset "${preset.name}" to queue for chat ${chatId}`);
     }
 }
 

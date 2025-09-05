@@ -1333,6 +1333,23 @@
                 color: var(--text-primary);
             }
 
+            /* Telegram Bot Link */
+            .telegram-bot-link {
+                font-size: 11px;
+                color: var(--text-secondary);
+                text-decoration: none;
+                opacity: 0.7;
+                transition: opacity 0.3s ease;
+                display: inline-flex;
+                align-items: center;
+            }
+
+            .telegram-bot-link:hover {
+                opacity: 1;
+                color: var(--accent-color);
+                text-decoration: none;
+            }
+
             /* Keyboard Hint */
             .keyboard-hint {
                 font-size: 12px;
@@ -2039,8 +2056,8 @@
                             <h3>AI Stream Diffusion</h3>
                         </div>
                         <div class="feature-item">
-                            <div class="feature-icon"><i class="fas fa-external-link-alt"></i></div>
-                            <h3>Pop-Out Window</h3>
+                            <div class="feature-icon"><i class="fas fa-paper-plane"></i></div>
+                            <h3>Telegram Commands</h3>
                         </div>
                         <div class="feature-item">
                             <div class="feature-icon"><i class="fas fa-tablet-alt"></i></div>
@@ -2196,7 +2213,7 @@
                     <!-- Telegram Integration Toggle -->
                     <div class="control-item">
                         <div class="toggle-container" onclick="toggleTelegramReceive()" ontouchstart="toggleTelegramReceive(); event.preventDefault();">
-                            <span>📱 Receive from Telegram</span>
+                            <span>Receive from Telegram</span>
                             <div class="toggle-switch active" id="telegramReceiveToggle">
                                 <div class="toggle-handle"></div>
                             </div>
@@ -2223,6 +2240,12 @@
                         <button class="modern-button secondary" onclick="clearTelegramWaitlist()" ontouchstart="clearTelegramWaitlist(); event.preventDefault();">
                             <i class="fas fa-trash"></i> Clear Waitlist
                         </button>
+                        <div style="margin-top: 8px; text-align: center;">
+                            <a href="https://t.me/DiffusionPromptBot" target="_blank" class="telegram-bot-link">
+                                <i class="fas fa-external-link-alt" style="font-size: 10px; margin-right: 4px; opacity: 0.7;"></i>
+                                Open Telegram Bot
+                            </a>
+                        </div>
                     </div>
                     
                     <!-- Prompt Presets Section -->
@@ -2909,26 +2932,6 @@
                             </div>
                         </div>
                         
-                        <!-- OSC Remote Control -->
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>OSC Remote Control</span>
-                            </div>
-                            <button class="modern-button secondary" onclick="forceHTTPRedirect()" ontouchstart="forceHTTPRedirect(); event.preventDefault();">
-                                <i class="fas fa-external-link-alt"></i> Force HTTP
-                            </button>
-                            <div class="console-command-text" onclick="copyConsoleCommand()" ontouchstart="copyConsoleCommand(); event.preventDefault();">
-                                or run this command into your console: <code>window.location.replace(window.location.href.replace('https://', 'http://'));</code>
-                            </div>
-                        </div>
-                        
-                        <!-- Buttons below API key -->
-                        <div class="control-item">
-                            <button class="modern-button secondary" onclick="captureScreenshot()">
-                                Take Screenshot
-                            </button>
-                        </div>
-                        
                         <div class="control-item">
                             <button class="modern-button secondary" id="recordButton" onclick="toggleVideoRecording()">
                                 Record Video
@@ -3012,7 +3015,10 @@
                                     <span>Ctrl+C:</span> Toggle Colorful
                                 </div>
                                 <div class="shortcut-item">
-                                    <span>Ctrl+R:</span> Reset Values
+                                    <span>Ctrl+R:</span> Record Video
+                                </div>
+                                <div class="shortcut-item">
+                                    <span>Ctrl+X:</span> Reset Values
                                 </div>
                                 <div class="shortcut-item">
                                     <span>Ctrl+V:</span> Toggle Velocity Drawing

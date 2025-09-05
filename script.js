@@ -1057,86 +1057,6 @@ function toggleDebug() {
   
 
   
-  function forceHTTPRedirect() {
-      const currentUrl = window.location.href;
-      
-      if (currentUrl.startsWith('https://')) {
-          const httpUrl = currentUrl.replace('https://', 'http://');
-          
-          // Show confirmation dialog
-          if (confirm(`Redirect to HTTP version for OSC compatibility?\n\n${httpUrl}\n\nNote: This may show security warnings in your browser.`)) {
-              showOSCFeedback('Redirecting to HTTP version...', 'info');
-              
-              // Close any existing WebSocket connections before redirect
-              if (typeof oscWebSocket !== 'undefined' && oscWebSocket) {
-                  oscWebSocket.close();
-              }
-              
-              // Force immediate redirect
-              window.location.replace(httpUrl);
-          }
-      } else {
-          showOSCFeedback('Already on HTTP - OSC should work!', 'success');
-          
-          // Try to reinitialize OSC connection if on HTTP
-          if (typeof initOSCConnection === 'function') {
-              setTimeout(initOSCConnection, 1000);
-          }
-      }
-  }
-  
-  function showOSCFeedback(message, type) {
-      // Create or update feedback element
-      let feedback = document.getElementById('oscFeedback');
-      if (!feedback) {
-          feedback = document.createElement('div');
-          feedback.id = 'oscFeedback';
-          feedback.style.cssText = `
-              position: fixed;
-              top: 20px;
-              right: 20px;
-              padding: 12px 16px;
-              border-radius: 6px;
-              font-size: 13px;
-              font-weight: 500;
-              z-index: 10000;
-              max-width: 300px;
-              word-wrap: break-word;
-              transition: all 0.3s ease;
-              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-          `;
-          document.body.appendChild(feedback);
-      }
-      
-      // Set colors based on type
-      const colors = {
-          success: { bg: 'rgba(34, 197, 94, 0.95)', border: '#22c55e', text: '#ffffff' },
-          error: { bg: 'rgba(239, 68, 68, 0.95)', border: '#ef4444', text: '#ffffff' },
-          info: { bg: 'rgba(0, 212, 255, 0.95)', border: '#00d4ff', text: '#ffffff' }
-      };
-      
-      const color = colors[type] || colors.info;
-      feedback.style.background = color.bg;
-      feedback.style.border = `1px solid ${color.border}`;
-      feedback.style.color = color.text;
-      feedback.textContent = message;
-      
-      // Show and auto-hide
-      feedback.style.opacity = '1';
-      feedback.style.transform = 'translateX(0)';
-      
-      setTimeout(() => {
-          if (feedback) {
-              feedback.style.opacity = '0';
-              feedback.style.transform = 'translateX(100%)';
-              setTimeout(() => {
-                  if (feedback && feedback.parentNode) {
-                      feedback.parentNode.removeChild(feedback);
-                  }
-              }, 300);
-          }
-      }, 4000);
-  }
   
   function togglePromptPresets() {
     const content = document.getElementById('promptPresetsContent');
@@ -1227,7 +1147,15 @@ function addToTelegramWaitlist(message) {
         timestamp: new Date().toISOString(),
         id: Date.now() + Math.random(), // Simple unique ID
         chatId: message.chatId, // Store for server feedback
-        addedAt: Date.now() // Add timestamp for smart processing
+        addedAt: Date.now(), // Add timestamp for smart processing
+        type: message.type || 'telegram_prompt', // Store message type
+        // Store additional data for ControlNet presets
+        ...(message.type === 'controlnet_preset' ? {
+            presetName: message.presetName,
+            presetDisplayName: message.presetDisplayName,
+            presetDescription: message.presetDescription,
+            parameters: message.parameters
+        } : {})
     };
     
     const wasEmpty = telegramWaitlist.length === 0;
@@ -1278,22 +1206,48 @@ function processNextTelegramPrompt() {
         return;
     }
     
-    const nextPrompt = telegramWaitlist.shift(); // Remove first item (FIFO)
-    console.log(`📱 Processing waitlist prompt: "${nextPrompt.prompt}" from ${nextPrompt.from}`);
+    const nextItem = telegramWaitlist.shift(); // Remove first item (FIFO)
+    console.log(`📱 Processing waitlist item: "${nextItem.prompt}" from ${nextItem.from} (type: ${nextItem.type || 'prompt'})`);
     
-    // Apply the prompt using existing function
-    setPrompt(nextPrompt.prompt);
-    
-    // Notification removed - no overlay in top right
-    
-    // Send feedback to server that prompt was applied
-    sendToServer({
-        type: 'telegram_prompt_applied',
-        promptId: nextPrompt.id,
-        prompt: nextPrompt.prompt,
-        from: nextPrompt.from,
-        chatId: nextPrompt.chatId
-    });
+    // Handle different types of waitlist items
+    if (nextItem.type === 'controlnet_preset') {
+        // Apply ControlNet preset parameters
+        Object.entries(nextItem.parameters).forEach(([key, value]) => {
+            if (config.hasOwnProperty(key)) {
+                config[key] = value;
+                console.log(`⚙️ Updated ${key} = ${value}`);
+            }
+        });
+        
+        // Update all slider positions and values
+        updateSliderPositions();
+        
+        // Save configuration
+        saveConfig();
+        
+        console.log(`✅ Applied ControlNet preset: ${nextItem.presetDisplayName}`);
+        
+        // Send feedback to server that ControlNet preset was applied
+        sendToServer({
+            type: 'controlnet_preset_applied',
+            presetName: nextItem.presetName,
+            presetDisplayName: nextItem.presetDisplayName,
+            from: nextItem.from,
+            chatId: nextItem.chatId
+        });
+    } else {
+        // Handle regular prompt (default behavior)
+        setPrompt(nextItem.prompt);
+        
+        // Send feedback to server that prompt was applied
+        sendToServer({
+            type: 'telegram_prompt_applied',
+            promptId: nextItem.id,
+            prompt: nextItem.prompt,
+            from: nextItem.from,
+            chatId: nextItem.chatId
+        });
+    }
     
     // Update timestamps for remaining items (they become the new "first")
     if (telegramWaitlist.length > 0) {
@@ -4608,6 +4562,10 @@ window.addEventListener('keydown', e => {
         }
         if (e.code === 'KeyR') {
             e.preventDefault();
+            toggleVideoRecording();
+        }
+        if (e.code === 'KeyX') {
+            e.preventDefault();
             resetValues();
         }
         if (e.code === 'KeyA') {
@@ -5131,37 +5089,6 @@ function showShareFeedback(button, message = 'Copied!') {
     }, 2000);
 }
 
-async function copyConsoleCommand() {
-    const command = "window.location.replace(window.location.href.replace('https://', 'http://'));";
-    const textElement = document.querySelector('.console-command-text');
-    
-    // Copy to clipboard using modern API or fallback
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        try {
-            await navigator.clipboard.writeText(command);
-            showConsoleCommandFeedback(textElement, 'Copied!');
-        } catch (err) {
-            console.error('Failed to copy with clipboard API:', err);
-            fallbackCopyToClipboard(command, textElement);
-        }
-    } else {
-        // Fallback for older browsers
-        fallbackCopyToClipboard(command, textElement);
-    }
-}
-
-function showConsoleCommandFeedback(element, message = 'Copied!') {
-    if (!element) return;
-    
-    const originalText = element.innerHTML;
-    element.innerHTML = `✓ ${message}`;
-    element.classList.add('copied');
-    
-    setTimeout(() => {
-        element.innerHTML = originalText;
-        element.classList.remove('copied');
-    }, 2000);
-}
 
 
 
@@ -9602,6 +9529,11 @@ function handleOSCMessage(message) {
         return;
     }
     
+    if (message.type === 'controlnet_preset') {
+        handleControlNetPreset(message);
+        return;
+    }
+    
     if (message.type === 'osc_message') {
         // Handle parameter updates
         if (message.parameter) {
@@ -9641,6 +9573,27 @@ function handleTelegramPrompt(message) {
     const waitlistMessage = {
         ...message,
         chatId: message.chatId // Pass through from server
+    };
+    addToTelegramWaitlist(waitlistMessage);
+    
+    // Debug notification removed - no longer showing waitlist additions in UI
+}
+
+function handleControlNetPreset(message) {
+    console.log(`📱 Received ControlNet preset from ${message.from}: "${message.presetDisplayName}"`);
+    
+    // Check if Telegram receive is enabled
+    if (config.TELEGRAM_RECEIVE === false) {
+        console.log('📱 Telegram receive is disabled, ignoring preset');
+        return;
+    }
+    
+    // Add to waitlist instead of immediately processing (same as prompts)
+    // Include all preset data for processing
+    const waitlistMessage = {
+        ...message,
+        chatId: message.chatId, // Pass through from server
+        type: 'controlnet_preset' // Ensure type is preserved
     };
     addToTelegramWaitlist(waitlistMessage);
     
