@@ -1468,8 +1468,127 @@ function captureScreenshot () {
 
     let captureCanvas = textureToCanvas(texture, target.width, target.height);
     let datauri = captureCanvas.toDataURL();
-    downloadURI('fluid.png', datauri);
+    
+    // Check if device is iOS (iPad/iPhone)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    
+    if (isIOS) {
+        // Show image in modal for iOS devices so users can long-press to save to Photos
+        showScreenshotModal(datauri);
+    } else {
+        // Use download behavior for other devices
+        downloadURI('fluid.png', datauri);
+    }
     URL.revokeObjectURL(datauri);
+}
+
+function showScreenshotModal(datauri) {
+    // Create modal overlay
+    const modal = document.createElement('div');
+    modal.id = 'screenshotModal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    `;
+    
+    // Create image element
+    const img = document.createElement('img');
+    img.src = datauri;
+    img.style.cssText = `
+        max-width: 90%;
+        max-height: 70%;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        user-select: none;
+        -webkit-user-select: none;
+    `;
+    
+    // Create instruction text
+    const instructions = document.createElement('div');
+    instructions.style.cssText = `
+        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 18px;
+        text-align: center;
+        margin-top: 20px;
+        padding: 0 20px;
+        line-height: 1.4;
+    `;
+    instructions.innerHTML = `
+        <div style="font-weight: 600; margin-bottom: 8px;">Screenshot Captured!</div>
+        <div style="font-size: 16px; opacity: 0.9;">Long press the image above to save to Photos</div>
+        <div style="font-size: 14px; opacity: 0.7; margin-top: 12px;">Tap anywhere else to close</div>
+    `;
+    
+    // Create close button
+    const closeButton = document.createElement('button');
+    closeButton.textContent = '✕';
+    closeButton.style.cssText = `
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        font-size: 24px;
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    `;
+    
+    // Add elements to modal
+    modal.appendChild(closeButton);
+    modal.appendChild(img);
+    modal.appendChild(instructions);
+    
+    // Close modal function
+    const closeModal = () => {
+        if (modal.parentNode) {
+            modal.parentNode.removeChild(modal);
+        }
+    };
+    
+    // Event listeners
+    closeButton.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+    
+    // ESC key to close
+    const handleKeydown = (e) => {
+        if (e.key === 'Escape') {
+            closeModal();
+            document.removeEventListener('keydown', handleKeydown);
+        }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Add to DOM
+    document.body.appendChild(modal);
+    
+    // Auto-close after 30 seconds
+    setTimeout(() => {
+        if (modal.parentNode) {
+            closeModal();
+        }
+    }, 30000);
 }
 
 // Video recording functionality
@@ -4195,7 +4314,7 @@ window.addEventListener('keydown', e => {
         }
         if (e.code === 'Space') {
             e.preventDefault();
-            toggleStreamVisibility();
+            captureScreenshot();
         }
         
         // Prompt preset shortcuts (Ctrl+1 through Ctrl+6)
