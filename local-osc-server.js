@@ -8,18 +8,27 @@
 const osc = require('node-osc');
 const WebSocket = require('ws');
 const os = require('os');
+const TelegramBot = require('node-telegram-bot-api');
 
 // Configuration
 const OSC_PORT = 8000;
 const WEBSOCKET_PORT = 8001;
 const CORS_ORIGINS = ['*']; // Allow all origins for local network
 
+// Telegram Bot Configuration
+const TELEGRAM_BOT_TOKEN = '8281059100:AAHC7ZX_yt_PdJQ_NfYDmJI5ngtaq1kz_5I';
+
 class FluidOSCServer {
     constructor() {
         this.clients = new Set();
         this.oscServer = null;
         this.wsServer = null;
+        this.telegramBot = null;
         this.networkIP = this.getNetworkIP();
+        
+        // Telegram waitlist tracking
+        this.telegramWaitlist = [];
+        this.waitlistInterval = 1; // Default 1 second
         
         // Throttling for performance - limit OSC message rate
         this.lastMessageTime = {};
@@ -217,6 +226,7 @@ class FluidOSCServer {
     start() {
         this.startOSCServer();
         this.startWebSocketServer();
+        this.startTelegramBot();
         this.printStartupInfo();
     }
     
@@ -246,6 +256,16 @@ class FluidOSCServer {
             
             this.clients.add(ws);
             
+            // Handle messages from client
+            ws.on('message', (data) => {
+                try {
+                    const message = JSON.parse(data.toString());
+                    this.handleClientMessage(message);
+                } catch (error) {
+                    console.error('❌ Error parsing client message:', error);
+                }
+            });
+            
             // Send welcome message with server info
             ws.send(JSON.stringify({
                 type: 'server_info',
@@ -267,6 +287,196 @@ class FluidOSCServer {
         });
         
         console.log(`🌐 WebSocket Server listening on ${this.networkIP}:${WEBSOCKET_PORT}`);
+    }
+    
+    handleClientMessage(message) {
+        switch (message.type) {
+            case 'telegram_prompt_applied':
+                // Client notifies that a prompt has been applied
+                const appliedEntry = this.removeFromWaitlist(message.promptId);
+                if (appliedEntry && appliedEntry.chatId) {
+                    this.sendPromptAppliedFeedback(appliedEntry.chatId, appliedEntry.prompt, appliedEntry.from);
+                }
+                break;
+                
+            case 'telegram_waitlist_interval_changed':
+                // Client notifies of interval change
+                this.updateWaitlistInterval(message.interval);
+                break;
+                
+            case 'telegram_waitlist_cleared':
+                // Client notifies that waitlist was cleared
+                this.telegramWaitlist = [];
+                console.log('📱 Server waitlist cleared by client');
+                break;
+                
+            default:
+                console.log('📱 Unknown client message type:', message.type);
+        }
+    }
+    
+    sendQueueStatusFeedback(chatId, waitlistEntry) {
+        if (!this.telegramBot) return;
+        
+        const position = this.telegramWaitlist.findIndex(item => item.id === waitlistEntry.id) + 1;
+        const queueLength = this.telegramWaitlist.length;
+        const estimatedWaitSeconds = (position - 1) * this.waitlistInterval;
+        const expectedTime = new Date(Date.now() + estimatedWaitSeconds * 1000);
+        
+        let message = `📝 Prompt added to queue: "${waitlistEntry.prompt}"\n\n`;
+        
+        if (position === 1) {
+            message += `🎯 Position: #${position} (next to be processed)\n`;
+            message += `⏱️ Expected processing: within ${this.waitlistInterval} seconds\n`;
+            message += `⚙️ Current interval: ${this.waitlistInterval}s`;
+        } else {
+            message += `📍 Position: #${position} of ${queueLength}\n`;
+            
+            // Show seconds if less than 60 seconds, otherwise show minutes
+            if (estimatedWaitSeconds < 60) {
+                message += `⏳ Estimated wait: ~${Math.ceil(estimatedWaitSeconds)} second${Math.ceil(estimatedWaitSeconds) !== 1 ? 's' : ''}\n`;
+            } else {
+                const estimatedWaitMinutes = Math.ceil(estimatedWaitSeconds / 60);
+                message += `⏳ Estimated wait: ~${estimatedWaitMinutes} minute${estimatedWaitMinutes !== 1 ? 's' : ''}\n`;
+            }
+            
+            message += `🕐 Expected processing: ${expectedTime.toLocaleTimeString('de-DE', { hour12: false })}\n`;
+            message += `⚙️ Current interval: ${this.waitlistInterval}s`;
+        }
+        
+        this.telegramBot.sendMessage(chatId, message);
+        console.log(`📱 Sent queue status to ${waitlistEntry.from}: position ${position}/${queueLength}`);
+    }
+    
+    sendPromptAppliedFeedback(chatId, prompt, from) {
+        if (!this.telegramBot) return;
+        
+        const message = `✅ Your prompt has been applied!\n\n` +
+                       `🎨 "${prompt}"\n\n` +
+                       `The fluid simulation is now using your prompt. Enjoy! 🌊`;
+        
+        this.telegramBot.sendMessage(chatId, message);
+        console.log(`📱 Sent application confirmation to ${from}`);
+    }
+    
+    sendToPublicGroup(waitlistEntry) {
+        if (!this.telegramBot) return;
+        
+        const position = this.telegramWaitlist.findIndex(item => item.id === waitlistEntry.id) + 1;
+        const queueLength = this.telegramWaitlist.length;
+        const estimatedWaitSeconds = (position - 1) * this.waitlistInterval;
+        const expectedTime = new Date(Date.now() + estimatedWaitSeconds * 1000);
+        
+        let message = `🎨 New prompt in queue: "${waitlistEntry.prompt}"\n`;
+        message += `👤 From: ${waitlistEntry.from}\n`;
+        message += `📍 Position: #${position} of ${queueLength}\n`;
+        
+        if (position === 1) {
+            message += `⏱️ Processing: within ${this.waitlistInterval} seconds\n`;
+        } else {
+            // Show seconds if less than 60 seconds, otherwise show minutes
+            if (estimatedWaitSeconds < 60) {
+                message += `⏳ Estimated wait: ~${Math.ceil(estimatedWaitSeconds)} second${Math.ceil(estimatedWaitSeconds) !== 1 ? 's' : ''}\n`;
+            } else {
+                const estimatedWaitMinutes = Math.ceil(estimatedWaitSeconds / 60);
+                message += `⏳ Estimated wait: ~${estimatedWaitMinutes} minute${estimatedWaitMinutes !== 1 ? 's' : ''}\n`;
+            }
+            message += `🕐 Expected processing: ${expectedTime.toLocaleTimeString('de-DE', { hour12: false })}\n`;
+        }
+        
+        message += `⚙️ Interval: ${this.waitlistInterval}s`;
+        
+        // Send to public group using channel username
+        this.telegramBot.sendMessage('@diffusionprompts', message).catch(error => {
+            console.error('❌ Failed to send to public group:', error.message);
+        });
+        
+        console.log(`📢 Sent to public group: "${waitlistEntry.prompt}" from ${waitlistEntry.from}`);
+    }
+    
+    updateWaitlistInterval(newInterval) {
+        this.waitlistInterval = newInterval;
+        console.log(`📱 Updated waitlist interval to ${newInterval} seconds`);
+    }
+    
+    removeFromWaitlist(promptId) {
+        const index = this.telegramWaitlist.findIndex(item => item.id === promptId);
+        if (index !== -1) {
+            const removed = this.telegramWaitlist.splice(index, 1)[0];
+            console.log(`📱 Removed from server waitlist: "${removed.prompt}" from ${removed.from}`);
+            return removed;
+        }
+        return null;
+    }
+    
+    startTelegramBot() {
+        try {
+            this.telegramBot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+            
+            // Handle text messages
+            this.telegramBot.on('message', (msg) => {
+                const chatId = msg.chat.id;
+                const messageText = msg.text;
+                
+                // Skip if it's a command (starts with /)
+                if (messageText && !messageText.startsWith('/')) {
+                    console.log(`📱 Telegram message from ${msg.from.first_name || 'Unknown'}: ${messageText}`);
+                    
+                    // Add to server-side waitlist tracking
+                    const waitlistEntry = {
+                        prompt: messageText,
+                        from: msg.from.first_name || 'Unknown User',
+                        chatId: chatId,
+                        timestamp: new Date().toISOString(),
+                        id: Date.now() + Math.random()
+                    };
+                    
+                    this.telegramWaitlist.push(waitlistEntry);
+                    
+                    // Broadcast the prompt to all connected WebSocket clients
+                    const telegramMessage = {
+                        type: 'telegram_prompt',
+                        prompt: messageText,
+                        from: msg.from.first_name || 'Unknown User',
+                        timestamp: new Date().toISOString(),
+                        chatId: chatId // Include for feedback
+                    };
+                    
+                    this.broadcastToClients(telegramMessage);
+                    
+                    // Send queue status feedback
+                    this.sendQueueStatusFeedback(chatId, waitlistEntry);
+                    
+                    // Also send to public group
+                    this.sendToPublicGroup(waitlistEntry);
+                }
+            });
+            
+            // Handle /start command
+            this.telegramBot.onText(/\/start/, (msg) => {
+                const chatId = msg.chat.id;
+                this.telegramBot.sendMessage(chatId, 
+                    '🌊 Welcome to Diffusion Prompt Bot!\n\n' +
+                    'Send me any text message and I\'ll use it as a prompt for the fluid simulation.\n\n' +
+                    'Examples:\n' +
+                    '• "cosmic nebula with swirling colors"\n' +
+                    '• "underwater coral reef scene"\n' +
+                    '• "abstract geometric patterns"\n\n' +
+                    'Just type your prompt and send it! 🎨'
+                );
+            });
+            
+            // Handle errors
+            this.telegramBot.on('error', (error) => {
+                console.error('❌ Telegram Bot error:', error);
+            });
+            
+            console.log('📱 Telegram Bot started successfully');
+            
+        } catch (error) {
+            console.error('❌ Failed to start Telegram Bot:', error);
+            console.log('⚠️  Continuing without Telegram Bot functionality...');
+        }
     }
     
     handleOSCMessage(msg) {
@@ -419,6 +629,10 @@ class FluidOSCServer {
         
         if (this.wsServer) {
             this.wsServer.close();
+        }
+        
+        if (this.telegramBot) {
+            this.telegramBot.stopPolling();
         }
         
         console.log('✅ Server stopped');

@@ -420,7 +420,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale', 'streamOpacity', 'audioReactivity', 'audioDelay', 'audioOpacity', 'audioColorful', 'audioEdgeSoftness'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale', 'streamOpacity', 'audioReactivity', 'audioDelay', 'audioOpacity', 'audioColorful', 'audioEdgeSoftness', 'telegramWaitlistInterval'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -590,7 +590,8 @@ function updateSliderValue(sliderName, percentage, skipSave = false, updateInput
         'audioOpacity': { min: 0, max: 1, prop: 'AUDIO_OPACITY', decimals: 2, handler: updateAudioOpacity },
         'audioColorful': { min: 0, max: 1, prop: 'AUDIO_COLORFUL', decimals: 1, handler: updateAudioColorful },
         'audioEdgeSoftness': { min: 0, max: 1, prop: 'AUDIO_EDGE_SOFTNESS', decimals: 2, handler: updateAudioEdgeSoftness },
-        'streamOpacity': { min: 0, max: 1, prop: 'STREAM_OPACITY', decimals: 2, handler: updateStreamOpacity }
+        'streamOpacity': { min: 0, max: 1, prop: 'STREAM_OPACITY', decimals: 2, handler: updateStreamOpacity },
+        'telegramWaitlistInterval': { min: 1, max: 30, prop: 'TELEGRAM_WAITLIST_INTERVAL', decimals: 0, handler: updateTelegramWaitlistInterval }
     };
     
     const slider = sliderMap[sliderName];
@@ -681,7 +682,8 @@ function updateSliderPositions() {
         'audioDelay': { prop: 'AUDIO_DELAY', min: 0, max: 500 },
         'audioOpacity': { prop: 'AUDIO_OPACITY', min: 0, max: 1 },
         'audioColorful': { prop: 'AUDIO_COLORFUL', min: 0, max: 1 },
-        'audioEdgeSoftness': { prop: 'AUDIO_EDGE_SOFTNESS', min: 0, max: 1 }
+        'audioEdgeSoftness': { prop: 'AUDIO_EDGE_SOFTNESS', min: 0, max: 1 },
+        'telegramWaitlistInterval': { prop: 'TELEGRAM_WAITLIST_INTERVAL', min: 1, max: 30 }
     };
     
     Object.keys(sliderMap).forEach(sliderName => {
@@ -1162,6 +1164,286 @@ function toggleNegativePrompt() {
     }
 }
 
+function toggleTelegramReceive() {
+    // Toggle the global state
+    if (typeof config.TELEGRAM_RECEIVE === 'undefined') {
+        config.TELEGRAM_RECEIVE = true; // Default to enabled
+    }
+    config.TELEGRAM_RECEIVE = !config.TELEGRAM_RECEIVE;
+    
+    // Update the UI toggle
+    updateToggle('telegramReceiveToggle', config.TELEGRAM_RECEIVE);
+    
+    // Show/hide waitlist controls based on state
+    updateTelegramControlsVisibility();
+    
+    // Save the setting
+    saveTelegramSettings();
+    
+    console.log(`📱 Telegram receive ${config.TELEGRAM_RECEIVE ? 'enabled' : 'disabled'}`);
+}
+
+// Telegram Waitlist System
+let telegramWaitlist = [];
+let telegramProcessingTimer = null;
+
+function updateTelegramControlsVisibility() {
+    const waitlistControls = document.getElementById('telegramWaitlistControls');
+    const clearButton = document.getElementById('telegramClearButton');
+    
+    if (waitlistControls && clearButton) {
+        const isVisible = config.TELEGRAM_RECEIVE === true;
+        waitlistControls.style.display = isVisible ? 'block' : 'none';
+        clearButton.style.display = isVisible ? 'block' : 'none';
+    }
+}
+
+function updateTelegramWaitlistInterval(value) {
+    // Ensure we store and send integer values
+    const intValue = Math.round(value);
+    config.TELEGRAM_WAITLIST_INTERVAL = intValue;
+    console.log(`📱 Telegram waitlist interval set to ${intValue} seconds`);
+    
+    // Restart the processing timer with new interval
+    if (telegramProcessingTimer) {
+        clearInterval(telegramProcessingTimer);
+        startTelegramProcessing();
+    }
+    
+    // Notify server of interval change
+    sendToServer({
+        type: 'telegram_waitlist_interval_changed',
+        interval: intValue
+    });
+    
+    // Save settings
+    saveTelegramSettings();
+}
+
+function addToTelegramWaitlist(message) {
+    const waitlistEntry = {
+        prompt: message.prompt,
+        from: message.from,
+        timestamp: new Date().toISOString(),
+        id: Date.now() + Math.random(), // Simple unique ID
+        chatId: message.chatId, // Store for server feedback
+        addedAt: Date.now() // Add timestamp for smart processing
+    };
+    
+    const wasEmpty = telegramWaitlist.length === 0;
+    telegramWaitlist.push(waitlistEntry);
+    
+    console.log(`📱 Added to waitlist: "${message.prompt}" from ${message.from} (${telegramWaitlist.length} total)`);
+    
+    // Smart processing logic
+    if (wasEmpty) {
+        // First item, start normal timer
+        if (!telegramProcessingTimer) {
+            startTelegramProcessing();
+        }
+    } else {
+        // Check if first item has been waiting longer than interval
+        const firstItem = telegramWaitlist[0];
+        const waitTime = (Date.now() - firstItem.addedAt) / 1000; // Convert to seconds
+        const interval = config.TELEGRAM_WAITLIST_INTERVAL || 1;
+        
+        if (waitTime >= interval) {
+            console.log(`📱 First item waited ${waitTime.toFixed(1)}s (≥${interval}s), processing immediately`);
+            // Process immediately and restart timer
+            processNextTelegramPrompt();
+            // Restart timer for remaining items
+            if (telegramWaitlist.length > 0) {
+                stopTelegramProcessing();
+                startTelegramProcessing();
+            }
+        }
+    }
+    
+    // Update debug display
+    if (config.DEBUG_MODE) {
+        updateMobileDebugInfo({
+            status: 'Running',
+            panelState: document.getElementById('controlPanel')?.classList.contains('collapsed') ? 'collapsed' : 'expanded',
+            touchEvents: window.mobileDebugTouchCount || 0,
+            canvasReady: !!document.getElementById('fluidCanvas'),
+            screenSize: `${window.innerWidth}x${window.innerHeight}`,
+            timestamp: new Date().toLocaleTimeString()
+        });
+    }
+}
+
+function processNextTelegramPrompt() {
+    if (telegramWaitlist.length === 0) {
+        stopTelegramProcessing();
+        return;
+    }
+    
+    const nextPrompt = telegramWaitlist.shift(); // Remove first item (FIFO)
+    console.log(`📱 Processing waitlist prompt: "${nextPrompt.prompt}" from ${nextPrompt.from}`);
+    
+    // Apply the prompt using existing function
+    setPrompt(nextPrompt.prompt);
+    
+    // Notification removed - no overlay in top right
+    
+    // Send feedback to server that prompt was applied
+    sendToServer({
+        type: 'telegram_prompt_applied',
+        promptId: nextPrompt.id,
+        prompt: nextPrompt.prompt,
+        from: nextPrompt.from,
+        chatId: nextPrompt.chatId
+    });
+    
+    // Update timestamps for remaining items (they become the new "first")
+    if (telegramWaitlist.length > 0) {
+        telegramWaitlist[0].addedAt = Date.now();
+    }
+    
+    // Update debug display
+    if (config.DEBUG_MODE) {
+        updateMobileDebugInfo({
+            status: 'Running',
+            panelState: document.getElementById('controlPanel')?.classList.contains('collapsed') ? 'collapsed' : 'expanded',
+            touchEvents: window.mobileDebugTouchCount || 0,
+            canvasReady: !!document.getElementById('fluidCanvas'),
+            screenSize: `${window.innerWidth}x${window.innerHeight}`,
+            timestamp: new Date().toLocaleTimeString()
+        });
+    }
+}
+
+function startTelegramProcessing() {
+    if (telegramProcessingTimer) return; // Already running
+    
+    const interval = (config.TELEGRAM_WAITLIST_INTERVAL || 1) * 1000; // Convert to milliseconds
+    
+    telegramProcessingTimer = setInterval(() => {
+        processNextTelegramPrompt();
+    }, interval);
+    
+    console.log(`📱 Started Telegram processing timer (${config.TELEGRAM_WAITLIST_INTERVAL || 1}s intervals)`);
+}
+
+function stopTelegramProcessing() {
+    if (telegramProcessingTimer) {
+        clearInterval(telegramProcessingTimer);
+        telegramProcessingTimer = null;
+        console.log('📱 Stopped Telegram processing timer');
+    }
+}
+
+function clearTelegramWaitlist() {
+    const count = telegramWaitlist.length;
+    telegramWaitlist = [];
+    stopTelegramProcessing();
+    
+    // Notify server that waitlist was cleared
+    sendToServer({
+        type: 'telegram_waitlist_cleared'
+    });
+    
+    updateDebugDisplay();
+    console.log(`📱 Cleared ${count} items from Telegram waitlist`);
+    
+    // Show brief notification
+    if (count > 0) {
+        const notification = document.createElement('div');
+        notification.textContent = `🗑️ Cleared ${count} prompts from waitlist`;
+        notification.style.cssText = `
+            position: fixed; top: 20px; right: 20px; background: rgba(255, 107, 107, 0.9);
+            color: white; padding: 10px 15px; border-radius: 5px; z-index: 10000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        `;
+        document.body.appendChild(notification);
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 3000);
+    }
+}
+
+function updateDebugDisplay() {
+    const debugInfo = document.getElementById('debugInfo');
+    if (!debugInfo || !config.DEBUG_MODE) return;
+    
+    // Get basic debug info (similar to existing updateMobileDebugInfo)
+    const panel = document.getElementById('controlPanel');
+    const info = {
+        status: 'Running',
+        panelState: panel ? (panel.classList.contains('collapsed') ? 'collapsed' : 'expanded') : 'missing',
+        touchEvents: window.mobileDebugTouchCount || 0,
+        canvasReady: !!document.getElementById('fluidCanvas'),
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        timestamp: new Date().toLocaleTimeString()
+    };
+    
+    // Get OSC status info
+    const oscStatus = getOSCStatusForDebug();
+    
+    // Get Telegram waitlist info
+    const waitlistInfo = getTelegramWaitlistInfo();
+    
+    debugInfo.innerHTML = `
+        <div><span style="color: #60a5fa;">Status:</span> <span style="color: #fbbf24;">${info.status}</span></div>
+        <div><span style="color: #60a5fa;">Panel:</span> <span style="color: #fbbf24;">${info.panelState}</span></div>
+        <div><span style="color: #60a5fa;">Touch Events:</span> <span style="color: #fbbf24;">${info.touchEvents}</span></div>
+        <div><span style="color: #60a5fa;">Canvas:</span> <span style="color: #fbbf24;">${info.canvasReady ? 'Ready' : 'Missing'}</span></div>
+        <div><span style="color: #60a5fa;">Screen:</span> <span style="color: #fbbf24;">${info.screenSize || 'Unknown'}</span></div>
+        <div><span style="color: #60a5fa;">Time:</span> <span style="color: #fbbf24;">${info.timestamp || 'N/A'}</span></div>
+        <div><span style="color: #60a5fa;">OSC Server:</span> <span style="color: ${oscStatus.color};">${oscStatus.text}</span></div>
+        <div style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 6px;">
+            <div><span style="color: #f472b6;">📱 Telegram:</span> <span style="color: #fbbf24;">${waitlistInfo.status}</span></div>
+            <div><span style="color: #f472b6;">Waitlist:</span> <span style="color: #fbbf24;">${waitlistInfo.count} queued</span></div>
+            ${waitlistInfo.nextPrompt ? `<div><span style="color: #f472b6;">Next:</span> <span style="color: #fbbf24;">"${waitlistInfo.nextPrompt}"</span></div>` : ''}
+            <div><span style="color: #f472b6;">Interval:</span> <span style="color: #fbbf24;">${waitlistInfo.interval}s</span></div>
+        </div>
+    `;
+}
+
+function getTelegramWaitlistInfo() {
+    const isEnabled = config.TELEGRAM_RECEIVE === true;
+    const count = telegramWaitlist.length;
+    const interval = config.TELEGRAM_WAITLIST_INTERVAL || 1;
+    const isProcessing = telegramProcessingTimer !== null;
+    
+    let status = 'Disabled';
+    if (isEnabled) {
+        if (count === 0) {
+            status = 'Idle';
+        } else if (isProcessing) {
+            status = 'Processing';
+        } else {
+            status = 'Queued';
+        }
+    }
+    
+    const nextPrompt = count > 0 ? telegramWaitlist[0].prompt.substring(0, 30) + (telegramWaitlist[0].prompt.length > 30 ? '...' : '') : null;
+    
+    return {
+        status: status,
+        count: count,
+        nextPrompt: nextPrompt,
+        interval: interval
+    };
+}
+
+// Send message to server via WebSocket
+function sendToServer(message) {
+    if (oscWebSocket && oscWebSocket.readyState === WebSocket.OPEN) {
+        try {
+            oscWebSocket.send(JSON.stringify(message));
+            console.log('📤 Sent to server:', message.type);
+        } catch (error) {
+            console.error('❌ Error sending to server:', error);
+        }
+    } else {
+        console.log('⚠️ Cannot send to server: WebSocket not connected');
+    }
+}
+
 // Prompt presets for keyboard shortcuts
 const PROMPT_PRESETS = [
     'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere',
@@ -1174,8 +1456,12 @@ const PROMPT_PRESETS = [
 
 function setPrompt(promptText) {
     const promptInput = document.getElementById('promptInput');
+    console.log('🎯 setPrompt called with:', promptText);
+    console.log('🎯 promptInput element:', promptInput);
+    
     if (promptInput) {
         promptInput.value = promptText;
+        console.log('✅ Prompt input field updated to:', promptInput.value);
         
         // Save the new prompt
         savePrompts();
@@ -1197,6 +1483,8 @@ function setPrompt(promptText) {
         }
         
         console.log('✅ Prompt set to:', promptText);
+    } else {
+        console.error('❌ promptInput element not found!');
     }
 }
 
@@ -1379,6 +1667,9 @@ function updateMobileDebugInfo(info) {
     // Get OSC status info
     const oscStatus = getOSCStatusForDebug();
     
+    // Get Telegram waitlist info
+    const waitlistInfo = getTelegramWaitlistInfo();
+    
     debugInfo.innerHTML = `
         <div><span style="color: #60a5fa;">Status:</span> <span style="color: #fbbf24;">${info.status}</span></div>
         <div><span style="color: #60a5fa;">Panel:</span> <span style="color: #fbbf24;">${info.panelState}</span></div>
@@ -1387,6 +1678,12 @@ function updateMobileDebugInfo(info) {
         <div><span style="color: #60a5fa;">Screen:</span> <span style="color: #fbbf24;">${info.screenSize || 'Unknown'}</span></div>
         <div><span style="color: #60a5fa;">Time:</span> <span style="color: #fbbf24;">${info.timestamp || 'N/A'}</span></div>
         <div><span style="color: #60a5fa;">OSC Server:</span> <span style="color: ${oscStatus.color};">${oscStatus.text}</span></div>
+        <div style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 6px;">
+            <div><span style="color: #f472b6;">📱 Telegram:</span> <span style="color: #fbbf24;">${waitlistInfo.status}</span></div>
+            <div><span style="color: #f472b6;">Waitlist:</span> <span style="color: #fbbf24;">${waitlistInfo.count} queued</span></div>
+            ${waitlistInfo.nextPrompt ? `<div><span style="color: #f472b6;">Next:</span> <span style="color: #fbbf24;">"${waitlistInfo.nextPrompt}"</span></div>` : ''}
+            <div><span style="color: #f472b6;">Interval:</span> <span style="color: #fbbf24;">${waitlistInfo.interval}s</span></div>
+        </div>
     `;
 }
 
@@ -4320,6 +4617,10 @@ window.addEventListener('keydown', e => {
         if (e.code === 'KeyV') {
             e.preventDefault();
             toggleVelocityDrawing();
+        }
+        if (e.code === 'KeyO') {
+            e.preventDefault();
+            togglePanel();
         }
         if (e.code === 'Space') {
             e.preventDefault();
@@ -8284,7 +8585,8 @@ const STORAGE_KEYS = {
     API_KEY: STORAGE_PREFIX + 'apiKey',
     PROMPTS: STORAGE_PREFIX + 'prompts',
     API_KEY_CONSENT: STORAGE_PREFIX + 'apiKeyConsent',
-    STREAM_STATE: STORAGE_PREFIX + 'streamState'
+    STREAM_STATE: STORAGE_PREFIX + 'streamState',
+    TELEGRAM_SETTINGS: STORAGE_PREFIX + 'telegramSettings'
 };
 
 function isLocalStorageAvailable() {
@@ -8506,6 +8808,51 @@ function loadPrompts() {
             negativePromptInput.value = 'blurry, low quality, flat, 2d';
             console.log('✅ Set default negative prompt');
         }
+    }
+}
+
+function saveTelegramSettings() {
+    const telegramSettings = {
+        TELEGRAM_RECEIVE: config.TELEGRAM_RECEIVE,
+        TELEGRAM_WAITLIST_INTERVAL: config.TELEGRAM_WAITLIST_INTERVAL
+    };
+    saveToLocalStorage(STORAGE_KEYS.TELEGRAM_SETTINGS, telegramSettings);
+    console.log('💾 Saved Telegram settings:', telegramSettings);
+}
+
+function loadTelegramSettings() {
+    const savedSettings = loadFromLocalStorage(STORAGE_KEYS.TELEGRAM_SETTINGS);
+    
+    if (savedSettings) {
+        // Load saved settings
+        config.TELEGRAM_RECEIVE = savedSettings.TELEGRAM_RECEIVE !== undefined ? savedSettings.TELEGRAM_RECEIVE : true;
+        config.TELEGRAM_WAITLIST_INTERVAL = savedSettings.TELEGRAM_WAITLIST_INTERVAL !== undefined ? Math.round(savedSettings.TELEGRAM_WAITLIST_INTERVAL) : 1;
+        console.log('✅ Loaded Telegram settings:', savedSettings);
+    } else {
+        // Set defaults
+        config.TELEGRAM_RECEIVE = true;
+        config.TELEGRAM_WAITLIST_INTERVAL = 1;
+        console.log('✅ Set default Telegram settings: enabled, 1s interval');
+    }
+    
+    // Update the UI toggle to match the loaded state
+    updateToggle('telegramReceiveToggle', config.TELEGRAM_RECEIVE);
+    
+    // Update controls visibility
+    updateTelegramControlsVisibility();
+    
+    // Update slider position to match loaded interval value
+    updateSliderPositions();
+    
+    // Sync interval with server on page load
+    if (typeof sendToServer === 'function') {
+        setTimeout(() => {
+            sendToServer({
+                type: 'telegram_waitlist_interval_changed',
+                interval: config.TELEGRAM_WAITLIST_INTERVAL
+            });
+            console.log(`📱 Synced interval with server: ${config.TELEGRAM_WAITLIST_INTERVAL}s`);
+        }, 1000); // Wait 1 second for WebSocket connection
     }
 }
 
@@ -8855,6 +9202,7 @@ function initializeLocalStorage() {
         updateToggleStates();
         loadPrompts();
         loadApiKey();
+        loadTelegramSettings();
         setupInputSaveHandlers();
         initializeStreamRecovery();
         initializeColorPickers();
@@ -9249,6 +9597,11 @@ function handleOSCMessage(message) {
         return;
     }
     
+    if (message.type === 'telegram_prompt') {
+        handleTelegramPrompt(message);
+        return;
+    }
+    
     if (message.type === 'osc_message') {
         // Handle parameter updates
         if (message.parameter) {
@@ -9271,6 +9624,131 @@ function handleOSCMessage(message) {
             executeOSCAction(message.action, message.value);
         }
     }
+}
+
+function handleTelegramPrompt(message) {
+    console.log(`📱 Received Telegram prompt from ${message.from}: "${message.prompt}"`);
+    
+    // Check if Telegram receive is enabled
+    if (config.TELEGRAM_RECEIVE === false) {
+        console.log('📱 Telegram receive is disabled, ignoring prompt');
+        // Notification removed - no overlay in top right
+        return;
+    }
+    
+    // Add to waitlist instead of immediately processing
+    // Include chatId for server feedback
+    const waitlistMessage = {
+        ...message,
+        chatId: message.chatId // Pass through from server
+    };
+    addToTelegramWaitlist(waitlistMessage);
+    
+    // Debug notification removed - no longer showing waitlist additions in UI
+}
+
+function showTelegramNotification(message, ignored = false) {
+    // Disabled - no overlay notifications in top right corner
+    return;
+    
+    // Create a temporary notification element
+    const notification = document.createElement('div');
+    notification.className = 'telegram-notification';
+    
+    const title = ignored ? 'Telegram Prompt Ignored' : 'Telegram Prompt Received';
+    const icon = ignored ? '🚫' : '📱';
+    const titleColor = ignored ? '#ff6b6b' : '#4ecdc4';
+    
+    notification.innerHTML = `
+        <div class="notification-content">
+            <span class="notification-icon">${icon}</span>
+            <div class="notification-text">
+                <div class="notification-title" style="color: ${titleColor};">${title}</div>
+                <div class="notification-subtitle">From: ${message.from}</div>
+                <div class="notification-prompt">"${message.prompt}"</div>
+                ${ignored ? '<div class="notification-status">Toggle "Receive from Telegram" to enable</div>' : ''}
+            </div>
+        </div>
+    `;
+    
+    // Add styles
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.9);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #333;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        z-index: 10000;
+        max-width: 350px;
+        animation: slideIn 0.3s ease-out;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+    
+    // Add animation styles if not already present
+    if (!document.querySelector('#telegram-notification-styles')) {
+        const style = document.createElement('style');
+        style.id = 'telegram-notification-styles';
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            .notification-content {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .notification-icon {
+                font-size: 24px;
+                flex-shrink: 0;
+            }
+            .notification-text {
+                flex: 1;
+            }
+            .notification-title {
+                font-weight: bold;
+                margin-bottom: 4px;
+                font-size: 14px;
+            }
+            .notification-subtitle {
+                font-size: 12px;
+                opacity: 0.8;
+                margin-bottom: 6px;
+            }
+            .notification-prompt {
+                font-size: 13px;
+                font-style: italic;
+                opacity: 0.9;
+                line-height: 1.3;
+            }
+            .notification-status {
+                font-size: 11px;
+                opacity: 0.7;
+                margin-top: 4px;
+                font-style: normal;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Add to page
+    document.body.appendChild(notification);
+    
+    // Remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.style.animation = 'slideIn 0.3s ease-out reverse';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }
+    }, 5000);
 }
 
 function updateUIFromConfig(parameter, value) {

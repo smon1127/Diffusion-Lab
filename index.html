@@ -2193,6 +2193,38 @@
                         <textarea class="text-input auto-resize-textarea" id="promptInput" placeholder="blooming flower with delicate petals..." title="Describe what you want the AI to generate" rows="1"></textarea>
                     </div>
                     
+                    <!-- Telegram Integration Toggle -->
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="toggleTelegramReceive()" ontouchstart="toggleTelegramReceive(); event.preventDefault();">
+                            <span>📱 Receive from Telegram</span>
+                            <div class="toggle-switch active" id="telegramReceiveToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Telegram Waitlist Controls (shown only when Telegram is enabled) -->
+                    <div id="telegramWaitlistControls" class="control-item" style="display: none;">
+                        <div class="control-label">
+                            <span>Waitlist Interval <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Time between processing Telegram prompts (1-30 seconds)</span>
+                            </div></span>
+                            <input type="text" class="control-value number-input" id="telegramWaitlistIntervalValue" value="5.0" />
+                        </div>
+                        <div class="slider-container" onclick="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30)" ontouchstart="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30); event.preventDefault();">
+                            <div class="slider-fill" id="telegramWaitlistIntervalFill" style="width: 13%">
+                                <div class="slider-handle" id="telegramWaitlistIntervalHandle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Clear Waitlist Button -->
+                    <div id="telegramClearButton" class="control-item" style="display: none;">
+                        <button class="modern-button secondary" onclick="clearTelegramWaitlist()" ontouchstart="clearTelegramWaitlist(); event.preventDefault();">
+                            <i class="fas fa-trash"></i> Clear Waitlist
+                        </button>
+                    </div>
+                    
                     <!-- Prompt Presets Section -->
                     <div class="advanced-section">
                         <div class="advanced-toggle" onclick="togglePromptPresets()" ontouchstart="togglePromptPresets(); event.preventDefault();">
