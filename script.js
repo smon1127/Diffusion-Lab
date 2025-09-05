@@ -736,6 +736,11 @@ function updateToggle(toggleId, state) {
 function togglePanel() {
     const panel = document.getElementById('controlPanel');
     panel.classList.toggle('collapsed');
+    
+    // Close color picker when panel is collapsed (especially important on tablets)
+    if (panel.classList.contains('collapsed') && typeof Coloris !== 'undefined') {
+        Coloris.close();
+    }
 }
 
 // Safe wrapper functions for mobile compatibility
@@ -925,6 +930,10 @@ function initializeMobilePanelGestures() {
                     if (isDragging && isValidPull) {
                         // Animate the collapse
                         panel.classList.add('collapsed');
+                        // Close color picker when panel is closed via gesture (important on tablets)
+                        if (typeof Coloris !== 'undefined') {
+                            Coloris.close();
+                        }
                         // Prevent the click event from firing
                         e.preventDefault();
                         e.stopPropagation();
