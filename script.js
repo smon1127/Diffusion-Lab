@@ -5016,7 +5016,7 @@ async function copyStreamUrlToClipboard(forceShare = false) {
         return;
     }
     
-    const streamUrl = `https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force`;
+    const streamUrl = `https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force&controls=false`;
     const copyButton = document.getElementById('copyStreamUrlButton');
     
     // Prepare share data with URL as text
@@ -5281,7 +5281,7 @@ function openStreamPopup(playbackId) {
         // Get the current URL of the existing popup
         try {
             const currentUrl = streamState.popupWindow.location.href;
-            const expectedUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force`;
+            const expectedUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force&controls=false`;
             
             // If the popup is showing the same playback ID, just focus it
             if (currentUrl === expectedUrl) {
@@ -5309,7 +5309,7 @@ function openStreamPopup(playbackId) {
     const left = (window.screen.width - width) / 2;
     const top = (window.screen.height - height) / 2;
     
-    const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force`;
+    const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force&controls=false`;
 
     console.log('🆕 Opening new popup window for stream');
     const popupWindow = window.open(
@@ -5575,7 +5575,7 @@ function openStreamOverlay(playbackId) {
         return;
     }
     
-    const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force`;
+    const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force&controls=false`;
     console.log('🔄 Loading stream URL in overlay:', streamUrl);
     
     // Show overlay
@@ -5688,7 +5688,7 @@ function toggleStreamVisibility() {
         // Ensure iframe is still loaded when showing again
         const iframe = document.getElementById('streamOverlayFrame');
         if (iframe && streamState.playbackId && !iframe.src) {
-            const streamUrl = `https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force`;
+            const streamUrl = `https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force&controls=false`;
             iframe.src = streamUrl;
         }
     }
