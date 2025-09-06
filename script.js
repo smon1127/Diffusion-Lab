@@ -80,7 +80,7 @@ const desktopConfig = {
     SUNRAYS_RESOLUTION: 196,
     SUNRAYS_WEIGHT: 0.4,
     VELOCITY_DRAWING: false,    // Velocity-based drawing intensity
-    FORCE_CLICK: false          // Click burst effects (MOUSE ONLY - never affects OSC)
+    FORCE_CLICK: true           // Click burst effects (MOUSE ONLY - never affects OSC)
 };
 
 const mobileConfig = {
@@ -111,7 +111,7 @@ const mobileConfig = {
     SUNRAYS_RESOLUTION: 96,     // Lower sunrays resolution for mobile
     SUNRAYS_WEIGHT: 0.4,
     VELOCITY_DRAWING: false,    // Velocity-based drawing intensity
-    FORCE_CLICK: false          // Click burst effects (MOUSE ONLY - never affects OSC)
+    FORCE_CLICK: true           // Click burst effects (MOUSE ONLY - never affects OSC)
 };
 
 // Initialize config based on device type
@@ -153,6 +153,7 @@ const commonParams = {
     DEBUG_MODE: false,
     
     // OSC Multi-splat channels REMOVED - replaced by OSC velocity drawing system
+    HIDE_CURSOR: false,
 };
 
 // Initialize config based on device type with common parameters
@@ -716,11 +717,19 @@ function updateToggleStates() {
     updateToggle('colorfulToggle', config.COLORFUL);
     updateToggle('pausedToggle', config.PAUSED);
     updateToggle('animateToggle', config.ANIMATE);
+    updateToggle('hideCursorToggle', config.HIDE_CURSOR);
     updateToggle('bloomToggle', config.BLOOM);
     updateToggle('sunraysToggle', config.SUNRAYS);
     updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
     updateToggle('forceClickToggle', config.FORCE_CLICK);
     updateToggle('debugToggle', config.DEBUG_MODE);
+    
+    // Apply cursor hiding CSS class if needed
+    if (config.HIDE_CURSOR) {
+        document.body.classList.add('hide-cursor');
+    } else {
+        document.body.classList.remove('hide-cursor');
+    }
 }
 
 function updateToggle(toggleId, state) {
@@ -984,7 +993,19 @@ function toggleAnimate() {
     }
 }
 
-
+function toggleHideCursor() {
+    config.HIDE_CURSOR = !config.HIDE_CURSOR;
+    updateToggle('hideCursorToggle', config.HIDE_CURSOR);
+    
+    // Apply or remove cursor hiding CSS class
+    if (config.HIDE_CURSOR) {
+        document.body.classList.add('hide-cursor');
+    } else {
+        document.body.classList.remove('hide-cursor');
+    }
+    
+    saveConfig();
+}
 
 function toggleBloom() {
     config.BLOOM = !config.BLOOM;
@@ -1103,34 +1124,7 @@ function toggleTelegramReceive() {
     console.log(`📱 Telegram receive ${config.TELEGRAM_RECEIVE ? 'enabled' : 'disabled'}`);
 }
 
-function toggleTelegramConfig() {
-    const content = document.getElementById('telegramConfigContent');
-    const toggle = document.getElementById('telegramConfigIcon');
-    
-    if (content.classList.contains('expanded')) {
-        content.classList.remove('expanded');
-        toggle.textContent = '▶';
-    } else {
-        content.classList.add('expanded');
-        toggle.textContent = '▼';
-    }
-}
 
-function toggleTelegramQR() {
-    const content = document.getElementById('telegramQRContent');
-    const toggle = document.getElementById('telegramQRIcon');
-    
-    if (content.classList.contains('expanded')) {
-        content.classList.remove('expanded');
-        toggle.textContent = '▶';
-    } else {
-        content.classList.add('expanded');
-        toggle.textContent = '▼';
-        
-        // Generate QR code when showing for the first time
-        generateTelegramQR();
-    }
-}
 
 function generateTelegramQR(retryCount = 0) {
     const canvas = document.getElementById('telegramQRCanvas');
@@ -1138,6 +1132,19 @@ function generateTelegramQR(retryCount = 0) {
         console.error('QR Canvas element not found');
         return;
     }
+    
+    // Check if both token and username fields have values
+    if (!validateTelegramFields()) {
+        console.log('Token or username fields are empty, skipping QR generation');
+        // Clear the canvas
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+    }
+    
+    // Use stored bot username or fallback to default
+    const botUsername = telegramBotUsername || 'DiffusionPromptBot';
+    const telegramBotUrl = `https://t.me/${botUsername}`;
     
     // Check if QRious library is loaded
     if (typeof QRious === 'undefined') {
@@ -1158,20 +1165,23 @@ function generateTelegramQR(retryCount = 0) {
             ctx.textAlign = 'center';
             ctx.fillText('QR Library Failed to Load', canvas.width/2, canvas.height/2 - 20);
             ctx.font = '12px Arial';
-            ctx.fillText('https://t.me/DiffusionPromptBot', canvas.width/2, canvas.height/2 + 10);
+            ctx.fillText(telegramBotUrl, canvas.width/2, canvas.height/2 + 10);
             return;
         }
     }
     
-    const telegramBotUrl = 'https://t.me/DiffusionPromptBot';
     console.log('📱 Generating QR code for:', telegramBotUrl);
+    
+    // Determine QR code size based on screen size
+    const isMobile = window.innerWidth <= 768;
+    const qrSize = isMobile ? 120 : 300;
     
     try {
         // Create QR code using QRious
         const qr = new QRious({
             element: canvas,
             value: telegramBotUrl,
-            size: 300,
+            size: qrSize,
             background: 'white',
             foreground: 'black',
             level: 'M'
@@ -1184,8 +1194,8 @@ function generateTelegramQR(retryCount = 0) {
         console.error('Failed to generate QR code with QRious:', error);
         // Fallback: show error message on canvas
         const ctx = canvas.getContext('2d');
-        canvas.width = 300;
-        canvas.height = 300;
+        canvas.width = qrSize;
+        canvas.height = qrSize;
         ctx.fillStyle = '#ffcccc';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#ff0000';
@@ -1194,21 +1204,178 @@ function generateTelegramQR(retryCount = 0) {
         ctx.fillText('QR Generation Error:', canvas.width/2, canvas.height/2 - 20);
         ctx.font = '12px Arial';
         ctx.fillText(error.message, canvas.width/2, canvas.height/2);
-        ctx.fillText('https://t.me/DiffusionPromptBot', canvas.width/2, canvas.height/2 + 20);
+        ctx.fillText(telegramBotUrl, canvas.width/2, canvas.height/2 + 20);
     }
 }
 
-// Telegram Waitlist System
-let telegramWaitlist = [];
-let telegramProcessingTimer = null;
+function validateTelegramBotToken(token) {
+    // Telegram bot token format: 8-10 digits, colon, 35 alphanumeric chars with underscores/hyphens
+    const tokenPattern = /^[0-9]{8,10}:[a-zA-Z0-9_-]{35}$/;
+    return tokenPattern.test(token);
+}
+
+async function fetchTelegramBotInfo(token) {
+    try {
+        console.log('📱 Fetching bot information from Telegram API...');
+        const response = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+        const data = await response.json();
+        
+        if (data.ok && data.result) {
+            console.log('📱 Bot info fetched successfully:', data.result);
+            return {
+                success: true,
+                username: data.result.username,
+                firstName: data.result.first_name,
+                id: data.result.id
+            };
+        } else {
+            console.error('📱 Telegram API error:', data.description || 'Unknown error');
+            return {
+                success: false,
+                error: data.description || 'Invalid bot token'
+            };
+        }
+    } catch (error) {
+        console.error('📱 Network error fetching bot info:', error);
+        return {
+            success: false,
+            error: 'Network error: Unable to connect to Telegram API'
+        };
+    }
+}
+
+// Store bot username in memory after API call
+let telegramBotUsername = null;
+
+async function fetchAndStoreBotUsername(token) {
+    // Validate token format first
+    if (!validateTelegramBotToken(token)) {
+        console.log('📱 Invalid token format, skipping bot info fetch');
+        telegramBotUsername = null;
+        updateTelegramBotElements();
+        return;
+    }
+    
+    try {
+        console.log('📱 Fetching bot information...');
+        const botInfo = await fetchTelegramBotInfo(token);
+        
+        if (botInfo.success && botInfo.username) {
+            telegramBotUsername = botInfo.username;
+            console.log(`📱 Bot username fetched: ${telegramBotUsername}`);
+            
+            // Update UI elements with new username
+            updateTelegramBotElements();
+            
+        } else {
+            console.error('📱 Failed to fetch bot info:', botInfo.error);
+            telegramBotUsername = null;
+            updateTelegramBotElements();
+        }
+    } catch (error) {
+        console.error('📱 Error fetching bot info:', error);
+        telegramBotUsername = null;
+        updateTelegramBotElements();
+    }
+}
+
+function validateTelegramFields() {
+    const tokenInput = document.getElementById('telegramTokenInput');
+    const hasToken = tokenInput && tokenInput.value.trim().length > 0;
+    const hasUsername = telegramBotUsername && telegramBotUsername.length > 0;
+    
+    return hasToken && hasUsername;
+}
+
+function updateTelegramBotElements() {
+    // Use stored bot username or fallback to default
+    const botUsername = telegramBotUsername || 'DiffusionPromptBot';
+    
+    // Check if both token and username are available
+    const fieldsValid = validateTelegramFields();
+    
+    // Update bot link
+    const botLink = document.getElementById('telegramBotLink');
+    if (botLink) {
+        botLink.href = `https://t.me/${botUsername}`;
+        botLink.closest('.control-item').style.display = fieldsValid ? 'block' : 'none';
+    }
+    
+    // Update bot display name
+    const botDisplayName = document.getElementById('telegramBotDisplayName');
+    if (botDisplayName) {
+        botDisplayName.textContent = `@${botUsername}`;
+    }
+    
+    // Update QR code section visibility
+    const qrSection = document.getElementById('telegramQRContent');
+    if (qrSection) {
+        qrSection.style.display = fieldsValid ? 'block' : 'none';
+    }
+    
+    // Generate QR code if fields are valid
+    if (fieldsValid) {
+        generateTelegramQR();
+    }
+    
+    console.log(`📱 Updated Telegram bot elements for: @${botUsername} (visible: ${fieldsValid})`);
+}
+
+// Add event listener to fetch bot info when token changes
+document.addEventListener('DOMContentLoaded', function() {
+    const tokenInput = document.getElementById('telegramTokenInput');
+    
+    if (tokenInput) {
+        // Clear stored username when token changes
+        tokenInput.addEventListener('input', function() {
+            telegramBotUsername = null;
+            updateTelegramBotElements();
+        });
+        
+        // Fetch bot info with debouncing
+        let fetchTimeout;
+        tokenInput.addEventListener('input', function() {
+            clearTimeout(fetchTimeout);
+            const token = this.value.trim();
+            
+            if (token.length > 0) {
+                // Debounce the fetch to avoid excessive API calls
+                fetchTimeout = setTimeout(() => {
+                    fetchAndStoreBotUsername(token);
+                }, 1000); // Wait 1 second after user stops typing
+            } else {
+                // Clear username if token is empty
+                telegramBotUsername = null;
+                updateTelegramBotElements();
+            }
+        });
+        
+        // Also trigger on blur for immediate response
+        tokenInput.addEventListener('blur', function() {
+            clearTimeout(fetchTimeout);
+            const token = this.value.trim();
+            if (token.length > 0) {
+                fetchAndStoreBotUsername(token);
+            }
+        });
+    }
+});
+
+// Telegram Waitlist System - Server-Only Management
+// Client now only applies prompts when instructed by server
 
 function updateTelegramControlsVisibility() {
-    const configSection = document.getElementById('telegramConfigSection');
+    const isVisible = config.TELEGRAM_RECEIVE === true;
+    const displayValue = isVisible ? 'block' : 'none';
     
-    if (configSection) {
-        const isVisible = config.TELEGRAM_RECEIVE === true;
-        configSection.style.display = isVisible ? 'block' : 'none';
-    }
+    // Control visibility of individual Telegram elements
+    const waitlistControls = document.getElementById('telegramWaitlistControls');
+    const clearButton = document.getElementById('telegramClearButton');
+    
+    if (waitlistControls) waitlistControls.style.display = displayValue;
+    if (clearButton) clearButton.style.display = displayValue;
+    
+    // Bot token is always visible when in Settings (user might want to configure it)
 }
 
 function updateTelegramWaitlistInterval(value) {
@@ -1216,12 +1383,6 @@ function updateTelegramWaitlistInterval(value) {
     const intValue = Math.round(value);
     config.TELEGRAM_WAITLIST_INTERVAL = intValue;
     console.log(`📱 Telegram waitlist interval set to ${intValue} seconds`);
-    
-    // Restart the processing timer with new interval
-    if (telegramProcessingTimer) {
-        clearInterval(telegramProcessingTimer);
-        startTelegramProcessing();
-    }
     
     // Notify server of interval change
     sendToServer({
@@ -1251,33 +1412,44 @@ function addToTelegramWaitlist(message) {
         } : {})
     };
     
-    const wasEmpty = telegramWaitlist.length === 0;
-    telegramWaitlist.push(waitlistEntry);
-    
-    console.log(`📱 Added to waitlist: "${message.prompt}" from ${message.from} (${telegramWaitlist.length} total)`);
-    
-    // Smart processing logic
-    if (wasEmpty) {
-        // First item, start normal timer
-        if (!telegramProcessingTimer) {
-            startTelegramProcessing();
-        }
-    } else {
-        // Check if first item has been waiting longer than interval
-        const firstItem = telegramWaitlist[0];
-        const waitTime = (Date.now() - firstItem.addedAt) / 1000; // Convert to seconds
-        const interval = config.TELEGRAM_WAITLIST_INTERVAL || 1;
-        
-        if (waitTime >= interval) {
-            console.log(`📱 First item waited ${waitTime.toFixed(1)}s (≥${interval}s), processing immediately`);
-            // Process immediately and restart timer
-            processNextTelegramPrompt();
-            // Restart timer for remaining items
-            if (telegramWaitlist.length > 0) {
-                stopTelegramProcessing();
-                startTelegramProcessing();
+    // Handle different types of prompts
+    if (message.type === 'controlnet_preset') {
+        // Apply ControlNet preset parameters
+        Object.entries(message.parameters).forEach(([key, value]) => {
+            if (config.hasOwnProperty(key)) {
+                config[key] = value;
+                console.log(`⚙️ Updated ${key} = ${value}`);
             }
-        }
+        });
+        
+        // Update all slider positions and values
+        updateSliderPositions();
+        
+        // Save configuration
+        saveConfig();
+        
+        console.log(`✅ Applied ControlNet preset: ${message.presetDisplayName}`);
+        
+        // Confirm to server that ControlNet preset was applied
+        sendToServer({
+            type: 'controlnet_preset_applied',
+            presetName: message.presetName,
+            presetDisplayName: message.presetDisplayName,
+            from: message.from,
+            chatId: message.chatId
+        });
+    } else {
+        // Handle regular prompt (default behavior)
+        setPrompt(message.prompt);
+        
+        // Confirm to server that prompt was applied
+        sendToServer({
+            type: 'telegram_prompt_applied',
+            promptId: message.id,
+            prompt: message.prompt,
+            from: message.from,
+            chatId: message.chatId
+        });
     }
     
     // Update debug display
@@ -1381,35 +1553,28 @@ function stopTelegramProcessing() {
 }
 
 function clearTelegramWaitlist() {
-    const count = telegramWaitlist.length;
-    telegramWaitlist = [];
-    stopTelegramProcessing();
-    
-    // Notify server that waitlist was cleared
+    // Notify server to clear its waitlist
     sendToServer({
         type: 'telegram_waitlist_cleared'
     });
     
-    updateDebugDisplay();
-    console.log(`📱 Cleared ${count} items from Telegram waitlist`);
+    console.log('📱 Requested server to clear Telegram waitlist');
     
     // Show brief notification
-    if (count > 0) {
-        const notification = document.createElement('div');
-        notification.textContent = `🗑️ Cleared ${count} prompts from waitlist`;
-        notification.style.cssText = `
-            position: fixed; top: 20px; right: 20px; background: rgba(255, 107, 107, 0.9);
-            color: white; padding: 10px 15px; border-radius: 5px; z-index: 10000;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            font-size: 14px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        `;
-        document.body.appendChild(notification);
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 3000);
-    }
+    const notification = document.createElement('div');
+    notification.textContent = '🗑️ Clearing waitlist...';
+    notification.style.cssText = `
+        position: fixed; top: 20px; right: 20px; background: rgba(255, 107, 107, 0.9);
+        color: white; padding: 10px 15px; border-radius: 5px; z-index: 10000;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    `;
+    document.body.appendChild(notification);
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 3000);
 }
 
 function updateDebugDisplay() {
@@ -1452,27 +1617,17 @@ function updateDebugDisplay() {
 
 function getTelegramWaitlistInfo() {
     const isEnabled = config.TELEGRAM_RECEIVE === true;
-    const count = telegramWaitlist.length;
     const interval = config.TELEGRAM_WAITLIST_INTERVAL || 1;
-    const isProcessing = telegramProcessingTimer !== null;
     
     let status = 'Disabled';
     if (isEnabled) {
-        if (count === 0) {
-            status = 'Idle';
-        } else if (isProcessing) {
-            status = 'Processing';
-        } else {
-            status = 'Queued';
-        }
+        status = 'Server Managed';
     }
-    
-    const nextPrompt = count > 0 ? telegramWaitlist[0].prompt.substring(0, 30) + (telegramWaitlist[0].prompt.length > 30 ? '...' : '') : null;
     
     return {
         status: status,
-        count: count,
-        nextPrompt: nextPrompt,
+        count: '?', // Server manages queue now
+        nextPrompt: null, // Server manages queue now
         interval: interval
     };
 }
@@ -4668,6 +4823,10 @@ window.addEventListener('keydown', e => {
         if (e.code === 'KeyV') {
             e.preventDefault();
             toggleVelocityDrawing();
+        }
+        if (e.code === 'KeyH') {
+            e.preventDefault();
+            toggleHideCursor();
         }
         if (e.code === 'KeyO') {
             e.preventDefault();
@@ -8866,16 +9025,7 @@ function loadTelegramSettings() {
     // Update slider position to match loaded interval value
     updateSliderPositions();
     
-    // Sync interval with server on page load
-    if (typeof sendToServer === 'function') {
-        setTimeout(() => {
-            sendToServer({
-                type: 'telegram_waitlist_interval_changed',
-                interval: config.TELEGRAM_WAITLIST_INTERVAL
-            });
-            console.log(`📱 Synced interval with server: ${config.TELEGRAM_WAITLIST_INTERVAL}s`);
-        }, 1000); // Wait 1 second for WebSocket connection
-    }
+    // Interval will be synced when WebSocket connects
 }
 
 function saveApiKey() {
@@ -8991,22 +9141,45 @@ function loadTelegramToken() {
             const consentCheckbox = document.getElementById('telegramTokenConsent');
             
             if (tokenInput) {
-                tokenInput.value = deobfuscateApiKey(savedToken);
+                const deobfuscatedToken = deobfuscateApiKey(savedToken);
+                tokenInput.value = deobfuscatedToken;
+                
+                // Fetch bot username for the loaded token
+                console.log('📱 Loading saved token, fetching bot username...');
+                fetchAndStoreBotUsername(deobfuscatedToken);
             }
             if (consentCheckbox) {
                 consentCheckbox.checked = true;
             }
             
-            // Send token to server on load (with delay to ensure WebSocket is connected)
-            setTimeout(() => {
-                if (typeof sendToServer === 'function') {
-                    sendToServer({
-                        type: 'telegram_token_updated',
-                        token: deobfuscateApiKey(savedToken)
-                    });
-                    console.log('📱 Sent stored Telegram token to server on load');
-                }
-            }, 1500); // Wait 1.5 seconds for WebSocket connection
+            // Token will be sent automatically when WebSocket connects via sendStoredTelegramTokenToServer()
+        }
+    }
+}
+
+function sendStoredTelegramTokenToServer() {
+    if (oscWebSocket && oscWebSocket.readyState === WebSocket.OPEN) {
+        // Send stored token if available
+        const consent = loadFromLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN_CONSENT, false);
+        if (consent) {
+            const savedToken = loadFromLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN);
+            if (savedToken) {
+                const decodedToken = deobfuscateApiKey(savedToken);
+                sendToServer({
+                    type: 'telegram_token_updated',
+                    token: decodedToken
+                });
+                console.log('📱 Sent stored Telegram token to server after WebSocket connection');
+            }
+        }
+        
+        // Also sync the waitlist interval
+        if (config.TELEGRAM_WAITLIST_INTERVAL) {
+            sendToServer({
+                type: 'telegram_waitlist_interval_changed',
+                interval: config.TELEGRAM_WAITLIST_INTERVAL
+            });
+            console.log(`📱 Synced waitlist interval with server: ${config.TELEGRAM_WAITLIST_INTERVAL}s`);
         }
     }
 }
@@ -9165,8 +9338,12 @@ function initializeWelcomeOverlay() {
 }
 
 function resetValues() {
-    if (confirm('Are you sure you want to reset all slider values to defaults? This will not affect your prompt, API key, or other input fields.')) {
-        // Reset config values to defaults (keeping input fields unchanged)
+    if (confirm('Are you sure you want to reset all slider values to defaults? This will not affect your prompt, API key, Telegram settings, or other input fields.')) {
+        // Store current telegram settings to preserve them
+        const currentTelegramReceive = config.TELEGRAM_RECEIVE;
+        const currentTelegramInterval = config.TELEGRAM_WAITLIST_INTERVAL;
+        
+        // Reset config values to defaults (keeping input fields and telegram settings unchanged)
         config.DENSITY_DISSIPATION = 0.15;
         config.VELOCITY_DISSIPATION = 0.6;
         config.PRESSURE = 0.37;
@@ -9198,6 +9375,10 @@ function resetValues() {
         config.STATIC_COLOR = { r: 0, g: 0.831, b: 1 }; // Default cyan color
         config.BACK_COLOR = { r: 0, g: 0, b: 0 }; // Default black background
         
+        // Restore telegram settings
+        config.TELEGRAM_RECEIVE = currentTelegramReceive;
+        config.TELEGRAM_WAITLIST_INTERVAL = currentTelegramInterval;
+        
         // Update UI to reflect new values
         updateSliderPositions();
         updateToggleStates();
@@ -9210,6 +9391,7 @@ function resetValues() {
         saveConfig();
     }
 }
+
 
 function clearAllSettings() {
     if (confirm('Are you sure you want to clear all saved settings? This will reset all sliders, prompts, API key, and saved stream data to defaults.')) {
@@ -9299,12 +9481,13 @@ function initializeLocalStorage() {
     
     // Ensure DOM is ready before updating UI elements
     setTimeout(() => {
+        loadTelegramSettings(); // Load before slider initialization
         updateSliderPositions();
         updateToggleStates();
         loadPrompts();
         loadApiKey();
         loadTelegramToken();
-        loadTelegramSettings();
+        updateTelegramBotElements(); // Update visibility based on loaded values
         setupInputSaveHandlers();
         initializeStreamRecovery();
         initializeColorPickers();
@@ -9643,6 +9826,9 @@ function tryConnectToOSCServer(ips, index) {
         oscServerIP = ip;
         updateOSCStatus('connected', ip);
         setupOSCMessageHandling();
+        
+        // Send stored Telegram token immediately after connection
+        sendStoredTelegramTokenToServer();
     };
     
     ws.onerror = (error) => {
@@ -9759,12 +9945,27 @@ function handleTelegramPrompt(message) {
     }
     
     // Add to waitlist instead of immediately processing
-    // Include chatId for server feedback
-    const waitlistMessage = {
-        ...message,
-        chatId: message.chatId // Pass through from server
-    };
-    addToTelegramWaitlist(waitlistMessage);
+    // Server will send this message when it's time to apply the prompt
+    // For now, just log that we received it (server handles queue management)
+    console.log(`📱 Received telegram prompt from server: "${message.prompt}" from ${message.from}`);
+    
+    // Debug notification removed - no longer showing waitlist additions in UI
+}
+
+function handleControlNetPreset(message) {
+    console.log(`📱 Received ControlNet preset from ${message.from}: "${message.presetDisplayName}"`);
+    
+    // Check if Telegram receive is enabled
+    if (config.TELEGRAM_RECEIVE === false) {
+        console.log('📱 Telegram receive is disabled, ignoring preset');
+        return;
+    }
+    
+    // Add to waitlist instead of immediately processing (same as prompts)
+    // Include all preset data for processing
+    // Server will send this message when it's time to apply the preset
+    // For now, just log that we received it (server handles queue management)
+    console.log(`📱 Received controlnet preset from server: "${message.presetDisplayName}" from ${message.from}`);
     
     // Debug notification removed - no longer showing waitlist additions in UI
 }

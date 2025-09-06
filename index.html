@@ -90,7 +90,7 @@
             /* Header */
             .panel-header {
                 padding: 15px 20px;
-                /* backdrop-filter: blur(40px); */
+                backdrop-filter: blur(40px);
                 -webkit-backdrop-filter: blur(40px);
                 /* background: rgba(0, 0, 0, 0.3); */
                 color: white;
@@ -104,6 +104,7 @@
             }
 
             .panel-header:hover {
+                background: rgba(255, 255, 255, 0.05);
             }
 
             .panel-header .toggle-icon {
@@ -341,12 +342,20 @@
                 max-height: 0;
                 overflow: hidden;
                 transition: var(--transition);
+                position: relative;
             }
 
             .advanced-content.expanded {
                 max-height: none; /* Remove height restriction to show all content */
                 margin-top: 16px;
             }
+            
+            /* Ensure QR content is properly contained */
+            #telegramQRContent {
+                position: relative;
+                width: 100%;
+            }
+            
 
             /* Button */
             .modern-button {
@@ -371,6 +380,36 @@
 
             .modern-button:active {
                 transform: translateY(0);
+            }
+
+            /* QR Code Container Styling */
+            .qr-code-container {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                /* padding: 24px; */
+                background: white;
+                border-radius: 16px;
+                margin: 12px 0;
+                position: relative;
+                width: 100%;
+                box-sizing: border-box;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+            }
+            
+            #telegramQRCanvas {
+                max-width: 300px;
+                /* width: auto; */
+                /* height: auto; */
+                display: block;
+                position: relative;
+                border-radius: 12px;
+                background: white;
+                padding: 12px;
+                box-sizing: border-box;
+                /* box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); */
+                /* border: 2px solid rgba(255, 255, 255, 0.9); */
             }
 
             /* Mobile Responsive */
@@ -407,7 +446,7 @@
                 }
 
                 .panel-content {
-                    padding: 20px 60px 50px 50px;
+                    padding: 12px 50px 30px 50px;
                     max-height: calc(85vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -460,13 +499,14 @@
 
                 /* Larger touch targets for mobile */
                 .control-item {
-                    padding: 12px 0;
+                    padding: 8px 0;
+                    margin-top: 8px;
                     min-height: 44px; /* iOS recommended touch target */
                 }
 
                 .slider-container {
                     height: 6px;
-                    margin: 20px 0;
+                    margin: 12px 0;
                 }
 
                 .toggle-container {
@@ -485,6 +525,16 @@
 
                 .group-title {
                     font-size: 18px;
+                    margin: 12px 0 8px 0;
+                }
+                
+                /* Reduce spacing for advanced sections on mobile */
+                .advanced-section {
+                    margin-top: 4px;
+                }
+                
+                .advanced-content.expanded {
+                    margin-top: 8px;
                 }
             }
 
@@ -553,7 +603,7 @@
                 }
 
                 .panel-content {
-                    padding: 20px 60px 50px 50px;
+                    padding: 8px 50px 25px 50px;
                     max-height: calc(90vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
@@ -561,6 +611,29 @@
                     /* Ensure content can be scrolled */
                     height: auto;
                     min-height: 0;
+                }
+                
+                /* Further reduce spacing on small screens */
+                .control-item {
+                    padding: 6px 0;
+                    margin-top: 6px;
+                }
+                
+                .group-title {
+                    margin: 8px 0 6px 0;
+                    font-size: 16px;
+                }
+                
+                .slider-container {
+                    margin: 8px 0;
+                }
+                
+                .advanced-section {
+                    margin-top: 2px;
+                }
+                
+                .advanced-content.expanded {
+                    margin-top: 6px;
                 }
 
                 .color-row {
@@ -1987,6 +2060,28 @@
                 .keyboard-shortcuts-info {
                     display: none;
                 }
+                
+                /* QR Code mobile responsiveness - square with padding and rounded corners */
+                .qr-code-container {
+                    padding: 0;
+                    margin: 8px 0;
+                    background: transparent;
+                    border-radius: 0;
+                    border: none;
+                    box-shadow: none;
+                }
+                
+                #telegramQRCanvas {
+                    max-width: 120px !important;
+                    width: 120px !important;
+                    height: auto !important;
+                    margin: 0 auto !important;
+                    padding: 8px;
+                    border-radius: 8px;
+                    background: white;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                    border: 1px solid rgba(255, 255, 255, 0.9);
+                }
             }
 
             .welcome-attribution {
@@ -2051,6 +2146,12 @@
                 #fluidCameraButton {
                     display: none;
                 }
+            }
+            
+            /* Hide cursor when toggle is active */
+            body.hide-cursor,
+            body.hide-cursor * {
+                cursor: none !important;
             }
         </style>
         <script>
@@ -2238,89 +2339,11 @@
                         <textarea class="text-input auto-resize-textarea" id="promptInput" placeholder="blooming flower with delicate petals..." title="Describe what you want the AI to generate" rows="1"></textarea>
                     </div>
                     
-                    <!-- Telegram Integration Toggle -->
-                    <div class="control-item">
-                        <div class="toggle-container" onclick="toggleTelegramReceive()" ontouchstart="toggleTelegramReceive(); event.preventDefault();">
-                            <span>Receive from Telegram</span>
-                            <div class="toggle-switch active" id="telegramReceiveToggle">
-                                <div class="toggle-handle"></div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Telegram Bot Configuration Section -->
-                    <div id="telegramConfigSection" class="advanced-section" style="display: none;">
-                        <div class="advanced-toggle" onclick="toggleTelegramConfig()" ontouchstart="toggleTelegramConfig(); event.preventDefault();">
-                            <span>Telegram Bot Configuration</span>
-                            <div class="toggle-icon" id="telegramConfigIcon">▶</div>
-                        </div>
-                        <div class="advanced-content" id="telegramConfigContent">
-                            <!-- Waitlist Controls -->
-                            <div id="telegramWaitlistControls" class="control-item">
-                                <div class="control-label">
-                                    <span>Waitlist Interval <div class="tooltip"><span class="info-icon">i</span>
-                                        <span class="tooltiptext">Time between processing Telegram prompts (1-30 seconds)</span>
-                                    </div></span>
-                                    <input type="text" class="control-value number-input" id="telegramWaitlistIntervalValue" value="5.0" />
-                                </div>
-                                <div class="slider-container" onclick="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30)" ontouchstart="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30); event.preventDefault();">
-                                    <div class="slider-fill" id="telegramWaitlistIntervalFill" style="width: 13%">
-                                        <div class="slider-handle" id="telegramWaitlistIntervalHandle"></div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Clear Waitlist Button -->
-                            <div id="telegramClearButton" class="control-item">
-                                <button class="modern-button secondary" onclick="clearTelegramWaitlist()" ontouchstart="clearTelegramWaitlist(); event.preventDefault();">
-                                    <i class="fas fa-trash"></i> Clear Waitlist
-                                </button>
-                            </div>
-                            
-                            <!-- Bot Token -->
-                            <div class="control-item">
-                                <div class="control-label">
-                                    <span>Bot Token</span>
-                                </div>
-                                <input type="password" class="api-input" id="telegramTokenInput" placeholder="Enter your Telegram bot token..." title="Enter your Telegram bot token" />
-                                <div class="checkbox-container">
-                                    <input type="checkbox" id="telegramTokenConsent" class="checkbox-input">
-                                    <label for="telegramTokenConsent" class="checkbox-label">Remember token (stored locally)</label>
-                                </div>
-                            </div>
-                            
-                            <!-- QR Code Section -->
-                            <div class="advanced-section" style="margin-top: 8px;">
-                                <div class="advanced-toggle" onclick="toggleTelegramQR()" ontouchstart="toggleTelegramQR(); event.preventDefault();">
-                                    <span>Show QR Code</span>
-                                    <div class="toggle-icon" id="telegramQRIcon">▶</div>
-                                </div>
-                                <div class="advanced-content" id="telegramQRContent">
-                                    <div class="control-item">
-                                        <div style="text-align: center; margin-bottom: 10px;">
-                                            <span style="font-size: 16px; font-weight: 600; color: var(--text-primary); font-family: monospace;">@DiffusionPromptBot</span>
-                                        </div>
-                                        <div class="qr-code-container">
-                                            <canvas id="telegramQRCanvas" style="width: 100%; max-width: 300px; height: auto; margin: 10px auto; display: block; border-radius: 8px; background: white; padding: 8px;"></canvas>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="control-item" style="margin-top: 8px; text-align: center;">
-                                <a href="https://t.me/DiffusionPromptBot" target="_blank" class="telegram-bot-link">
-                                    <i class="fas fa-external-link-alt" style="font-size: 10px; margin-right: 4px; opacity: 0.7;"></i>
-                                    Open Telegram Bot
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                    
                     <!-- Prompt Presets Section -->
                     <div class="advanced-section">
                         <div class="advanced-toggle" onclick="togglePromptPresets()" ontouchstart="togglePromptPresets(); event.preventDefault();">
-                            <span>Prompt Presets</span>
                             <div class="toggle-icon" id="promptPresetsIcon">▶</div>
+                            <span>Prompt Presets</span>
                         </div>
                         <div class="advanced-content" id="promptPresetsContent">
                             <div class="prompt-preset-grid">
@@ -2337,8 +2360,8 @@
                     <!-- Negative Prompt Section -->
                     <div class="advanced-section">
                         <div class="advanced-toggle" onclick="safeToggleNegativePrompt()" ontouchstart="safeToggleNegativePrompt(); event.preventDefault();">
-                            <span>Negative Prompt</span>
                             <div class="toggle-icon" id="negativePromptIcon">▶</div>
+                            <span>Negative Prompt</span>
                         </div>
                         <div class="advanced-content" id="negativePromptContent">
                             <div class="control-item">
@@ -2523,6 +2546,15 @@
                         <div class="toggle-container" onclick="toggleAnimate()" ontouchstart="toggleAnimate(); event.preventDefault();">
                             <span>Animate</span>
                             <div class="toggle-switch active" id="animateToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="toggleHideCursor()" ontouchstart="toggleHideCursor(); event.preventDefault();">
+                            <span>Hide Cursor</span>
+                            <div class="toggle-switch" id="hideCursorToggle">
                                 <div class="toggle-handle"></div>
                             </div>
                         </div>
@@ -2959,8 +2991,8 @@
                 
                 <!-- Settings Section -->
                 <div class="advanced-section">
-                    <div class="advanced-toggle" onclick="toggleSettings()">
-                        <span id="settingsIcon">▶</span>
+                    <div class="advanced-toggle" onclick="toggleSettings()" ontouchstart="toggleSettings(); event.preventDefault();">
+                        <div class="toggle-icon" id="settingsIcon">▶</div>
                         <span>Settings</span>
                     </div>
                     
@@ -2975,6 +3007,67 @@
                                     <div class="toggle-handle"></div>
                                 </div>
                             </div>
+                        </div>
+                        
+                        <!-- Telegram Integration Toggle -->
+                        <div class="control-item">
+                            <div class="toggle-container" onclick="toggleTelegramReceive()" ontouchstart="toggleTelegramReceive(); event.preventDefault();">
+                                <span>Receive Prompts from Telegram</span>
+                                <div class="toggle-switch active" id="telegramReceiveToggle">
+                                    <div class="toggle-handle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Waitlist Controls -->
+                        <div id="telegramWaitlistControls" class="control-item">
+                            <div class="control-label">
+                                <span>Waitlist Interval <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Time between processing Telegram prompts (1-30 seconds)</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="telegramWaitlistIntervalValue" value="5.0" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30)" ontouchstart="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30); event.preventDefault();">
+                                <div class="slider-fill" id="telegramWaitlistIntervalFill" style="width: 13%">
+                                    <div class="slider-handle" id="telegramWaitlistIntervalHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Clear Waitlist Button -->
+                        <div id="telegramClearButton" class="control-item">
+                            <button class="modern-button secondary" onclick="clearTelegramWaitlist()" ontouchstart="clearTelegramWaitlist(); event.preventDefault();">
+                                <i class="fas fa-trash"></i> Clear Waitlist
+                            </button>
+                        </div>
+                        
+                        <!-- Bot Token -->
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Bot Token</span>
+                            </div>
+                            <input type="password" class="api-input" id="telegramTokenInput" placeholder="Enter your Telegram bot token..." title="Enter your Telegram bot token" />
+                            <div class="checkbox-container">
+                                <input type="checkbox" id="telegramTokenConsent" class="checkbox-input">
+                                <label for="telegramTokenConsent" class="checkbox-label">Remember token (stored locally)</label>
+                            </div>
+                        </div>
+                        
+                        <!-- QR Code Content -->
+                        <div class="control-item" id="telegramQRContent" style="margin-top: 16px;">
+                            <div style="text-align: center; margin-bottom: 10px;">
+                                <span style="font-size: 16px; font-weight: 600; color: var(--text-primary); font-family: monospace;" id="telegramBotDisplayName">@DiffusionPromptBot</span>
+                            </div>
+                            <div class="qr-code-container">
+                                <canvas id="telegramQRCanvas"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="control-item" style="margin-top: 8px; text-align: center;">
+                            <a href="https://t.me/DiffusionPromptBot" target="_blank" class="telegram-bot-link" id="telegramBotLink">
+                                <i class="fas fa-external-link-alt" style="font-size: 10px; margin-right: 4px; opacity: 0.7;"></i>
+                                Open Telegram Bot
+                            </a>
                         </div>
                         
                         <!-- API Key -->

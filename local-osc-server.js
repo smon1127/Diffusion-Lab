@@ -29,6 +29,7 @@ class FluidOSCServer {
         // Telegram waitlist tracking
         this.telegramWaitlist = [];
         this.waitlistInterval = 1; // Default 1 second
+        this.processingTimer = null; // Timer for processing queue
         
         // Throttling for performance - limit OSC message rate
         this.lastMessageTime = {};
@@ -318,7 +319,7 @@ class FluidOSCServer {
     start() {
         this.startOSCServer();
         this.startWebSocketServer();
-        this.startTelegramBot();
+        // Telegram bot will be started when token is received from client
         this.printStartupInfo();
     }
     
@@ -407,6 +408,7 @@ class FluidOSCServer {
             case 'telegram_waitlist_cleared':
                 // Client notifies that waitlist was cleared
                 this.telegramWaitlist = [];
+                this.stopTelegramProcessing();
                 console.log('📱 Server waitlist cleared by client');
                 break;
                 
@@ -556,6 +558,53 @@ class FluidOSCServer {
     updateWaitlistInterval(newInterval) {
         this.waitlistInterval = newInterval;
         console.log(`📱 Updated waitlist interval to ${newInterval} seconds`);
+        
+        // Restart processing timer with new interval
+        if (this.processingTimer) {
+            this.stopTelegramProcessing();
+            if (this.telegramWaitlist.length > 0) {
+                this.startTelegramProcessing();
+            }
+        }
+    }
+    
+    startTelegramProcessing() {
+        if (this.processingTimer) return; // Already running
+        
+        const interval = this.waitlistInterval * 1000; // Convert to milliseconds
+        
+        this.processingTimer = setInterval(() => {
+            this.processNextTelegramPrompt();
+        }, interval);
+        
+        console.log(`📱 Started server-side Telegram processing timer (${this.waitlistInterval}s intervals)`);
+    }
+    
+    stopTelegramProcessing() {
+        if (this.processingTimer) {
+            clearInterval(this.processingTimer);
+            this.processingTimer = null;
+            console.log('📱 Stopped server-side Telegram processing timer');
+        }
+    }
+    
+    processNextTelegramPrompt() {
+        if (this.telegramWaitlist.length === 0) {
+            this.stopTelegramProcessing();
+            return;
+        }
+        
+        const nextItem = this.telegramWaitlist.shift(); // Remove first item (FIFO)
+        console.log(`📱 Server processing: "${nextItem.prompt}" from ${nextItem.from} (type: ${nextItem.type || 'prompt'})`);
+        
+        // Send apply message to all connected clients
+        const applyMessage = {
+            type: nextItem.type === 'controlnet_preset' ? 'apply_controlnet_preset' : 'apply_telegram_prompt',
+            ...nextItem // Include all the original data
+        };
+        
+        this.broadcastToClients(applyMessage);
+        console.log(`📱 Sent apply message to clients for: "${nextItem.prompt}"`);
     }
     
     updateTelegramToken(newToken) {
@@ -615,6 +664,7 @@ class FluidOSCServer {
         
         try {
             this.telegramBot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+            console.log('📱 Telegram bot started successfully - ready to receive messages');
             
             // Handle text messages
             this.telegramBot.on('message', (msg) => {
@@ -637,22 +687,16 @@ class FluidOSCServer {
                     
                     this.telegramWaitlist.push(waitlistEntry);
                     
-                    // Broadcast the prompt to all connected WebSocket clients
-                    const telegramMessage = {
-                        type: 'telegram_prompt',
-                        prompt: messageText,
-                        from: msg.from.first_name || 'Unknown User',
-                        timestamp: new Date().toISOString(),
-                        chatId: chatId // Include for feedback
-                    };
-                    
-                    this.broadcastToClients(telegramMessage);
-                    
                     // Send queue status feedback
                     this.sendQueueStatusFeedback(chatId, waitlistEntry);
                     
                     // Also send to public group
                     this.sendToPublicGroup(waitlistEntry);
+                    
+                    // Start processing if this is the first item
+                    if (this.telegramWaitlist.length === 1 && !this.processingTimer) {
+                        this.startTelegramProcessing();
+                    }
                 }
             });
             
@@ -1059,13 +1103,16 @@ class FluidOSCServer {
         };
 
         this.broadcastToClients(presetMessage);
-
         // Send queue status feedback (same as regular prompts)
         this.sendQueueStatusFeedback(chatId, waitlistEntry);
         
         // Also send to public group
         this.sendToPublicGroup(waitlistEntry);
 
+        // Start processing if this is the first item
+        if (this.telegramWaitlist.length === 1 && !this.processingTimer) {
+            this.startTelegramProcessing();
+        }
         console.log(`📱 Added ControlNet preset "${preset.name}" to queue for chat ${chatId}`);
     }
 }
