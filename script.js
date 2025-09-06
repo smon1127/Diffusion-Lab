@@ -1371,11 +1371,25 @@ function updateTelegramControlsVisibility() {
     // Control visibility of individual Telegram elements
     const waitlistControls = document.getElementById('telegramWaitlistControls');
     const clearButton = document.getElementById('telegramClearButton');
+    const qrContent = document.getElementById('telegramQRContent');
     
     if (waitlistControls) waitlistControls.style.display = displayValue;
     if (clearButton) clearButton.style.display = displayValue;
+    if (qrContent) qrContent.style.display = displayValue;
     
-    // Bot token is always visible when in Settings (user might want to configure it)
+    // Find and hide/show the Bot Token section
+    const telegramTokenInput = document.getElementById('telegramTokenInput');
+    if (telegramTokenInput) {
+        const botTokenSection = telegramTokenInput.closest('.control-item');
+        if (botTokenSection) botTokenSection.style.display = displayValue;
+    }
+    
+    // Find and hide/show the Telegram Bot Link section
+    const telegramBotLink = document.getElementById('telegramBotLink');
+    if (telegramBotLink) {
+        const botLinkSection = telegramBotLink.closest('.control-item');
+        if (botLinkSection) botLinkSection.style.display = displayValue;
+    }
 }
 
 function updateTelegramWaitlistInterval(value) {
