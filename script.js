@@ -9616,59 +9616,57 @@ function resetValues() {
 }
 
 function reloadAndClearCache() {
-    if (confirm('Are you sure you want to reload the page and clear all cache? This will refresh the application and clear any cached data.')) {
-        console.log('🔄 Reloading page and clearing cache...');
-        
-        // Clear localStorage (optional - user might want to keep some settings)
-        // localStorage.clear();
-        
-        // Clear sessionStorage
-        sessionStorage.clear();
-        
-        // Clear IndexedDB if it exists
-        if ('indexedDB' in window) {
-            indexedDB.databases().then(databases => {
-                databases.forEach(db => {
-                    indexedDB.deleteDatabase(db.name);
-                });
-            }).catch(err => {
-                console.log('IndexedDB clear failed:', err);
+    console.log('🔄 Reloading page and clearing cache...');
+    
+    // Clear localStorage (optional - user might want to keep some settings)
+    // localStorage.clear();
+    
+    // Clear sessionStorage
+    sessionStorage.clear();
+    
+    // Clear IndexedDB if it exists
+    if ('indexedDB' in window) {
+        indexedDB.databases().then(databases => {
+            databases.forEach(db => {
+                indexedDB.deleteDatabase(db.name);
             });
-        }
-        
-        // Clear service worker cache if running as PWA
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(registrations => {
-                registrations.forEach(registration => {
-                    registration.unregister().then(() => {
-                        console.log('Service worker unregistered');
-                    });
-                });
-            });
-        }
-        
-        // Clear browser cache using cache API
-        if ('caches' in window) {
-            caches.keys().then(cacheNames => {
-                cacheNames.forEach(cacheName => {
-                    caches.delete(cacheName);
-                });
-            });
-        }
-        
-        // Force reload with cache bypass
-        setTimeout(() => {
-            // Use location.reload(true) for hard reload, or window.location.href for PWA
-            if (window.matchMedia('(display-mode: standalone)').matches || 
-                window.navigator.standalone === true) {
-                // Running as PWA - use href to ensure proper reload
-                window.location.href = window.location.href;
-            } else {
-                // Regular browser - use reload with cache bypass
-                window.location.reload(true);
-            }
-        }, 100);
+        }).catch(err => {
+            console.log('IndexedDB clear failed:', err);
+        });
     }
+    
+    // Clear service worker cache if running as PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+            registrations.forEach(registration => {
+                registration.unregister().then(() => {
+                    console.log('Service worker unregistered');
+                });
+            });
+        });
+    }
+    
+    // Clear browser cache using cache API
+    if ('caches' in window) {
+        caches.keys().then(cacheNames => {
+            cacheNames.forEach(cacheName => {
+                caches.delete(cacheName);
+            });
+        });
+    }
+    
+    // Force reload with cache bypass
+    setTimeout(() => {
+        // Use location.reload(true) for hard reload, or window.location.href for PWA
+        if (window.matchMedia('(display-mode: standalone)').matches || 
+            window.navigator.standalone === true) {
+            // Running as PWA - use href to ensure proper reload
+            window.location.href = window.location.href;
+        } else {
+            // Regular browser - use reload with cache bypass
+            window.location.reload(true);
+        }
+    }, 100);
 }
 
 async function pasteFromClipboard(inputId) {
