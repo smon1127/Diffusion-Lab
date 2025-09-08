@@ -717,6 +717,11 @@
                 transform: scale(0.95);
             }
 
+            /* Hide scroll button when panel is collapsed */
+            .control-panel.collapsed .scroll-button {
+                display: none;
+            }
+
             /* Mobile responsive scroll button */
             @media (max-width: 768px) {
                 .scroll-button {
