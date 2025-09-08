@@ -1167,12 +1167,16 @@ function toggleDebug() {
             debugOverlay.style.display = 'block';
             debugOverlay.style.setProperty('display', 'block', 'important');
             console.log('🔍 Debug mode enabled - OSC messages and debug overlay will be shown');
+            // Set initial OSC section visibility (hidden since no messages yet)
+            updateOSCSectionVisibility();
         } else {
             debugOverlay.style.display = 'none';
             debugOverlay.style.setProperty('display', 'none', 'important');
             // Clear OSC messages when debug is disabled
             if (oscMessagesDiv) {
                 oscMessagesDiv.innerHTML = '';
+                // Update OSC section visibility after clearing
+                updateOSCSectionVisibility();
             }
             console.log('🔍 Debug mode disabled');
         }
@@ -1517,7 +1521,7 @@ function addToTelegramWaitlist(message) {
     const waitlistEntry = {
         prompt: message.prompt,
         from: message.from,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toLocaleString(),
         id: Date.now() + Math.random(), // Simple unique ID
         chatId: message.chatId, // Store for server feedback
         addedAt: Date.now(), // Add timestamp for smart processing
@@ -1556,6 +1560,20 @@ function addToTelegramWaitlist(message) {
             presetDisplayName: message.presetDisplayName,
             from: message.from,
             chatId: message.chatId
+        });
+    } else if (message.isPreset && message.presetName) {
+        // Handle prompt preset
+        setPrompt(message.prompt);
+        
+        // Confirm to server that prompt preset was applied
+        sendToServer({
+            type: 'telegram_prompt_applied',
+            promptId: message.id,
+            prompt: message.prompt,
+            from: message.from,
+            chatId: message.chatId,
+            isPreset: true,
+            presetName: message.presetName
         });
     } else {
         // Handle regular prompt (default behavior)
@@ -1618,6 +1636,20 @@ function processNextTelegramPrompt() {
             presetDisplayName: nextItem.presetDisplayName,
             from: nextItem.from,
             chatId: nextItem.chatId
+        });
+    } else if (nextItem.isPreset && nextItem.presetName) {
+        // Handle prompt preset
+        setPrompt(nextItem.prompt);
+        
+        // Send feedback to server that prompt preset was applied
+        sendToServer({
+            type: 'telegram_prompt_applied',
+            promptId: nextItem.id,
+            prompt: nextItem.prompt,
+            from: nextItem.from,
+            chatId: nextItem.chatId,
+            isPreset: true,
+            presetName: nextItem.presetName
         });
     } else {
         // Handle regular prompt (default behavior)
@@ -1779,6 +1811,7 @@ function setPrompt(promptText) {
     const promptInput = document.getElementById('promptInput');
     console.log('🎯 setPrompt called with:', promptText);
     console.log('🎯 promptInput element:', promptInput);
+    console.log('🎯 Current prompt value before setting:', promptInput ? promptInput.value : 'N/A');
     
     if (promptInput) {
         promptInput.value = promptText;
@@ -1804,6 +1837,11 @@ function setPrompt(promptText) {
         }
         
         console.log('✅ Prompt set to:', promptText);
+        
+        // Verify the value is still set after a short delay
+        setTimeout(() => {
+            console.log('🔍 Prompt verification after 100ms:', promptInput.value);
+        }, 100);
     } else {
         console.error('❌ promptInput element not found!');
     }
@@ -2027,6 +2065,20 @@ function getOSCStatusForDebug() {
     }
 }
 
+function updateOSCSectionVisibility() {
+    const oscInfoDiv = document.getElementById('oscInfo');
+    const oscMessagesDiv = document.getElementById('oscMessages');
+    
+    if (!oscInfoDiv || !oscMessagesDiv) return;
+    
+    // Hide OSC section if no messages, show if messages exist
+    if (oscMessagesDiv.children.length === 0) {
+        oscInfoDiv.style.display = 'none';
+    } else {
+        oscInfoDiv.style.display = 'block';
+    }
+}
+
 function addOSCMessageToDebug(message) {
     if (!config.DEBUG_MODE) return;
     
@@ -2079,6 +2131,9 @@ function addOSCMessageToDebug(message) {
     
     // Auto-scroll to bottom
     oscMessagesDiv.scrollTop = oscMessagesDiv.scrollHeight;
+    
+    // Update OSC section visibility
+    updateOSCSectionVisibility();
 }
 
 function getDevicePixelRatio() {
@@ -8990,7 +9045,8 @@ const STORAGE_KEYS = {
     STREAM_STATE: STORAGE_PREFIX + 'streamState',
     TELEGRAM_SETTINGS: STORAGE_PREFIX + 'telegramSettings',
     TELEGRAM_TOKEN: STORAGE_PREFIX + 'telegramToken',
-    TELEGRAM_TOKEN_CONSENT: STORAGE_PREFIX + 'telegramTokenConsent'
+    TELEGRAM_TOKEN_CONSENT: STORAGE_PREFIX + 'telegramTokenConsent',
+    WELCOME_SKIPPED: STORAGE_PREFIX + 'welcomeSkipped'
 };
 
 function isLocalStorageAvailable() {
@@ -9203,12 +9259,14 @@ function loadPrompts() {
             console.log('✅ Loaded saved negative prompt:', savedPrompts.negativePrompt);
         }
     } else {
-        // Set default values if no saved prompts
-        if (promptInput && !promptInput.value) {
+        // Set default values if no saved prompts AND no current value
+        if (promptInput && !promptInput.value.trim()) {
             promptInput.value = 'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere';
             console.log('✅ Set default prompt: blooming flower');
+        } else if (promptInput && promptInput.value.trim()) {
+            console.log('🔄 Skipping default prompt - current value exists:', promptInput.value.substring(0, 50) + '...');
         }
-        if (negativePromptInput && !negativePromptInput.value) {
+        if (negativePromptInput && !negativePromptInput.value.trim()) {
             negativePromptInput.value = 'blurry, low quality, flat, 2d';
             console.log('✅ Set default negative prompt');
         }
@@ -9276,6 +9334,14 @@ function getApiKey() {
         }
     }
     return null;
+}
+
+function setWelcomeSkipped() {
+    saveToLocalStorage(STORAGE_KEYS.WELCOME_SKIPPED, true);
+}
+
+function getWelcomeSkipped() {
+    return loadFromLocalStorage(STORAGE_KEYS.WELCOME_SKIPPED, false);
 }
 
 function loadApiKey() {
@@ -9514,11 +9580,12 @@ function saveWelcomeApiKey() {
 }
 
 function initializeWelcomeOverlay() {
-    // Check if API key is already saved
+    // Check if API key is already saved or if welcome was previously skipped
     const savedApiKey = getApiKey();
+    const welcomeSkipped = getWelcomeSkipped();
     
-    if (!savedApiKey) {
-        // No API key saved, show welcome overlay
+    if (!savedApiKey && !welcomeSkipped) {
+        // No API key saved and welcome not skipped, show welcome overlay
         showWelcomeOverlay();
     }
     
@@ -9528,6 +9595,12 @@ function initializeWelcomeOverlay() {
         startButton.addEventListener('click', function() {
             // Save API key if provided and consent is checked
             saveWelcomeApiKey();
+            
+            // If no API key was provided, mark welcome as skipped
+            const apiKeyInput = document.getElementById('welcomeApiKey');
+            if (apiKeyInput && !apiKeyInput.value.trim()) {
+                setWelcomeSkipped();
+            }
             
             // Hide overlay regardless of whether API key was saved
             hideWelcomeOverlay();
@@ -10315,7 +10388,18 @@ function handleOSCMessage(message) {
         return;
     }
     
+    if (message.type === 'apply_telegram_prompt') {
+        console.log('🔍 Received apply_telegram_prompt message:', message);
+        handleTelegramPrompt(message);
+        return;
+    }
+    
     if (message.type === 'controlnet_preset') {
+        handleControlNetPreset(message);
+        return;
+    }
+    
+    if (message.type === 'apply_controlnet_preset') {
         handleControlNetPreset(message);
         return;
     }
@@ -10354,30 +10438,20 @@ function handleTelegramPrompt(message) {
         return;
     }
     
-    // Add to waitlist instead of immediately processing
-    // Server will send this message when it's time to apply the prompt
-    // For now, just log that we received it (server handles queue management)
-    console.log(`📱 Received telegram prompt from server: "${message.prompt}" from ${message.from}`);
+    // Apply the prompt to the input field
+    console.log(`📱 Applying telegram prompt: "${message.prompt}" from ${message.from}`);
+    setPrompt(message.prompt);
     
-    // Debug notification removed - no longer showing waitlist additions in UI
-}
-
-function handleControlNetPreset(message) {
-    console.log(`📱 Received ControlNet preset from ${message.from}: "${message.presetDisplayName}"`);
-    
-    // Check if Telegram receive is enabled
-    if (config.TELEGRAM_RECEIVE === false) {
-        console.log('📱 Telegram receive is disabled, ignoring preset');
-        return;
-    }
-    
-    // Add to waitlist instead of immediately processing (same as prompts)
-    // Include all preset data for processing
-    // Server will send this message when it's time to apply the preset
-    // For now, just log that we received it (server handles queue management)
-    console.log(`📱 Received controlnet preset from server: "${message.presetDisplayName}" from ${message.from}`);
-    
-    // Debug notification removed - no longer showing waitlist additions in UI
+    // Send confirmation back to server
+    sendToServer({
+        type: 'telegram_prompt_applied',
+        promptId: message.id,
+        prompt: message.prompt,
+        from: message.from,
+        chatId: message.chatId,
+        isPreset: message.isPreset || false,
+        presetName: message.presetName || null
+    });
 }
 
 function handleControlNetPreset(message) {

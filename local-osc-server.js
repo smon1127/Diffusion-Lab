@@ -388,7 +388,13 @@ class FluidOSCServer {
                 // Client notifies that a prompt has been applied
                 const appliedEntry = this.removeFromWaitlist(message.promptId);
                 if (appliedEntry && appliedEntry.chatId) {
-                    this.sendPromptAppliedFeedback(appliedEntry.chatId, appliedEntry.prompt, appliedEntry.from);
+                    if (message.isPreset && message.presetName) {
+                        // Send preset-specific feedback
+                        this.sendPromptPresetAppliedFeedback(appliedEntry.chatId, message.presetName, appliedEntry.prompt, appliedEntry.from);
+                    } else {
+                        // Send regular prompt feedback
+                        this.sendPromptAppliedFeedback(appliedEntry.chatId, appliedEntry.prompt, appliedEntry.from);
+                    }
                 }
                 break;
                 
@@ -486,8 +492,10 @@ class FluidOSCServer {
     sendPromptAppliedFeedback(chatId, prompt, from) {
         if (!this.telegramBot) return;
         
+        const timestamp = new Date().toLocaleString();
         const message = `✅ Your prompt has been applied!\n\n` +
                        `🎨 "${prompt}"\n\n` +
+                       `⏰ Applied at: ${timestamp}\n\n` +
                        `The fluid simulation is now using your prompt. Enjoy! 🌊`;
         
         this.telegramBot.sendMessage(chatId, message);
@@ -647,12 +655,27 @@ class FluidOSCServer {
     sendControlNetPresetAppliedFeedback(chatId, presetName, presetDescription, from) {
         if (!this.telegramBot) return;
         
+        const timestamp = new Date().toLocaleString();
         const message = `✅ **${presetName}** preset has been applied!\n\n` +
                        `⚙️ ${presetDescription}\n\n` +
+                       `⏰ Applied at: ${timestamp}\n\n` +
                        `The fluid simulation parameters have been updated! 🌊`;
         
         this.telegramBot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         console.log(`📱 Sent ControlNet preset application confirmation to ${from}`);
+    }
+
+    sendPromptPresetAppliedFeedback(chatId, presetName, prompt, from) {
+        if (!this.telegramBot) return;
+        
+        const timestamp = new Date().toLocaleString();
+        const message = `✅ **${presetName}** preset applied!\n\n` +
+                       `🎨 "${prompt}"\n\n` +
+                       `⏰ Applied at: ${timestamp}\n\n` +
+                       'The fluid simulation is now using this visual theme! 🌊';
+        
+        this.telegramBot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        console.log(`📱 Sent prompt preset application confirmation to ${from}`);
     }
     
     startTelegramBot() {
@@ -680,7 +703,7 @@ class FluidOSCServer {
                         prompt: messageText,
                         from: msg.from.first_name || 'Unknown User',
                         chatId: chatId,
-                        timestamp: new Date().toISOString(),
+                        timestamp: new Date().toLocaleString(),
                         id: Date.now() + Math.random(),
                         addedAt: Date.now() // Add timestamp for accurate wait calculations
                     };
@@ -1041,27 +1064,32 @@ class FluidOSCServer {
 
         const preset = this.promptPresets[presetIndex];
         
-        // Send prompt as if it was a regular text message
-        const promptMessage = {
-            type: 'telegram_prompt',
+        // Add to server-side waitlist tracking (same as regular prompts)
+        const waitlistEntry = {
             prompt: preset.prompt,
             from: 'Preset Bot',
-            timestamp: new Date().toISOString(),
             chatId: chatId,
+            timestamp: new Date().toLocaleString(),
+            id: Date.now() + Math.random(),
+            addedAt: Date.now(), // Add timestamp for accurate wait calculations
             isPreset: true,
             presetName: preset.name
         };
+        
+        this.telegramWaitlist.push(waitlistEntry);
+        
+        // Send queue status feedback
+        this.sendQueueStatusFeedback(chatId, waitlistEntry);
+        
+        // Also send to public group
+        this.sendToPublicGroup(waitlistEntry);
+        
+        // Start processing if this is the first item
+        if (this.telegramWaitlist.length === 1 && !this.processingTimer) {
+            this.startTelegramProcessing();
+        }
 
-        this.broadcastToClients(promptMessage);
-
-        // Send confirmation
-        this.telegramBot.sendMessage(chatId, 
-            `✅ **${preset.name}** preset applied!\n\n` +
-            `🎨 "${preset.prompt}"\n\n` +
-            'The fluid simulation is now using this visual theme! 🌊'
-        );
-
-        console.log(`📱 Applied prompt preset "${preset.name}" for chat ${chatId}`);
+        console.log(`📱 Added prompt preset "${preset.name}" to queue for chat ${chatId}`);
     }
 
     applyControlNetPreset(chatId, presetKey) {
@@ -1077,7 +1105,7 @@ class FluidOSCServer {
             prompt: `ControlNet: ${preset.name}`, // Display name for queue
             from: 'Preset Bot',
             chatId: chatId,
-            timestamp: new Date().toISOString(),
+            timestamp: new Date().toLocaleString(),
             id: Date.now() + Math.random(),
             addedAt: Date.now(), // Add timestamp for accurate wait calculations
             type: 'controlnet_preset', // Mark as ControlNet preset
@@ -1097,7 +1125,7 @@ class FluidOSCServer {
             presetDescription: preset.description,
             parameters: preset.params,
             from: 'Preset Bot',
-            timestamp: new Date().toISOString(),
+            timestamp: new Date().toLocaleString(),
             chatId: chatId,
             isPreset: true
         };
