@@ -754,6 +754,111 @@ function togglePanel() {
     }
 }
 
+function togglePanelVisibility() {
+    const panel = document.getElementById('controlPanel');
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+    } else {
+        panel.style.display = 'none';
+        // Close color picker when panel is hidden (especially important on tablets)
+        if (typeof Coloris !== 'undefined') {
+            Coloris.close();
+        }
+    }
+}
+
+function toggleFullscreen() {
+    const doc = document.documentElement;
+    const isFullscreen = document.fullscreenElement || 
+                        document.webkitFullscreenElement || 
+                        document.mozFullScreenElement || 
+                        document.msFullscreenElement;
+    
+    if (!isFullscreen) {
+        // Enter fullscreen
+        if (doc.requestFullscreen) {
+            doc.requestFullscreen().catch(err => {
+                console.log('Fullscreen request failed:', err);
+                showFullscreenFeedback('Fullscreen not supported');
+            });
+        } else if (doc.webkitRequestFullscreen) {
+            // Safari
+            doc.webkitRequestFullscreen().catch(err => {
+                console.log('Webkit fullscreen request failed:', err);
+                showFullscreenFeedback('Fullscreen not supported on this device');
+            });
+        } else if (doc.mozRequestFullScreen) {
+            // Firefox
+            doc.mozRequestFullScreen().catch(err => {
+                console.log('Mozilla fullscreen request failed:', err);
+                showFullscreenFeedback('Fullscreen not supported');
+            });
+        } else if (doc.msRequestFullscreen) {
+            // IE/Edge
+            doc.msRequestFullscreen().catch(err => {
+                console.log('MS fullscreen request failed:', err);
+                showFullscreenFeedback('Fullscreen not supported');
+            });
+        } else {
+            // Fallback for unsupported browsers
+            showFullscreenFeedback('Fullscreen not supported on this device');
+        }
+    } else {
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+            document.exitFullscreen().catch(err => {
+                console.log('Exit fullscreen failed:', err);
+            });
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen().catch(err => {
+                console.log('Webkit exit fullscreen failed:', err);
+            });
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen().catch(err => {
+                console.log('Mozilla exit fullscreen failed:', err);
+            });
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen().catch(err => {
+                console.log('MS exit fullscreen failed:', err);
+            });
+        }
+    }
+}
+
+function showFullscreenFeedback(message) {
+    // Show a temporary message to the user
+    const button = document.getElementById('fullscreenToggleButton');
+    if (button) {
+        const originalTooltip = button.querySelector('.tooltiptext').textContent;
+        button.querySelector('.tooltiptext').textContent = message;
+        
+        // Reset tooltip after 2 seconds
+        setTimeout(() => {
+            button.querySelector('.tooltiptext').textContent = originalTooltip;
+        }, 2000);
+    }
+}
+
+function updateFullscreenButton() {
+    const icon = document.getElementById('fullscreenIcon');
+    const tooltip = document.getElementById('fullscreenTooltip');
+    
+    if (!icon || !tooltip) return;
+    
+    const isFullscreen = document.fullscreenElement || 
+                        document.webkitFullscreenElement || 
+                        document.mozFullScreenElement || 
+                        document.msFullscreenElement;
+    
+    if (isFullscreen) {
+        icon.className = 'fas fa-compress';
+        tooltip.textContent = 'Exit Fullscreen';
+    } else {
+        icon.className = 'fas fa-expand';
+        tooltip.textContent = 'Enter Fullscreen';
+    }
+}
+
 // Safe wrapper functions for mobile compatibility
 function safeTogglePanel(event) {
     try {
@@ -2285,7 +2390,7 @@ function initializeMediaUpload() {
     
     // Set up Choose Media button handler
     if (chooseMediaButton) {
-        chooseMediaButton.onclick = () => {
+        const handleMediaSelection = () => {
             // Only allow media selection when media mode is active
             if (mediaState.active) {
                 selectMediaFile();
@@ -2294,15 +2399,76 @@ function initializeMediaUpload() {
             }
         };
         
-        // Add hover effect
-        chooseMediaButton.onmouseover = () => {
-            if (mediaState.active) {
-                chooseMediaButton.style.background = 'rgba(0, 212, 255, 0.2)';
-            }
-        };
-        chooseMediaButton.onmouseout = () => {
-            chooseMediaButton.style.background = 'rgba(0, 212, 255, 0.1)';
-        };
+        // Tablet-optimized touch handling for input media button
+        if (chooseMediaButton) {
+            // Handle touch events to eliminate delays
+            chooseMediaButton.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Trigger the file input immediately
+                const fileInput = document.getElementById('mediaFileInput');
+                if (fileInput) {
+                    fileInput.click();
+                }
+            }, { passive: false });
+            
+            // Handle click events as fallback
+            chooseMediaButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const fileInput = document.getElementById('mediaFileInput');
+                if (fileInput) {
+                    fileInput.click();
+                }
+            });
+            
+            // Handle keyboard events for accessibility
+            chooseMediaButton.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const fileInput = document.getElementById('mediaFileInput');
+                    if (fileInput) {
+                        fileInput.click();
+                    }
+                }
+            });
+        }
+        
+        // Tablet-optimized touch handling for background media button
+        const backgroundMediaButton = document.querySelector('label[for="mediaUpload"]');
+        if (backgroundMediaButton) {
+            // Handle touch events to eliminate delays
+            backgroundMediaButton.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Trigger the file input immediately
+                const fileInput = document.getElementById('mediaUpload');
+                if (fileInput) {
+                    fileInput.click();
+                }
+            }, { passive: false });
+            
+            // Handle click events as fallback
+            backgroundMediaButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const fileInput = document.getElementById('mediaUpload');
+                if (fileInput) {
+                    fileInput.click();
+                }
+            });
+            
+            // Handle keyboard events for accessibility
+            backgroundMediaButton.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const fileInput = document.getElementById('mediaUpload');
+                    if (fileInput) {
+                        fileInput.click();
+                    }
+                }
+            });
+        }
     }
     
     // Initialize full-window drag and drop
@@ -4709,12 +4875,43 @@ canvas.addEventListener('touchstart', e => {
         console.log('🔍 Touch coordinates:', touches[0] ? {x: touches[0].clientX, y: touches[0].clientY} : 'none');
         console.log('🔍 Canvas dimensions:', {width: canvas.clientWidth, height: canvas.clientHeight});
         
-        // Add haptic feedback if available
-        if (navigator.vibrate) {
+        // 2-finger double tap detection for hiding panel and cursor
+        if (touches.length === 2) {
+            const currentTime = Date.now();
+            
+            // Check if this is a second tap within 300ms
+            if (window.twoFingerFirstTap && (currentTime - window.twoFingerFirstTap) < 300) {
+                console.log('🔍 MOBILE DEBUG: 2-finger double tap detected');
+                
+                // Trigger the same functionality as Ctrl+H
+                toggleHideCursor();
+                togglePanelVisibility();
+                
+                // Add haptic feedback for successful double tap
+                if (navigator.vibrate) {
+                    navigator.vibrate([100, 50, 100]); // Success pattern
+                }
+                
+                // Reset the first tap
+                window.twoFingerFirstTap = null;
+            } else {
+                // Store the first tap time
+                window.twoFingerFirstTap = currentTime;
+                console.log('🔍 MOBILE DEBUG: 2-finger first tap detected');
+                
+                // Add haptic feedback for first tap
+                if (navigator.vibrate) {
+                    navigator.vibrate(50); // Single vibration for first tap
+                }
+            }
+        }
+        
+        // Add haptic feedback if available (but not for 2-finger tap)
+        if (navigator.vibrate && touches.length < 2) {
             navigator.vibrate(10);
         }
         
-        // Optimize for mobile performance
+        // Optimize for mobile performance (allow 2-finger double tap)
         if (touches.length > 2) {
             console.log('🔍 MOBILE DEBUG: Too many touches, limiting to 2');
             // Limit to 2 touches on mobile for better performance
@@ -4780,6 +4977,17 @@ canvas.addEventListener('touchmove', e => {
 
 window.addEventListener('touchend', e => {
     const touches = e.changedTouches;
+    
+    // Handle 2-finger double tap timeout (reset if too much time passes)
+    if (isMobile() && window.twoFingerFirstTap) {
+        const timeSinceFirstTap = Date.now() - window.twoFingerFirstTap;
+        if (timeSinceFirstTap > 300) {
+            // Reset if more than 300ms has passed
+            window.twoFingerFirstTap = null;
+            console.log('🔍 MOBILE DEBUG: 2-finger tap timeout, resetting');
+        }
+    }
+    
     for (let i = 0; i < touches.length; i++)
     {
         let pointer = pointers.find(p => p.id == touches[i].identifier);
@@ -4841,6 +5049,7 @@ window.addEventListener('keydown', e => {
         if (e.code === 'KeyH') {
             e.preventDefault();
             toggleHideCursor();
+            togglePanelVisibility();
         }
         if (e.code === 'KeyO') {
             e.preventDefault();
@@ -9406,6 +9615,189 @@ function resetValues() {
     }
 }
 
+function reloadAndClearCache() {
+    if (confirm('Are you sure you want to reload the page and clear all cache? This will refresh the application and clear any cached data.')) {
+        console.log('🔄 Reloading page and clearing cache...');
+        
+        // Clear localStorage (optional - user might want to keep some settings)
+        // localStorage.clear();
+        
+        // Clear sessionStorage
+        sessionStorage.clear();
+        
+        // Clear IndexedDB if it exists
+        if ('indexedDB' in window) {
+            indexedDB.databases().then(databases => {
+                databases.forEach(db => {
+                    indexedDB.deleteDatabase(db.name);
+                });
+            }).catch(err => {
+                console.log('IndexedDB clear failed:', err);
+            });
+        }
+        
+        // Clear service worker cache if running as PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                registrations.forEach(registration => {
+                    registration.unregister().then(() => {
+                        console.log('Service worker unregistered');
+                    });
+                });
+            });
+        }
+        
+        // Clear browser cache using cache API
+        if ('caches' in window) {
+            caches.keys().then(cacheNames => {
+                cacheNames.forEach(cacheName => {
+                    caches.delete(cacheName);
+                });
+            });
+        }
+        
+        // Force reload with cache bypass
+        setTimeout(() => {
+            // Use location.reload(true) for hard reload, or window.location.href for PWA
+            if (window.matchMedia('(display-mode: standalone)').matches || 
+                window.navigator.standalone === true) {
+                // Running as PWA - use href to ensure proper reload
+                window.location.href = window.location.href;
+            } else {
+                // Regular browser - use reload with cache bypass
+                window.location.reload(true);
+            }
+        }, 100);
+    }
+}
+
+async function pasteFromClipboard(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) {
+        console.error('Input element not found:', inputId);
+        return;
+    }
+
+    // Check if we're on Safari (including iPad)
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || 
+                     /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+    try {
+        // Try modern clipboard API first
+        if (navigator.clipboard && navigator.clipboard.readText) {
+            const text = await navigator.clipboard.readText();
+            input.value = text;
+            
+            // Trigger input event to update any listeners
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            
+            // Trigger auto-resize if it's a textarea
+            if (input.tagName === 'TEXTAREA') {
+                input.style.height = 'auto';
+                input.style.height = input.scrollHeight + 'px';
+            }
+            
+            console.log('✅ Text pasted from clipboard');
+            
+            // Add visual feedback
+            const button = document.getElementById('pastePromptButton');
+            if (button) {
+                const originalIcon = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i>';
+                button.style.background = 'rgba(34, 197, 94, 0.2)';
+                button.style.borderColor = '#22c55e';
+                
+                setTimeout(() => {
+                    button.innerHTML = originalIcon;
+                    button.style.background = '';
+                    button.style.borderColor = '';
+                }, 1000);
+            }
+            
+        } else {
+            // Enhanced fallback for Safari iPad and older browsers
+            console.log('Clipboard API not available, trying fallback method');
+            
+            if (isSafari) {
+                // Safari-specific fallback: create a temporary input field
+                const tempInput = document.createElement('input');
+                tempInput.type = 'text';
+                tempInput.style.position = 'fixed';
+                tempInput.style.top = '-1000px';
+                tempInput.style.left = '-1000px';
+                tempInput.style.opacity = '0';
+                tempInput.style.pointerEvents = 'none';
+                document.body.appendChild(tempInput);
+                
+                // Focus and select the temp input
+                tempInput.focus();
+                tempInput.select();
+                
+                // Try to paste using execCommand
+                try {
+                    const success = document.execCommand('paste');
+                    if (success && tempInput.value) {
+                        input.value = tempInput.value;
+                        
+                        // Trigger input event to update any listeners
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        
+                        // Trigger auto-resize if it's a textarea
+                        if (input.tagName === 'TEXTAREA') {
+                            input.style.height = 'auto';
+                            input.style.height = input.scrollHeight + 'px';
+                        }
+                        
+                        console.log('✅ Text pasted using Safari fallback');
+                        
+                        // Add visual feedback
+                        const button = document.getElementById('pastePromptButton');
+                        if (button) {
+                            const originalIcon = button.innerHTML;
+                            button.innerHTML = '<i class="fas fa-check"></i>';
+                            button.style.background = 'rgba(34, 197, 94, 0.2)';
+                            button.style.borderColor = '#22c55e';
+                            
+                            setTimeout(() => {
+                                button.innerHTML = originalIcon;
+                                button.style.background = '';
+                                button.style.borderColor = '';
+                            }, 1000);
+                        }
+                    } else {
+                        throw new Error('Safari fallback failed');
+                    }
+                } catch (fallbackErr) {
+                    console.error('Safari fallback failed:', fallbackErr);
+                    alert('Please use the standard paste gesture (Cmd+V on iPad) to paste text into the field.');
+                } finally {
+                    document.body.removeChild(tempInput);
+                }
+            } else {
+                alert('Clipboard API not supported in this browser. Please use Ctrl+V to paste.');
+            }
+        }
+    } catch (err) {
+        console.error('Failed to read clipboard:', err);
+        
+        // Show user-friendly error message
+        if (err.name === 'NotAllowedError') {
+            if (isSafari) {
+                alert('Clipboard access requires user permission. Please allow clipboard access in Safari settings, or use Cmd+V to paste manually.');
+            } else {
+                alert('Clipboard access denied. Please allow clipboard permissions and try again.');
+            }
+        } else if (err.name === 'NotSupportedError') {
+            alert('Clipboard access not supported. Please use Cmd+V (Mac) or Ctrl+V (Windows) to paste manually.');
+        } else {
+            if (isSafari) {
+                alert('Clipboard access failed. Please use Cmd+V to paste manually, or try refreshing the page.');
+            } else {
+                alert('Failed to access clipboard. Please use Ctrl+V to paste manually.');
+            }
+        }
+    }
+}
 
 function clearAllSettings() {
     if (confirm('Are you sure you want to clear all saved settings? This will reset all sliders, prompts, API key, and saved stream data to defaults.')) {
@@ -9775,6 +10167,12 @@ window.addEventListener('orientationchange', () => {
         }, 300); // Longer delay for orientation change
     }
 });
+
+// Fullscreen change event listeners
+document.addEventListener('fullscreenchange', updateFullscreenButton);
+document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+document.addEventListener('mozfullscreenchange', updateFullscreenButton);
+document.addEventListener('MSFullscreenChange', updateFullscreenButton);
 
 // OSC WebSocket Connection for Remote Control
 let oscWebSocket = null;
