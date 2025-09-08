@@ -1394,6 +1394,16 @@
                 display: none;
             }
 
+            /* Hide scrollbar for Telegram messages */
+            #telegramMessages::-webkit-scrollbar {
+                display: none;
+            }
+
+            /* Hide scrollbar for Daydream messages */
+            #daydreamMessages::-webkit-scrollbar {
+                display: none;
+            }
+
             .tooltip .tooltiptext::after {
                 content: "";
                 position: absolute;
@@ -2386,6 +2396,18 @@
                 </div>
                 <div id="oscMessages" style="max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px; border-left: 3px solid #22c55e; scrollbar-width: none; -ms-overflow-style: none;"></div>
             </div>
+            <div id="telegramInfo" style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
+                <div style="color: #f472b6; font-weight: bold; margin-bottom: 6px;">
+                    <i class="fas fa-paper-plane"></i> Telegram Messages:
+                </div>
+                <div id="telegramMessages" style="max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px; border-left: 3px solid #f472b6; scrollbar-width: none; -ms-overflow-style: none;"></div>
+            </div>
+            <div id="daydreamInfo" style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
+                <div style="color: #8b5cf6; font-weight: bold; margin-bottom: 6px;">
+                    <i class="fas fa-cloud"></i> Daydream Stream:
+                </div>
+                <div id="daydreamMessages" style="max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px; border-left: 3px solid #8b5cf6; scrollbar-width: none; -ms-overflow-style: none;"></div>
+            </div>
         </div>
 
         <canvas id="fluidCanvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;"></canvas>
@@ -3178,10 +3200,10 @@
                                 <span>Waitlist Interval <div class="tooltip"><span class="info-icon">i</span>
                                     <span class="tooltiptext">Time between processing Telegram prompts (1-30 seconds)</span>
                                 </div></span>
-                                <input type="text" class="control-value number-input" id="telegramWaitlistIntervalValue" value="5.0" />
+                                <input type="text" class="control-value number-input" id="telegramWaitlistIntervalValue" value="1.0" />
                             </div>
                             <div class="slider-container" onclick="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30)" ontouchstart="handleSliderClick(event, 'telegramWaitlistInterval', 1, 30); event.preventDefault();">
-                                <div class="slider-fill" id="telegramWaitlistIntervalFill" style="width: 13%">
+                                <div class="slider-fill" id="telegramWaitlistIntervalFill" style="width: 3.33%">
                                     <div class="slider-handle" id="telegramWaitlistIntervalHandle"></div>
                                 </div>
                             </div>

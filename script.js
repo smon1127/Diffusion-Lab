@@ -1507,6 +1507,12 @@ function updateTelegramWaitlistInterval(value) {
     config.TELEGRAM_WAITLIST_INTERVAL = intValue;
     console.log(`📱 Telegram waitlist interval set to ${intValue} seconds`);
     
+    // Add to debug log
+    addTelegramMessageToDebug({
+        type: 'telegram_waitlist_interval_changed',
+        interval: intValue
+    });
+    
     // Notify server of interval change
     sendToServer({
         type: 'telegram_waitlist_interval_changed',
@@ -1518,6 +1524,14 @@ function updateTelegramWaitlistInterval(value) {
 }
 
 function addToTelegramWaitlist(message) {
+    // Add to debug log
+    addTelegramMessageToDebug({
+        type: 'telegram_waitlist_added',
+        prompt: message.prompt,
+        from: message.from,
+        messageType: message.type || 'telegram_prompt'
+    });
+    
     const waitlistEntry = {
         prompt: message.prompt,
         from: message.from,
@@ -1611,6 +1625,8 @@ function processNextTelegramPrompt() {
     const nextItem = telegramWaitlist.shift(); // Remove first item (FIFO)
     console.log(`📱 Processing waitlist item: "${nextItem.prompt}" from ${nextItem.from} (type: ${nextItem.type || 'prompt'})`);
     
+    // Debug logging removed - now handled in the specific processing sections below
+    
     // Handle different types of waitlist items
     if (nextItem.type === 'controlnet_preset') {
         // Apply ControlNet preset parameters
@@ -1641,6 +1657,14 @@ function processNextTelegramPrompt() {
         // Handle prompt preset
         setPrompt(nextItem.prompt);
         
+        // Add to debug log - show processed message with content and timestamp
+        addTelegramMessageToDebug({
+            type: 'telegram_prompt_processed',
+            prompt: nextItem.prompt,
+            from: nextItem.from,
+            timestamp: nextItem.timestamp || new Date().toLocaleString()
+        });
+        
         // Send feedback to server that prompt preset was applied
         sendToServer({
             type: 'telegram_prompt_applied',
@@ -1654,6 +1678,14 @@ function processNextTelegramPrompt() {
     } else {
         // Handle regular prompt (default behavior)
         setPrompt(nextItem.prompt);
+        
+        // Add to debug log - show processed message with content and timestamp
+        addTelegramMessageToDebug({
+            type: 'telegram_prompt_processed',
+            prompt: nextItem.prompt,
+            from: nextItem.from,
+            timestamp: nextItem.timestamp || new Date().toLocaleString()
+        });
         
         // Send feedback to server that prompt was applied
         sendToServer({
@@ -1704,6 +1736,11 @@ function stopTelegramProcessing() {
 }
 
 function clearTelegramWaitlist() {
+    // Add to debug log
+    addTelegramMessageToDebug({
+        type: 'telegram_waitlist_cleared'
+    });
+    
     // Notify server to clear its waitlist
     sendToServer({
         type: 'telegram_waitlist_cleared'
@@ -2029,6 +2066,9 @@ function updateMobileDebugInfo(info) {
     // Get Telegram waitlist info
     const waitlistInfo = getTelegramWaitlistInfo();
     
+    // Get Daydream stream status
+    const daydreamStatus = getDaydreamStatusForDebug();
+    
     debugInfo.innerHTML = `
         <div><span style="color: #60a5fa;">Status:</span> <span style="color: #fbbf24;">${info.status}</span></div>
         <div><span style="color: #60a5fa;">Panel:</span> <span style="color: #fbbf24;">${info.panelState}</span></div>
@@ -2042,6 +2082,16 @@ function updateMobileDebugInfo(info) {
             <div><span style="color: #f472b6;">Waitlist:</span> <span style="color: #fbbf24;">${waitlistInfo.count} queued</span></div>
             ${waitlistInfo.nextPrompt ? `<div><span style="color: #f472b6;">Next:</span> <span style="color: #fbbf24;">"${waitlistInfo.nextPrompt}"</span></div>` : ''}
             <div><span style="color: #f472b6;">Interval:</span> <span style="color: #fbbf24;">${waitlistInfo.interval}s</span></div>
+        </div>
+        <div style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 6px;">
+            <div><span style="color: #8b5cf6;">☁️ Daydream:</span> <span style="color: ${daydreamStatus.color};">${daydreamStatus.text}</span></div>
+            ${streamState.playbackId ? `<div><span style="color: #8b5cf6;">Playback:</span> <span style="color: #fbbf24;">${streamState.playbackId.substring(0, 12)}...</span></div>` : ''}
+            ${streamState.peerConnection ? `<div><span style="color: #8b5cf6;">WebRTC:</span> <span style="color: #fbbf24;">${streamState.peerConnection.connectionState}</span></div>` : ''}
+            ${streamState.isStreaming && streamState.streamId ? `
+                <div><span style="color: #8b5cf6;">Stream ID:</span> <span style="color: #fbbf24;">${streamState.streamId}</span></div>
+                <div><span style="color: #8b5cf6;">WHIP URL:</span> <span style="color: #fbbf24;">${streamState.whipUrl || 'N/A'}</span></div>
+                <div><span style="color: #8b5cf6;">Livepeer URL:</span> <span style="color: #fbbf24;">https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force&controls=false</span></div>
+            ` : ''}
         </div>
     `;
 }
@@ -2065,6 +2115,54 @@ function getOSCStatusForDebug() {
     }
 }
 
+function getDaydreamStatusForDebug() {
+    if (streamState.isStreaming && streamState.streamId && streamState.playbackId) {
+        return {
+            text: `Active (${streamState.streamId.substring(0, 8)}...)`,
+            color: '#22c55e' // Green for active stream
+        };
+    } else if (streamState.streamId && streamState.playbackId && !streamState.isStreaming) {
+        return {
+            text: `Ready (${streamState.streamId.substring(0, 8)}...)`,
+            color: '#f59e0b' // Orange for ready but not streaming
+        };
+    } else if (streamState.streamId && !streamState.playbackId) {
+        return {
+            text: 'Creating...',
+            color: '#8b5cf6' // Purple for creating
+        };
+    } else {
+        return {
+            text: 'Not Connected',
+            color: '#6b7280' // Gray for not connected
+        };
+    }
+}
+
+async function fetchDaydreamStreamStatus() {
+    if (!streamState.streamId || !config.DEBUG_MODE) return null;
+    
+    try {
+        const apiKey = document.getElementById('apiKeyInput').value;
+        if (!apiKey) return null;
+        
+        const response = await fetch(`https://daydream.live/api/streams/${streamState.streamId}/status`, {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            return data.data;
+        }
+    } catch (error) {
+        console.warn('Failed to fetch stream status:', error);
+    }
+    
+    return null;
+}
+
 function updateOSCSectionVisibility() {
     const oscInfoDiv = document.getElementById('oscInfo');
     const oscMessagesDiv = document.getElementById('oscMessages');
@@ -2079,6 +2177,34 @@ function updateOSCSectionVisibility() {
     }
 }
 
+function updateTelegramSectionVisibility() {
+    const telegramInfoDiv = document.getElementById('telegramInfo');
+    const telegramMessagesDiv = document.getElementById('telegramMessages');
+    
+    if (!telegramInfoDiv || !telegramMessagesDiv) return;
+    
+    // Hide Telegram section if no messages, show if messages exist
+    if (telegramMessagesDiv.children.length === 0) {
+        telegramInfoDiv.style.display = 'none';
+    } else {
+        telegramInfoDiv.style.display = 'block';
+    }
+}
+
+function updateDaydreamSectionVisibility() {
+    const daydreamInfoDiv = document.getElementById('daydreamInfo');
+    const daydreamMessagesDiv = document.getElementById('daydreamMessages');
+    
+    if (!daydreamInfoDiv || !daydreamMessagesDiv) return;
+    
+    // Hide Daydream section if no messages, show if messages exist
+    if (daydreamMessagesDiv.children.length === 0) {
+        daydreamInfoDiv.style.display = 'none';
+    } else {
+        daydreamInfoDiv.style.display = 'block';
+    }
+}
+
 function addOSCMessageToDebug(message) {
     if (!config.DEBUG_MODE) return;
     
@@ -2087,7 +2213,7 @@ function addOSCMessageToDebug(message) {
     
     const timestamp = new Date().toLocaleTimeString();
     let messageText = '';
-    let messageColor = '#fbbf24'; // Default yellow
+    let messageColor = '#60a5fa'; // Default blue
     
     if (message.type === 'osc_message') {
         if (message.parameter) {
@@ -2134,6 +2260,165 @@ function addOSCMessageToDebug(message) {
     
     // Update OSC section visibility
     updateOSCSectionVisibility();
+}
+
+function addTelegramMessageToDebug(message) {
+    if (!config.DEBUG_MODE) return;
+    
+    const telegramMessagesDiv = document.getElementById('telegramMessages');
+    if (!telegramMessagesDiv) return;
+    
+    const timestamp = new Date().toLocaleTimeString();
+    let messageText = '';
+    let messageColor = '#60a5fa'; // Default blue
+    
+    if (message.type === 'telegram_prompt' || message.type === 'apply_telegram_prompt') {
+        const prompt = message.prompt || 'No prompt';
+        const from = message.from || 'Unknown';
+        messageText = `Prompt from ${from}: "${prompt}"`;
+        messageColor = '#60a5fa'; // Blue for prompts
+    } else if (message.type === 'controlnet_preset') {
+        const presetName = message.presetName || 'Unknown preset';
+        messageText = `ControlNet Preset: ${presetName}`;
+        messageColor = '#22c55e'; // Green for presets
+    } else if (message.type === 'telegram_prompt_applied') {
+        const prompt = message.prompt || 'No prompt';
+        messageText = `Applied: "${prompt}"`;
+        messageColor = '#10b981'; // Emerald for applied prompts
+    } else if (message.type === 'telegram_waitlist_cleared') {
+        messageText = 'Waitlist cleared';
+        messageColor = '#f59e0b'; // Orange for waitlist actions
+    } else if (message.type === 'telegram_waitlist_interval_changed') {
+        const interval = message.interval || 'Unknown';
+        messageText = `Interval changed to ${interval}s`;
+        messageColor = '#8b5cf6'; // Purple for settings changes
+    } else if (message.type === 'telegram_token_updated') {
+        messageText = 'Bot token updated';
+        messageColor = '#ef4444'; // Red for token updates
+    } else if (message.type === 'telegram_waitlist_added') {
+        const prompt = message.prompt || 'No prompt';
+        const from = message.from || 'Unknown';
+        messageText = `Added to waitlist: "${prompt}" from ${from}`;
+        messageColor = '#f59e0b'; // Orange for waitlist additions
+    } else if (message.type === 'telegram_waitlist_processing') {
+        const prompt = message.prompt || 'No prompt';
+        const from = message.from || 'Unknown';
+        messageText = `Processing: "${prompt}" from ${from}`;
+        messageColor = '#10b981'; // Emerald for processing
+    } else if (message.type === 'telegram_prompt_processed') {
+        const prompt = message.prompt || 'No prompt';
+        const from = message.from || 'Unknown';
+        const timestamp = message.timestamp || 'Unknown time';
+        messageText = `Processed: "${prompt}" from ${from} (${timestamp})`;
+        messageColor = '#10b981'; // Emerald for processed
+    } else {
+        messageText = JSON.stringify(message);
+    }
+    
+    const messageElement = document.createElement('div');
+    messageElement.style.cssText = `
+        margin-bottom: 2px;
+        font-size: 10px;
+        line-height: 1.2;
+    `;
+    messageElement.innerHTML = `
+        <span style="color: #6b7280;">${timestamp}</span> 
+        <span style="color: ${messageColor};">${messageText}</span>
+    `;
+    
+    telegramMessagesDiv.appendChild(messageElement);
+    
+    // Keep only the last 20 messages
+    while (telegramMessagesDiv.children.length > 20) {
+        telegramMessagesDiv.removeChild(telegramMessagesDiv.firstChild);
+    }
+    
+    // Auto-scroll to bottom
+    telegramMessagesDiv.scrollTop = telegramMessagesDiv.scrollHeight;
+    
+    // Update Telegram section visibility
+    updateTelegramSectionVisibility();
+}
+
+function addDaydreamEventToDebug(message) {
+    if (!config.DEBUG_MODE) return;
+    
+    const daydreamMessagesDiv = document.getElementById('daydreamMessages');
+    if (!daydreamMessagesDiv) return;
+    
+    const timestamp = new Date().toLocaleTimeString();
+    let messageText = '';
+    let messageColor = '#60a5fa'; // Default blue
+    
+    if (message.type === 'stream_created') {
+        const streamId = message.streamId || 'Unknown';
+        const playbackId = message.playbackId || 'Unknown';
+        messageText = `Stream created: ${streamId.substring(0, 8)}... (${playbackId.substring(0, 8)}...)`;
+        messageColor = '#22c55e'; // Green for successful creation
+    } else if (message.type === 'stream_started') {
+        messageText = 'Stream started';
+        messageColor = '#10b981'; // Emerald for active stream
+    } else if (message.type === 'stream_stopped') {
+        messageText = 'Stream stopped';
+        messageColor = '#ef4444'; // Red for stopped stream
+    } else if (message.type === 'stream_connecting') {
+        messageText = 'Connecting to stream...';
+        messageColor = '#f59e0b'; // Orange for connecting
+    } else if (message.type === 'stream_connected') {
+        messageText = 'WebRTC connected';
+        messageColor = '#22c55e'; // Green for connected
+    } else if (message.type === 'stream_disconnected') {
+        messageText = 'WebRTC disconnected';
+        messageColor = '#ef4444'; // Red for disconnected
+    } else if (message.type === 'stream_error') {
+        const error = message.error || 'Unknown error';
+        messageText = `Error: ${error}`;
+        messageColor = '#ef4444'; // Red for errors
+    } else if (message.type === 'parameters_updated') {
+        const prompt = message.prompt || 'No prompt';
+        messageText = `Parameters updated: "${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}"`;
+        messageColor = '#8b5cf6'; // Purple for parameter updates
+    } else if (message.type === 'popup_opened') {
+        const playbackId = message.playbackId || 'Unknown';
+        messageText = `Player opened: ${playbackId.substring(0, 8)}...`;
+        messageColor = '#06a3d7'; // Blue for popup actions
+    } else if (message.type === 'popup_closed') {
+        messageText = 'Player closed';
+        messageColor = '#6b7280'; // Gray for popup closed
+    } else if (message.type === 'stream_validated') {
+        const streamId = message.streamId || 'Unknown';
+        messageText = `Stream validated: ${streamId.substring(0, 8)}...`;
+        messageColor = '#22c55e'; // Green for validation
+    } else if (message.type === 'stream_invalid') {
+        messageText = 'Saved stream invalid, creating new';
+        messageColor = '#f59e0b'; // Orange for invalid stream
+    } else {
+        messageText = JSON.stringify(message);
+    }
+    
+    const messageElement = document.createElement('div');
+    messageElement.style.cssText = `
+        margin-bottom: 2px;
+        font-size: 10px;
+        line-height: 1.2;
+    `;
+    messageElement.innerHTML = `
+        <span style="color: #6b7280;">${timestamp}</span> 
+        <span style="color: ${messageColor};">${messageText}</span>
+    `;
+    
+    daydreamMessagesDiv.appendChild(messageElement);
+    
+    // Keep only the last 20 messages
+    while (daydreamMessagesDiv.children.length > 20) {
+        daydreamMessagesDiv.removeChild(daydreamMessagesDiv.firstChild);
+    }
+    
+    // Auto-scroll to bottom
+    daydreamMessagesDiv.scrollTop = daydreamMessagesDiv.scrollHeight;
+    
+    // Update Daydream section visibility
+    updateDaydreamSectionVisibility();
 }
 
 function getDevicePixelRatio() {
@@ -5752,6 +6037,12 @@ async function updateStreamParameters() {
                 controlnet_depth_scale: config.CONTROLNET_DEPTH_SCALE,
                 controlnet_color_scale: config.CONTROLNET_COLOR_SCALE 
             });
+            
+            // Add to debug log
+            addDaydreamEventToDebug({
+                type: 'parameters_updated',
+                prompt: prompt
+            });
         } else {
             const errorText = await response.text();
             console.error('❌ Parameter update failed:', {
@@ -5763,6 +6054,13 @@ async function updateStreamParameters() {
         }
     } catch (error) {
         console.warn('Failed to update stream parameters:', error);
+        
+        // Add to debug log
+        addDaydreamEventToDebug({
+            type: 'stream_error',
+            error: error.message || 'Parameter update failed'
+        });
+        
         // Don't let API errors affect the simulation - just log and continue
     } finally {
         streamState.isUpdatingParameters = false;
@@ -5863,6 +6161,11 @@ async function startStream() {
         updateStreamStatus('Connecting...', 'connecting');
         updateStreamButton(false);
         
+        // Add to debug log
+        addDaydreamEventToDebug({
+            type: 'stream_connecting'
+        });
+        
         // Validate API key
         const apiKey = document.getElementById('apiKeyInput').value.trim();
         if (!apiKey) {
@@ -5918,9 +6221,20 @@ async function startStream() {
                 streamState.playbackId = savedStream.playbackId;
                 streamState.whipUrl = savedStream.whipUrl;
                 console.log('✅ Reusing validated stream:', savedStream.streamId);
+                
+                // Add to debug log
+                addDaydreamEventToDebug({
+                    type: 'stream_validated',
+                    streamId: savedStream.streamId
+                });
             } else {
                 console.log('❌ Saved stream is no longer valid, creating new one...');
                 clearStreamState(); // Clear invalid stream data
+                
+                // Add to debug log
+                addDaydreamEventToDebug({
+                    type: 'stream_invalid'
+                });
             }
         }
         
@@ -5935,6 +6249,13 @@ async function startStream() {
             // Save the new stream state
             saveStreamState();
             console.log('✅ Created new stream:', streamState.streamId);
+            
+            // Add to debug log
+            addDaydreamEventToDebug({
+                type: 'stream_created',
+                streamId: streamState.streamId,
+                playbackId: streamState.playbackId
+            });
         }
         
         // Update button visibility now that we have a valid stream
@@ -5943,6 +6264,12 @@ async function startStream() {
         // Open stream overlay instead of popup window
         updateStreamStatus('Opening player...', 'connecting');
         openStreamOverlay(streamState.playbackId);
+        
+        // Add to debug log
+        addDaydreamEventToDebug({
+            type: 'popup_opened',
+            playbackId: streamState.playbackId
+        });
         
         // Setup WebRTC connection
         updateStreamStatus('Connecting to stream...', 'connecting');
@@ -5954,6 +6281,13 @@ async function startStream() {
         // Monitor connection state
         streamState.peerConnection.addEventListener('connectionstatechange', () => {
             const state = streamState.peerConnection.connectionState;
+            
+            // Add to debug log
+            addDaydreamEventToDebug({
+                type: state === 'connected' ? 'stream_connected' : 
+                      (state === 'failed' || state === 'disconnected') ? 'stream_disconnected' : 'stream_connecting'
+            });
+            
             if (state === 'failed' || state === 'disconnected') {
                 updateStreamStatus('Connection lost', 'error');
                 setTimeout(() => stopStream(), 2000);
@@ -5966,6 +6300,11 @@ async function startStream() {
         streamState.isStreaming = true;
         updateStreamStatus('Active', 'active');
         updateStreamButton(true);
+        
+        // Add to debug log
+        addDaydreamEventToDebug({
+            type: 'stream_started'
+        });
         
         // Start continuous prompt updates to override default prompts
         streamState.promptUpdateInterval = setInterval(() => {
@@ -5993,6 +6332,13 @@ async function startStream() {
         
     } catch (error) {
         console.error('Failed to start stream:', error);
+        
+        // Add to debug log
+        addDaydreamEventToDebug({
+            type: 'stream_error',
+            error: error.message || 'Stream start failed'
+        });
+        
         let errorMessage = error.message;
         let shouldRetryWithNewStream = false;
         
@@ -6040,6 +6386,11 @@ async function startStream() {
 
 function stopStream() {
     streamState.isStreaming = false;
+    
+    // Add to debug log
+    addDaydreamEventToDebug({
+        type: 'stream_stopped'
+    });
     
     // Clean up WebRTC connection
     if (streamState.peerConnection) {
@@ -9288,8 +9639,10 @@ function loadTelegramSettings() {
     if (savedSettings) {
         // Load saved settings
         config.TELEGRAM_RECEIVE = savedSettings.TELEGRAM_RECEIVE !== undefined ? savedSettings.TELEGRAM_RECEIVE : true;
-        config.TELEGRAM_WAITLIST_INTERVAL = savedSettings.TELEGRAM_WAITLIST_INTERVAL !== undefined ? Math.round(savedSettings.TELEGRAM_WAITLIST_INTERVAL) : 1;
+        // Force waitlist interval to 1 second regardless of saved settings
+        config.TELEGRAM_WAITLIST_INTERVAL = 1;
         console.log('✅ Loaded Telegram settings:', savedSettings);
+        console.log('🔄 Forced waitlist interval to 1 second');
     } else {
         // Set defaults
         config.TELEGRAM_RECEIVE = true;
@@ -9384,6 +9737,11 @@ function saveTelegramToken() {
         if (token) {
             saveToLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN, obfuscateApiKey(token));
             saveToLocalStorage(STORAGE_KEYS.TELEGRAM_TOKEN_CONSENT, true);
+            
+            // Add to debug log
+            addTelegramMessageToDebug({
+                type: 'telegram_token_updated'
+            });
             
             // Send token to server
             if (typeof sendToServer === 'function') {
@@ -10368,7 +10726,12 @@ function setupOSCMessageHandling() {
 function handleOSCMessage(message) {
     if (config.DEBUG_MODE) {
         console.log('📨 OSC Message:', message);
-        addOSCMessageToDebug(message);
+        
+        // Only log OSC-specific messages to OSC debug section
+        if (message.type === 'server_info' || message.type === 'osc_velocity_drawing' || 
+            message.type === 'osc_message' || message.type.startsWith('osc_')) {
+            addOSCMessageToDebug(message);
+        }
     }
     
     if (message.type === 'server_info') {
@@ -10431,6 +10794,9 @@ function handleOSCMessage(message) {
 function handleTelegramPrompt(message) {
     console.log(`📱 Received Telegram prompt from ${message.from}: "${message.prompt}"`);
     
+    // Add to debug log
+    addTelegramMessageToDebug(message);
+    
     // Check if Telegram receive is enabled
     if (config.TELEGRAM_RECEIVE === false) {
         console.log('📱 Telegram receive is disabled, ignoring prompt');
@@ -10456,6 +10822,9 @@ function handleTelegramPrompt(message) {
 
 function handleControlNetPreset(message) {
     console.log(`📱 Received ControlNet preset from ${message.from}: "${message.presetDisplayName}"`);
+    
+    // Add to debug log
+    addTelegramMessageToDebug(message);
     
     // Check if Telegram receive is enabled
     if (config.TELEGRAM_RECEIVE === false) {
