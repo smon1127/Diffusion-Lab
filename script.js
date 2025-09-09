@@ -293,6 +293,7 @@ if (!ext.supportLinearFiltering) {
 // Wait for DOM to be ready before initializing UI
 document.addEventListener('DOMContentLoaded', () => {
     startGUI();
+    initializeCursorIndicator();
     // Start idle animation immediately on page load
     setTimeout(() => {
         if (Date.now() - lastActivityTime >= IDLE_TIMEOUT) {
@@ -730,6 +731,11 @@ function updateToggleStates() {
     } else {
         document.body.classList.remove('hide-cursor');
     }
+    
+    // Update cursor indicator visibility
+    if (cursorIndicator) {
+        cursorIndicator.style.display = config.HIDE_CURSOR ? 'block' : 'none';
+    }
 }
 
 function updateToggle(toggleId, state) {
@@ -1109,7 +1115,32 @@ function toggleHideCursor() {
         document.body.classList.remove('hide-cursor');
     }
     
+    // Update cursor indicator visibility
+    if (cursorIndicator) {
+        cursorIndicator.style.display = config.HIDE_CURSOR ? 'block' : 'none';
+    }
+    
     saveConfig();
+}
+
+// Cursor indicator functionality
+let cursorIndicator = null;
+
+function updateCursorIndicator(x, y) {
+    if (cursorIndicator && config.HIDE_CURSOR) {
+        cursorIndicator.style.left = x + 'px';
+        cursorIndicator.style.top = y + 'px';
+    }
+}
+
+function initializeCursorIndicator() {
+    cursorIndicator = document.getElementById('cursorIndicator');
+    if (!cursorIndicator) return;
+    
+    // Track mouse movement for cursor indicator
+    document.addEventListener('mousemove', (e) => {
+        updateCursorIndicator(e.clientX, e.clientY);
+    });
 }
 
 function toggleBloom() {
@@ -5387,6 +5418,11 @@ window.addEventListener('keydown', e => {
             toggleVelocityDrawing();
         }
         if (e.code === 'KeyH') {
+            e.preventDefault();
+            toggleHideCursor();
+            togglePanelVisibility();
+        }
+        if (e.code === 'Enter') {
             e.preventDefault();
             toggleHideCursor();
             togglePanelVisibility();
