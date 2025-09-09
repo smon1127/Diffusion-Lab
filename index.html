@@ -16,11 +16,11 @@
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
         <title>Diffusion Lab</title>
-        <meta name="description" content="Transform fluid dynamics into stunning generative art with real-time AI processing.">
+        <meta name="description" content="Watch your creations come alive as AI transforms fluid simulations, camera stream, videos or audio into mesmerizing generative art in real-time.">
 
         <meta property="og:type" content="website">
         <meta property="og:title" content="Diffusion Lab">
-        <meta property="og:description" content="Transform fluid dynamics into stunning generative art with real-time AI processing.">
+        <meta property="og:description" content="Watch your creations come alive as AI transforms fluid simulations, camera stream, videos or audio into mesmerizing generative art in real-time.">
         <meta property="og:url" content="https://paveldogreat.github.io/WebGL-Fluid-Simulation/">
         <!-- Open Graph image removed - logo.png file not available -->
 
@@ -2295,6 +2295,29 @@
                 background: linear-gradient(135deg, #8b5cf6, #06a3d7);
             }
 
+            .welcome-advanced-btn-compact {
+                background: rgb(182 182 204 / 7%);
+                backdrop-filter: blur(60px);
+                border: 1px solid var(--border-color);
+                color: var(--text-primary);
+                padding: 14px 29px;
+                border-radius: 6px;
+                font-size: 1.08rem;
+                font-weight: 500;
+                cursor: pointer;
+                transition: var(--transition);
+                text-transform: none;
+                letter-spacing: normal;
+                width: auto;
+                margin-bottom: 15px;
+            }
+
+            .welcome-advanced-btn-compact:hover {
+                background: rgba(60, 60, 70, 0.9);
+                border-color: var(--accent-color);
+                transform: translateY(-1px);
+            }
+
             /* Advanced Setup Overlay */
             .advanced-setup-overlay {
                 position: fixed;
@@ -2302,12 +2325,15 @@
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0, 0, 0, 0.7);
-                backdrop-filter: blur(10px);
+                background: rgba(0, 0, 0, 0.5);
+                backdrop-filter: blur(40px);
+                -webkit-backdrop-filter: blur(40px);
+                z-index: 10000;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                z-index: 10000;
+                padding: 20px;
+                animation: fadeIn 0.5s ease-out;
             }
 
             .advanced-setup-content {
@@ -2818,7 +2844,7 @@
             <div class="welcome-content">
                 <div class="welcome-header">
                     <h1>🌊 Diffusion Lab</h1>
-                    <p class="welcome-subtitle">Transform fluid dynamics and more into stunning generative art with real-time AI processing</p>
+                    <p class="welcome-subtitle">Watch your creations come alive as AI transforms fluid simulations, camera stream, videos or audio into mesmerizing generative art in real-time</p>
                 </div>
                 
                 <div class="welcome-teaser-section">
@@ -2913,7 +2939,7 @@
                     <button id="welcomeStartButton" class="welcome-start-btn">
                         Start Creating
                     </button>
-                    <button id="advancedSetupButton" class="welcome-advanced-btn" onclick="showAdvancedSetup()">
+                    <button id="advancedSetupButton" class="welcome-advanced-btn-compact" onclick="showAdvancedSetup()">
                         Advanced Setup
                     </button>
                 </div>
@@ -3858,6 +3884,13 @@
                     </button>
                 </div>
                 
+                <!-- About Button -->
+                <div class="control-item">
+                    <button class="modern-button secondary" onclick="showWelcomeOverlay()">
+                        About
+                    </button>
+                </div>
+                
                 <!-- Settings Section -->
                 <div class="advanced-section">
                     <div class="advanced-toggle" onclick="toggleSettings()" ontouchstart="toggleSettings(); event.preventDefault();">
@@ -3968,11 +4001,6 @@
                             </button>
                         </div>
                         
-                        <div class="control-item">
-                            <button class="modern-button secondary" onclick="showWelcomeOverlay()">
-                                About
-                            </button>
-                        </div>
                         
                         <div class="control-item">
                             <button class="modern-button secondary" onclick="window.open('https://github.com/smon1127/Diffusion-Lab/archive/refs/heads/master.zip', '_blank')">
