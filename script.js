@@ -5961,13 +5961,32 @@ async function createDaydreamStream() {
 }
 
 async function updateStreamParameters() {
-    if (!streamState.streamId || !streamState.isStreaming) return;
+    if (!streamState.streamId || !streamState.isStreaming) {
+        console.log('⚠️ Skipping parameter update - no active stream');
+        return;
+    }
+    
+    // Validate stream ID format
+    if (!streamState.streamId.startsWith('str_')) {
+        console.error('❌ Invalid stream ID format:', streamState.streamId);
+        addDaydreamEventToDebug({
+            type: 'parameter_update_failed',
+            error: 'Invalid stream ID format'
+        });
+        return;
+    }
     
     const now = Date.now();
-    if (now - streamState.lastParameterUpdate < 500) return; // Reduced throttle time
+    if (now - streamState.lastParameterUpdate < 500) {
+        console.log('⚠️ Skipping parameter update - too frequent');
+        return; // Reduced throttle time
+    }
     
     // Prevent overlapping requests
-    if (streamState.isUpdatingParameters) return;
+    if (streamState.isUpdatingParameters) {
+        console.log('⚠️ Skipping parameter update - already updating');
+        return;
+    }
     streamState.isUpdatingParameters = true;
     
     try {
@@ -6079,17 +6098,55 @@ async function updateStreamParameters() {
                 status: response.status,
                 statusText: response.statusText,
                 error: errorText,
-                sentParams: params
+                sentParams: params,
+                streamId: streamState.streamId
             });
+            
+            // Handle specific error cases
+            if (response.status === 404) {
+                console.error('🚨 Stream not found - may have expired or been deleted');
+                addDaydreamEventToDebug({
+                    type: 'stream_not_found',
+                    streamId: streamState.streamId,
+                    error: 'Stream not found (404)'
+                });
+            } else if (response.status === 401) {
+                console.error('🚨 Unauthorized - check API key');
+                addDaydreamEventToDebug({
+                    type: 'unauthorized',
+                    error: 'Invalid API key (401)'
+                });
+            } else if (response.status >= 500) {
+                console.error('🚨 Server error - API may be down');
+                addDaydreamEventToDebug({
+                    type: 'server_error',
+                    status: response.status,
+                    error: 'Server error'
+                });
+            }
         }
     } catch (error) {
         console.warn('Failed to update stream parameters:', error);
         
-        // Add to debug log
-        addDaydreamEventToDebug({
-            type: 'stream_error',
-            error: error.message || 'Parameter update failed'
-        });
+        // Handle specific error types
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            console.error('🚨 Network error - check internet connection');
+            addDaydreamEventToDebug({
+                type: 'network_error',
+                error: 'Network connection failed'
+            });
+        } else if (error.name === 'AbortError') {
+            console.warn('⚠️ Request aborted');
+            addDaydreamEventToDebug({
+                type: 'request_aborted',
+                error: 'Request was aborted'
+            });
+        } else {
+            addDaydreamEventToDebug({
+                type: 'stream_error',
+                error: error.message || 'Parameter update failed'
+            });
+        }
         
         // Don't let API errors affect the simulation - just log and continue
     } finally {
@@ -9337,6 +9394,83 @@ let sliderUpdateTimeout;
 function debouncedSliderParameterUpdate() {
     clearTimeout(sliderUpdateTimeout);
     sliderUpdateTimeout = setTimeout(updateStreamParameters, 200);
+}
+
+// Create a global debounced version for parameter updates
+let parameterUpdateTimeout;
+function debouncedParameterUpdate() {
+    clearTimeout(parameterUpdateTimeout);
+    parameterUpdateTimeout = setTimeout(updateStreamParametersWithRetry, 300);
+}
+
+// Stream validation function
+async function validateStreamState() {
+    if (!streamState.streamId || !streamState.isStreaming) {
+        return false;
+    }
+    
+    try {
+        const apiKey = document.getElementById('apiKeyInput').value;
+        if (!apiKey) {
+            console.warn('No API key found for stream validation');
+            return false;
+        }
+        
+        const response = await fetch(`https://api.daydream.live/beta/streams/${streamState.streamId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`
+            }
+        });
+        
+        if (response.ok) {
+            console.log('✅ Stream validation successful');
+            return true;
+        } else if (response.status === 404) {
+            console.error('❌ Stream not found - may have expired');
+            addDaydreamEventToDebug({
+                type: 'stream_validation_failed',
+                error: 'Stream not found (404)'
+            });
+            return false;
+        } else {
+            console.warn('⚠️ Stream validation failed with status:', response.status);
+            return false;
+        }
+    } catch (error) {
+        console.warn('Stream validation error:', error);
+        return false;
+    }
+}
+
+// Retry logic for failed API calls
+let retryCount = 0;
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+
+async function updateStreamParametersWithRetry() {
+    if (retryCount >= MAX_RETRIES) {
+        console.error('❌ Max retries reached for parameter update');
+        retryCount = 0;
+        return;
+    }
+    
+    try {
+        await updateStreamParameters();
+        retryCount = 0; // Reset on success
+    } catch (error) {
+        retryCount++;
+        console.warn(`⚠️ Parameter update failed, retrying (${retryCount}/${MAX_RETRIES}):`, error);
+        
+        if (retryCount < MAX_RETRIES) {
+            setTimeout(() => {
+                updateStreamParametersWithRetry();
+            }, RETRY_DELAY * retryCount); // Exponential backoff
+        } else {
+            console.error('❌ All retry attempts failed');
+            retryCount = 0;
+        }
+    }
 }
 
 updateSliderValue = function(sliderName, percentage) {
