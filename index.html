@@ -31,7 +31,22 @@
                 margin: 0;
                 padding: 0;
                 box-sizing: border-box;
+            }
+
+            /* Prevent text selection on interactive elements */
+            button, input, textarea, select, .slider-container, .color-input, .clr-field, .preset-button, .modern-button, .toggle-switch, .checkbox-input, .checkbox-label {
                 user-select: none;
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+            }
+
+            /* Allow text selection in content areas */
+            p, h1, h2, h3, h4, h5, h6, li, span, div, code, pre, .welcome-content, .advanced-setup-content, .step-content, .feature-description {
+                user-select: text;
+                -webkit-user-select: text;
+                -moz-user-select: text;
+                -ms-user-select: text;
             }
 
             :root {
@@ -205,7 +220,7 @@
 
             .slider-fill {
                 height: 100%;
-                background: linear-gradient(90deg, var(--accent-color), var(--accent-hover));
+                background: var(--accent-color);
                 border-radius: 3px;
                 transition: width 0.05s ease-out;
                 position: relative;
@@ -361,7 +376,7 @@
             .modern-button {
                 width: 100%;
                 padding: 12px;
-                background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+                background: var(--accent-color);
                 border: none;
                 border-radius: 8px;
                 color: white;
@@ -824,6 +839,7 @@
                 border-radius: 3px;
                 font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
                 font-size: 0.75rem;
+                font-weight: bold;
                 color: #06a3d7;
             }
             
@@ -979,26 +995,26 @@
 
             /* Stream Button States */
             .modern-button.streaming {
-                background: linear-gradient(135deg, #ff4444, #cc3333);
+                background: #ff4444;
             }
             
             .modern-button.secondary {
-                background: linear-gradient(135deg, #666666, #555555);
+                background: #666666;
                 margin-top: 8px;
             }
-            
+
             .modern-button.secondary:hover {
-                background: linear-gradient(135deg, #777777, #666666);
+                background: #777777;
                 box-shadow: 0 6px 20px rgba(119, 119, 119, 0.3);
             }
             
             .modern-button.secondary.copied {
-                background: linear-gradient(135deg, #22c55e, #16a34a);
+                background: #22c55e;
                 color: white;
             }
 
             .modern-button.streaming:hover {
-                background: linear-gradient(135deg, #cc3333, #ff4444);
+                background: #cc3333;
             }
 
             .modern-button:disabled {
@@ -1878,6 +1894,10 @@
                 /* Hide scrollbar */
                 scrollbar-width: none; /* Firefox */
                 -ms-overflow-style: none; /* Internet Explorer 10+ */
+                user-select: text;
+                -webkit-user-select: text;
+                -moz-user-select: text;
+                -ms-user-select: text;
             }
 
             .welcome-content::-webkit-scrollbar {
@@ -1888,10 +1908,7 @@
                 color: var(--text-primary);
                 font-size: 2rem;
                 margin-bottom: 8px;
-                background: linear-gradient(166deg, #ffffff, #06a3d7);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
+                color: var(--accent-color);
             }
 
             .welcome-subtitle {
@@ -1901,43 +1918,94 @@
                 line-height: 1.4;
             }
 
+            .features-title {
+                color: var(--text-primary);
+                font-size: 1.5rem;
+                font-weight: 600;
+                margin-bottom: 20px;
+                text-align: center;
+                color: var(--accent-color);
+            }
+
             .feature-grid {
                 display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 15px;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 20px;
                 margin-bottom: 25px;
             }
 
             .feature-item {
-                background: rgb(182 182 204 / 7%);
+                background: rgb(182 182 204 / 6%);
                 backdrop-filter: blur(60px);
-                border-radius: var(--radius);
-                padding: 15px;
+                border-radius: 16px;
+                padding: 20px;
                 border: 1px solid var(--border-color);
-                transition: var(--transition);
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                position: relative;
+                overflow: hidden;
+            }
+
+            .feature-item::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 2px;
+                background: var(--accent-color);
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            }
+
+            .feature-item.primary {
+                background: rgba(6, 163, 215, 0.08);
+                border-color: rgba(6, 163, 215, 0.3);
+            }
+
+            .feature-item.primary::before {
+                opacity: 1;
             }
 
             .feature-item:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 8px 25px rgba(6, 163, 215, 0.15);
+                transform: translateY(-4px) scale(1.02);
+                box-shadow: 0 12px 40px rgba(6, 163, 215, 0.2);
+                border-color: rgba(6, 163, 215, 0.4);
+            }
+
+            .feature-item:hover::before {
+                opacity: 1;
             }
 
             .feature-icon {
-                font-size: 1.5rem;
-                margin-bottom: 8px;
+                font-size: 2rem;
+                margin-bottom: 12px;
+                color: #06a3d7;
+                transition: all 0.3s ease;
+            }
+
+            .feature-item:hover .feature-icon {
+                transform: scale(1.1);
+                color: var(--accent-hover);
             }
 
             .feature-item h3 {
                 color: var(--text-primary);
-                font-size: 1rem;
-                margin-bottom: 6px;
+                font-size: 1.2rem;
+                font-weight: 700;
+                margin-bottom: 10px;
+                line-height: 1.2;
+                letter-spacing: -0.02em;
             }
 
-            .feature-item p {
+            .feature-description {
                 color: var(--text-secondary);
-                font-size: 0.85rem;
-                line-height: 1.3;
+                font-size: 0.95rem;
+                line-height: 1.5;
+                margin-bottom: 16px;
+                opacity: 0.95;
+                font-weight: 400;
             }
+
 
             .welcome-api-section {
                 background: rgb(182 182 204 / 7%);
@@ -1976,7 +2044,7 @@
                 padding: 10px 16px;
                 background: rgb(182 182 204 / 7%);
                 backdrop-filter: blur(60px);
-                color: var(--text-primary);
+                color: var(--accent-color);
                 text-decoration: none;
                 border-radius: var(--radius);
                 border: 1px solid var(--border-color);
@@ -2091,20 +2159,392 @@
                 background: var(--accent-color);
                 color: white;
                 border: 1px solid var(--accent-color);
-                padding: 12px 24px;
-                border-radius: var(--radius);
-                font-size: 1rem;
+                padding: 14px 29px;
+                border-radius: 6px;
+                font-size: 1.08rem;
                 font-weight: 500;
                 cursor: pointer;
                 transition: var(--transition);
                 margin-bottom: 15px;
-                min-width: 180px;
+                min-width: 216px;
+                height: 53px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-transform: none;
+                letter-spacing: normal;
             }
 
             .welcome-start-btn:hover {
                 background: var(--accent-hover);
                 border-color: var(--accent-hover);
                 transform: translateY(-1px);
+            }
+
+            .welcome-mode-selector {
+                margin: 20px 0;
+                text-align: center;
+            }
+
+            .welcome-mode-selector h3 {
+                color: var(--text-primary);
+                font-size: 1.2rem;
+                margin-bottom: 15px;
+            }
+
+            .mode-options {
+                display: flex;
+                gap: 15px;
+                justify-content: center;
+                margin-bottom: 20px;
+            }
+
+            .mode-option {
+                background: rgb(182 182 204 / 5%);
+                border: 1px solid var(--border-color);
+                border-radius: 12px;
+                padding: 20px;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                text-align: center;
+                min-width: 150px;
+            }
+
+            .mode-option:hover {
+                background: rgb(182 182 204 / 8%);
+                border-color: rgba(6, 163, 215, 0.3);
+            }
+
+            .mode-option.active {
+                background: rgba(6, 163, 215, 0.08);
+                border-color: rgba(6, 163, 215, 0.4);
+            }
+
+            .mode-option#advancedMode {
+                border: 2px solid;
+                border-image: linear-gradient(135deg, #8b5cf6, #06a3d7) 1;
+                background: rgb(182 182 204 / 5%);
+            }
+
+            .mode-option#advancedMode:hover {
+                background: rgb(182 182 204 / 8%);
+                border-image: linear-gradient(135deg, #8b5cf6, #06a3d7) 1;
+            }
+
+            .mode-icon {
+                font-size: 2rem;
+                margin-bottom: 10px;
+            }
+
+            .mode-option h4 {
+                color: var(--text-primary);
+                font-size: 1rem;
+                margin-bottom: 8px;
+            }
+
+            .mode-option p {
+                color: var(--text-secondary);
+                font-size: 0.85rem;
+                line-height: 1.4;
+            }
+
+            .welcome-advanced-btn {
+                background: var(--accent-color);
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                font-size: 0.9rem;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                text-transform: none;
+                letter-spacing: normal;
+                height: 44px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .welcome-advanced-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 8px 25px rgba(6, 163, 215, 0.3);
+            }
+
+            .welcome-advanced-btn.secondary {
+                background: transparent;
+                border: 1px solid var(--border-color);
+                color: var(--text-secondary);
+                font-size: 1.08rem;
+                font-weight: 500;
+                text-transform: none;
+                letter-spacing: normal;
+                height: 53px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 6px;
+                padding: 14px 29px;
+                min-width: 216px;
+            }
+
+            .welcome-advanced-btn.secondary:hover {
+                background: rgb(182 182 204 / 8%);
+                color: var(--text-primary);
+            }
+
+            .welcome-actions {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 15px;
+                margin-top: 20px;
+            }
+
+            .welcome-advanced-btn {
+                background: linear-gradient(135deg, #8b5cf6, #06a3d7);
+            }
+
+            /* Advanced Setup Overlay */
+            .advanced-setup-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                backdrop-filter: blur(10px);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            }
+
+            .advanced-setup-content {
+                background: var(--bg-primary);
+                border-radius: 16px;
+                padding: 30px;
+                max-width: 600px;
+                width: 90%;
+                max-height: 80vh;
+                overflow-y: auto;
+                border: 1px solid var(--border-color);
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                scrollbar-width: thin;
+                scrollbar-color: var(--accent-color) transparent;
+                user-select: text;
+                -webkit-user-select: text;
+                -moz-user-select: text;
+                -ms-user-select: text;
+            }
+
+            .advanced-setup-content::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            .advanced-setup-content::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            .advanced-setup-content::-webkit-scrollbar-thumb {
+                background: var(--accent-color);
+                border-radius: 3px;
+            }
+
+            .advanced-setup-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 25px;
+                padding-bottom: 15px;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            .advanced-setup-header h2 {
+                color: var(--text-primary);
+                font-size: 1.5rem;
+                margin: 0;
+            }
+
+            .close-btn {
+                background: none;
+                border: none;
+                color: var(--text-secondary);
+                font-size: 1.5rem;
+                cursor: pointer;
+                padding: 5px;
+                border-radius: 4px;
+                transition: all 0.2s ease;
+            }
+
+            .close-btn:hover {
+                background: rgb(182 182 204 / 8%);
+                color: var(--text-primary);
+            }
+
+            .setup-steps {
+                margin-bottom: 25px;
+            }
+
+            .step {
+                display: flex;
+                gap: 15px;
+                margin-bottom: 25px;
+                padding: 20px;
+                background: rgb(182 182 204 / 3%);
+                border-radius: 12px;
+                border: 1px solid var(--border-color);
+            }
+
+            .step-number {
+                background: var(--accent-color);
+                color: white;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                font-size: 0.9rem;
+                flex-shrink: 0;
+            }
+
+            .step-content h3 {
+                color: var(--text-primary);
+                font-size: 1.1rem;
+                margin-bottom: 10px;
+            }
+
+            .code-block {
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 8px;
+                padding: 12px;
+                margin: 8px 0;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+            }
+
+            .code-block code {
+                color: var(--accent-color);
+                font-family: 'Courier New', monospace;
+                font-size: 0.85rem;
+                font-weight: bold;
+                flex: 1;
+                word-break: break-all;
+            }
+
+            .copy-btn {
+                background: rgba(6, 163, 215, 0.2);
+                border: 1px solid rgba(6, 163, 215, 0.3);
+                color: #06a3d7;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 0.75rem;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+
+            .copy-btn:hover {
+                background: rgba(6, 163, 215, 0.3);
+                border-color: rgba(6, 163, 215, 0.5);
+            }
+
+            .step-content ol {
+                color: var(--text-secondary);
+                padding-left: 20px;
+                margin: 10px 0;
+            }
+
+            .step-content ol li {
+                margin-bottom: 8px;
+                line-height: 1.4;
+            }
+
+            .step-content ol code {
+                background: rgba(0, 0, 0, 0.3);
+                padding: 2px 6px;
+                border-radius: 4px;
+                color: var(--accent-color);
+                font-family: 'Courier New', monospace;
+                font-size: 0.8rem;
+                font-weight: bold;
+            }
+
+            .bot-config {
+                margin-top: 15px;
+            }
+
+            .shortcuts-overview {
+                margin: 25px 0;
+                padding: 20px;
+                background: rgb(182 182 204 / 3%);
+                border-radius: 12px;
+                border: 1px solid var(--border-color);
+            }
+
+            .shortcuts-overview h3 {
+                color: var(--text-primary);
+                font-size: 1.1rem;
+                margin-bottom: 15px;
+                text-align: center;
+            }
+
+            .shortcuts-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 10px;
+            }
+
+            .shortcut-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 12px;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 6px;
+                border: 1px solid var(--border-color);
+            }
+
+            .shortcut-item kbd {
+                background: var(--accent-color);
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-family: 'Courier New', monospace;
+                font-size: 0.8rem;
+                font-weight: bold;
+                min-width: 24px;
+                text-align: center;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            }
+
+            .shortcut-item span {
+                color: var(--text-secondary);
+                font-size: 0.85rem;
+            }
+
+            /* Inline links in advanced setup */
+            .advanced-setup-content a {
+                color: var(--accent-color);
+                text-decoration: none;
+                transition: color 0.2s ease;
+            }
+
+            .advanced-setup-content a:hover {
+                color: var(--accent-hover);
+                text-decoration: underline;
+            }
+
+            .advanced-setup-actions {
+                display: flex;
+                gap: 15px;
+                justify-content: center;
+                margin-top: 25px;
+                padding-top: 20px;
+                border-top: 1px solid var(--border-color);
             }
 
             .welcome-note {
@@ -2119,11 +2559,49 @@
                 text-align: center;
             }
 
+            .video-container {
+                position: relative;
+                display: inline-block;
+                width: 100%;
+            }
+
             .welcome-teaser-video {
                 width: 100%;
                 height: auto;
                 border-radius: var(--radius);
                 box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            }
+
+            .video-maximize-btn {
+                position: absolute;
+                bottom: 12px;
+                right: 12px;
+                background: rgba(0, 0, 0, 0.7);
+                border: none;
+                border-radius: 8px;
+                color: white;
+                cursor: pointer;
+                padding: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s ease;
+                backdrop-filter: blur(10px);
+                z-index: 10;
+            }
+
+            .video-maximize-btn:hover {
+                background: rgba(0, 0, 0, 0.9);
+                transform: scale(1.05);
+            }
+
+            .video-maximize-btn:active {
+                transform: scale(0.95);
+            }
+
+            .video-maximize-btn svg {
+                width: 20px;
+                height: 20px;
             }
 
             @keyframes fadeIn {
@@ -2154,13 +2632,29 @@
                 }
 
                 .feature-grid {
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 12px;
+                    grid-template-columns: 1fr;
+                    gap: 16px;
                     margin-bottom: 20px;
                 }
 
                 .feature-item {
-                    padding: 12px;
+                    padding: 16px;
+                }
+
+                .features-title {
+                    font-size: 1.3rem;
+                }
+
+                .feature-icon {
+                    font-size: 1.8rem;
+                }
+
+                .feature-item h3 {
+                    font-size: 1rem;
+                }
+
+                .feature-description {
+                    font-size: 0.85rem;
                 }
 
                 .welcome-api-section {
@@ -2242,7 +2736,7 @@
             }
 
             .welcome-attribution a {
-                color: #06a3d7;
+                color: var(--accent-color);
                 text-decoration: none;
                 transition: color 0.2s ease;
             }
@@ -2268,7 +2762,7 @@
             }
 
             .settings-attribution a {
-                color: #06a3d7;
+                color: var(--accent-color);
                 text-decoration: none;
                 transition: color 0.2s ease;
             }
@@ -2319,42 +2813,72 @@
                 </div>
                 
                 <div class="welcome-teaser-section">
-                    <video class="welcome-teaser-video" autoplay muted loop playsinline>
-                        <source src="diffusion_lab_teaser.mp4" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
+                    <div class="video-container">
+                        <video class="welcome-teaser-video" autoplay muted loop playsinline>
+                            <source src="diffusion_lab_teaser.mp4" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        <button class="video-maximize-btn" onclick="maximizeVideo()" title="Maximize video">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="welcome-features">
+                    <h2 class="features-title">Core Features</h2>
                     <div class="feature-grid">
-                        <div class="feature-item">
+                        <div class="feature-item primary">
                             <div class="feature-icon"><i class="fas fa-robot"></i></div>
-                            <h3>AI Stream Diffusion</h3>
+                            <h3>Live AI Generation</h3>
+                            <p class="feature-description">The world's first hosted StreamDiffusion platform. Ultra-low latency, subsecond response times, and GPU-free workflows. Multi-ControlNet, IPAdapter, and TensorRT acceleration built-in with 99% uptime reliability.</p>
                         </div>
                         <div class="feature-item">
                             <div class="feature-icon"><i class="fas fa-paper-plane"></i></div>
-                            <h3>Telegram Commands</h3>
+                            <h3>Remote Control</h3>
+                            <p class="feature-description">Control your entire setup from anywhere. Multiple people can send prompts and commands via Telegram bot to create, modify, and manage your art collaboratively in real-time.</p>
                         </div>
                         <div class="feature-item">
                             <div class="feature-icon"><i class="fas fa-tablet-alt"></i></div>
-                            <h3>Tablet Optimized</h3>
+                            <h3>Touch Perfection</h3>
+                            <p class="feature-description">Designed for touch. Intuitive gestures, fluid interactions, and perfect responsiveness on any device.</p>
                         </div>
                         <div class="feature-item">
                             <div class="feature-icon"><i class="fas fa-broadcast-tower"></i></div>
-                            <h3>OSC Integration</h3>
+                            <h3>Professional Control</h3>
+                            <p class="feature-description">Studio-grade precision control. Integrate with TouchOSC seamlessly for real-time performance.</p>
                         </div>
                         <div class="feature-item">
                             <div class="feature-icon"><i class="fas fa-image"></i></div>
-                            <h3>Media Backgrounds</h3>
+                            <h3>Brand Integration</h3>
+                            <p class="feature-description">Add your own brand elements and key visuals to create personalized fluid backgrounds. Bring your logos, graphics, and brand assets to life with dynamic fluid effects.</p>
                         </div>
                         <div class="feature-item">
                             <div class="feature-icon"><i class="fas fa-camera"></i></div>
-                            <h3>Camera Feed</h3>
+                            <h3>Webcam Interaction</h3>
+                            <p class="feature-description">Turn your webcam into an interactive canvas. See yourself become part of the art in real-time.</p>
                         </div>
                     </div>
                 </div>
                 
-                <div class="welcome-api-section">
+                <div class="welcome-mode-selector">
+                    <h3>Choose Your Setup</h3>
+                    <div class="mode-options">
+                        <div class="mode-option active" id="simpleMode">
+                            <div class="mode-icon">🚀</div>
+                            <h4>Simple Mode</h4>
+                            <p>Just add your API key and start creating immediately</p>
+                        </div>
+                        <div class="mode-option" id="advancedMode">
+                            <div class="mode-icon">⚙️</div>
+                            <h4>Advanced Setup</h4>
+                            <p>Full setup with Telegram bot and OSC integration</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="welcome-api-section" id="simpleApiSection">
                     <h3>🔑 Your API Key</h3>
                     
                     <div class="welcome-api-input">
@@ -2380,11 +2904,167 @@
                     <button id="welcomeStartButton" class="welcome-start-btn">
                         Start Creating
                     </button>
+                    <button id="advancedSetupButton" class="welcome-advanced-btn" onclick="showAdvancedSetup()">
+                        Advanced Setup
+                    </button>
                 </div>
                 
                 <div class="welcome-attribution">
                     Made with <span class="heart">❤️</span> by <a href="https://www.linkedin.com/in/simonfrubis/" target="_blank">Simon Frübis</a> using <a href="https://daydream.live/" target="_blank">Daydream.live</a><br>
                     <a href="https://github.com/smon1127/Diffusion-Lab" target="_blank"><i class="fab fa-github"></i> View on GitHub</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Setup Overlay -->
+        <div id="advancedSetupOverlay" class="advanced-setup-overlay" style="display: none;">
+            <div class="advanced-setup-content">
+                <div class="advanced-setup-header">
+                    <h2>⚙️ Advanced Setup</h2>
+                    <button class="close-btn" onclick="hideAdvancedSetup()">×</button>
+                </div>
+                
+                <div class="setup-steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3>Download & Install</h3>
+                            <div class="code-block">
+                                <code>git clone https://github.com/smon1127/Diffusion-Lab.git</code>
+                                <button class="copy-btn" onclick="copyToClipboard('git clone https://github.com/smon1127/Diffusion-Lab.git')">Copy</button>
+                            </div>
+                            <div class="code-block">
+                                <code>cd Diffusion-Lab && npm install</code>
+                                <button class="copy-btn" onclick="copyToClipboard('cd Diffusion-Lab && npm install')">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3>Setup Script Permissions</h3>
+                            <div class="code-block">
+                                <code>chmod +x start-diffusion-lab.sh</code>
+                                <button class="copy-btn" onclick="copyToClipboard('chmod +x start-diffusion-lab.sh')">Copy</button>
+                            </div>
+                            <div class="code-block">
+                                <code>./start-diffusion-lab.sh</code>
+                                <button class="copy-btn" onclick="copyToClipboard('./start-diffusion-lab.sh')">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3>Create Telegram Bot</h3>
+                            <ol>
+                                <li>Open <a href="https://t.me/BotFather" target="_blank">@BotFather</a> on Telegram</li>
+                                <li>Send <code>/newbot</code> command</li>
+                                <li>Choose a name for your bot</li>
+                                <li>Choose a username (must end with 'bot')</li>
+                                <li>Copy the bot token provided</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h3>Configure Your Bot</h3>
+                            <div class="bot-config">
+                                <input type="text" id="advancedTelegramToken" class="welcome-input" placeholder="Paste your bot token here..." />
+                                <div class="welcome-consent">
+                                    <input type="checkbox" id="advancedTelegramConsent" class="checkbox-input" checked>
+                                    <label for="advancedTelegramConsent" class="checkbox-label">Remember token</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h3>Setup TouchOSC</h3>
+                            <ol>
+                                <li>Download <a href="https://hexler.net/touchosc" target="_blank">TouchOSC</a> on your device</li>
+                                <li>Find your Mac's IP address: Hold <code>Option</code> and click the WiFi icon in the menu bar</li>
+                                <li>Open TouchOSC and tap the <strong>WiFi symbol</strong> in the top right</li>
+                                <li>Go to <strong>OSC</strong> → <strong>Add IP</strong> and enter your Mac's IP address</li>
+                                <li>Set <strong>Send Port</strong> to <code>8000</code></li>
+                                <li>Open the <code>MultiXY</code> sample from the TouchOSC library</li>
+                                <li>Use the XY pads to spawn fluid splats in real-time</li>
+                            </ol>
+                            <div class="code-block">
+                                <code>Default OSC Port: 8000</code>
+                                <button class="copy-btn" onclick="copyToClipboard('8000')">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="shortcuts-overview">
+                    <h3>🎹 Keyboard Shortcuts</h3>
+                    <div class="shortcuts-grid">
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>P</kbd>
+                            <span>Pause/Resume simulation</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>B</kbd>
+                            <span>Add random splat burst</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>C</kbd>
+                            <span>Toggle colorful mode</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>D</kbd>
+                            <span>Toggle debug mode</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>R</kbd>
+                            <span>Toggle video recording</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>X</kbd>
+                            <span>Reset all values</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>A</kbd>
+                            <span>Toggle animation</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>V</kbd>
+                            <span>Toggle velocity drawing</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>H</kbd>
+                            <span>Hide cursor & panel</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>O</kbd>
+                            <span>Toggle panel</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>Space</kbd>
+                            <span>Capture screenshot</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>Ctrl</kbd> + <kbd>1-6</kbd>
+                            <span>Load prompt presets</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="advanced-setup-actions">
+                    <button class="welcome-start-btn" onclick="saveAdvancedSetup()">
+                        Complete Setup
+                    </button>
+                    <button class="welcome-advanced-btn secondary" onclick="hideAdvancedSetup()">
+                        Back to Simple Mode
+                    </button>
                 </div>
             </div>
         </div>

@@ -6178,20 +6178,8 @@ async function startStream() {
                 toggleSettings();
             }
             
-            // Then scroll to API key input field
-            if (apiKeyInput) {
-                // Wait a bit for the settings panel to expand before scrolling
-                setTimeout(() => {
-                    apiKeyInput.scrollIntoView({ 
-                        behavior: 'smooth', 
-                        block: 'center' 
-                    });
-                    // Focus the input field after scrolling
-                    setTimeout(() => {
-                        apiKeyInput.focus();
-                    }, 500);
-                }, 300);
-            }
+            // Removed auto-scroll to API key input field
+            // Users can manually scroll to the API key section if needed
             
             // Update UI and return without throwing error
             updateStreamStatus('API key required', 'error');
@@ -9831,6 +9819,151 @@ function sendStoredTelegramTokenToServer() {
     }
 }
 
+// Video maximize function
+function maximizeVideo() {
+    const video = document.querySelector('.welcome-teaser-video');
+    if (video) {
+        if (video.requestFullscreen) {
+            video.requestFullscreen();
+        } else if (video.webkitRequestFullscreen) {
+            video.webkitRequestFullscreen();
+        } else if (video.msRequestFullscreen) {
+            video.msRequestFullscreen();
+        } else if (video.mozRequestFullScreen) {
+            video.mozRequestFullScreen();
+        }
+    }
+}
+
+// Advanced Setup Overlay Functions
+function showAdvancedSetup() {
+    const overlay = document.getElementById('advancedSetupOverlay');
+    const mainOverlay = document.getElementById('welcomeOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        // Hide main welcome overlay so fluids are visible
+        if (mainOverlay) {
+            mainOverlay.style.display = 'none';
+        }
+    }
+}
+
+function hideAdvancedSetup() {
+    const overlay = document.getElementById('advancedSetupOverlay');
+    const mainOverlay = document.getElementById('welcomeOverlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+        // Show main welcome overlay again
+        if (mainOverlay) {
+            mainOverlay.style.display = 'flex';
+        }
+    }
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        // Show feedback
+        const button = event.target;
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        button.style.background = 'rgba(34, 197, 94, 0.3)';
+        button.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+        button.style.color = '#22c55e';
+        
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.style.background = 'rgba(6, 163, 215, 0.2)';
+            button.style.borderColor = 'rgba(6, 163, 215, 0.3)';
+            button.style.color = '#06a3d7';
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy text: ', err);
+    });
+}
+
+function saveAdvancedSetup() {
+    const telegramToken = document.getElementById('advancedTelegramToken')?.value.trim();
+    const telegramConsent = document.getElementById('advancedTelegramConsent')?.checked;
+    
+    if (telegramToken && telegramConsent) {
+        // Save Telegram settings
+        const mainTelegramInput = document.getElementById('telegramTokenInput');
+        const mainTelegramConsent = document.getElementById('telegramKeyConsent');
+        
+        if (mainTelegramInput) {
+            mainTelegramInput.value = telegramToken;
+        }
+        if (mainTelegramConsent) {
+            mainTelegramConsent.checked = true;
+        }
+        
+        // Trigger validation
+        if (typeof validateTelegramBotToken === 'function') {
+            validateTelegramBotToken(telegramToken);
+        }
+    }
+    
+    // Close advanced setup and main welcome overlay
+    hideAdvancedSetup();
+    hideWelcomeOverlay();
+}
+
+// Update feature status indicators
+function updateFeatureStatuses() {
+    // Telegram status
+    const telegramStatus = document.getElementById('telegram-status');
+    const telegramStatusText = document.getElementById('telegram-status-text');
+    if (telegramStatus && telegramStatusText) {
+        const hasToken = document.getElementById('telegramTokenInput')?.value.trim();
+        if (hasToken) {
+            telegramStatus.className = 'status-indicator active';
+            telegramStatusText.textContent = 'Connected';
+        } else {
+            telegramStatus.className = 'status-indicator warning';
+            telegramStatusText.textContent = 'Connect Now';
+        }
+    }
+
+    // OSC status
+    const oscStatus = document.getElementById('osc-status');
+    const oscStatusText = document.getElementById('osc-status-text');
+    if (oscStatus && oscStatusText) {
+        if (config.DEBUG_MODE) {
+            oscStatus.className = 'status-indicator active';
+            oscStatusText.textContent = 'Enabled';
+        } else {
+            oscStatus.className = 'status-indicator';
+            oscStatusText.textContent = 'Enable';
+        }
+    }
+
+    // Media status
+    const mediaStatus = document.getElementById('media-status');
+    const mediaStatusText = document.getElementById('media-status-text');
+    if (mediaStatus && mediaStatusText) {
+        if (backgroundMedia.loaded) {
+            mediaStatus.className = 'status-indicator active';
+            mediaStatusText.textContent = 'Active';
+        } else {
+            mediaStatus.className = 'status-indicator';
+            mediaStatusText.textContent = 'Upload Media';
+        }
+    }
+
+    // Camera status
+    const cameraStatus = document.getElementById('camera-status');
+    const cameraStatusText = document.getElementById('camera-status-text');
+    if (cameraStatus && cameraStatusText) {
+        if (cameraState.isActive) {
+            cameraStatus.className = 'status-indicator active';
+            cameraStatusText.textContent = 'Live';
+        } else {
+            cameraStatus.className = 'status-indicator';
+            cameraStatusText.textContent = 'Start Camera';
+        }
+    }
+}
+
 // Welcome overlay functions
 function showWelcomeOverlay() {
     const overlay = document.getElementById('welcomeOverlay');
@@ -9885,13 +10018,6 @@ function showWelcomeOverlay() {
         }
         
         overlay.style.display = 'flex';
-        
-        // Focus on the API key input after a short delay (only if no saved key)
-        setTimeout(() => {
-            if (apiKeyInput && !savedApiKey) {
-                apiKeyInput.focus();
-            }
-        }, 500);
     }
 }
 
@@ -9946,6 +10072,9 @@ function initializeWelcomeOverlay() {
         // No API key saved and welcome not skipped, show welcome overlay
         showWelcomeOverlay();
     }
+    
+    // Initialize feature status indicators
+    updateFeatureStatuses();
     
     // Set up event listeners
     const startButton = document.getElementById('welcomeStartButton');
