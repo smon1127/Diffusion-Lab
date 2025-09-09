@@ -5986,6 +5986,8 @@ async function updateStreamParameters() {
         console.log('🔄 Updating stream parameters:', { prompt, negativePrompt });
         
         const params = {
+            pipeline: "live-video-to-video",
+            model_id: "streamdiffusion",
             params: {
                 model_id: "stabilityai/sd-turbo",
                 prompt: prompt,
