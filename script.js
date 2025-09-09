@@ -152,6 +152,10 @@ const commonParams = {
     // Debug Parameters
     DEBUG_MODE: false,
     
+    // Telegram Parameters
+    TELEGRAM_RECEIVE: true,
+    TELEGRAM_WAITLIST_INTERVAL: 1,
+    
     // OSC Multi-splat channels REMOVED - replaced by OSC velocity drawing system
     HIDE_CURSOR: false,
 };
@@ -1219,18 +1223,6 @@ function toggleDebug() {
 
   
   
-  function togglePromptPresets() {
-    const content = document.getElementById('promptPresetsContent');
-    const toggle = document.getElementById('promptPresetsIcon');
-    
-    if (content.classList.contains('expanded')) {
-        content.classList.remove('expanded');
-        toggle.textContent = '▶';
-    } else {
-        content.classList.add('expanded');
-        toggle.textContent = '▼';
-    }
-}
 
 function toggleNegativePrompt() {
     const content = document.getElementById('negativePromptContent');
@@ -1868,11 +1860,11 @@ function sendToServer(message) {
 // Prompt presets for keyboard shortcuts
 const PROMPT_PRESETS = [
     'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere',
-    'spectacular fireworks display, colorful explosions in night sky, bright sparks and trails, celebration atmosphere, dynamic motion, festive lighting',
-    'fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light',
-    'bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere',
-    'autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene',
-    'chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion'
+    'giant glowing jellyfish, slow graceful movement, neon blue and pink bioluminescence, flowing tendrils like silk, underwater ballet, dreamlike ocean atmosphere',
+    'evolving fractal jellyfish, recursive growth, rainbow light trails, kaleidoscopic motion',
+    'northern lights over snow-capped mountains, aurora borealis, starry night sky, ethereal green and purple lights, pristine wilderness',
+    'floating islands with waterfalls, magical gardens, ethereal mist, fantasy landscape, soft pastel colors, Studio Ghibli style',
+    'bioluminescent mushrooms, glowing forest at night, magical blue and green lights, fairy tale atmosphere, mystical fog'
 ];
 
 function setPrompt(promptText) {
@@ -5443,23 +5435,23 @@ window.addEventListener('keydown', e => {
         }
         if (e.code === 'Digit2') {
             e.preventDefault();
-            setPromptPreset(1); // Fireworks
+            setPromptPreset(1); // Jellyfish Ballet
         }
         if (e.code === 'Digit3') {
             e.preventDefault();
-            setPromptPreset(2); // Cotton candy
+            setPromptPreset(2); // Fractal Jellyfish
         }
         if (e.code === 'Digit4') {
             e.preventDefault();
-            setPromptPreset(3); // Bouncing balls
+            setPromptPreset(3); // Aurora Mountains
         }
         if (e.code === 'Digit5') {
             e.preventDefault();
-            setPromptPreset(4); // Forest leaves
+            setPromptPreset(4); // Floating Islands
         }
         if (e.code === 'Digit6') {
             e.preventDefault();
-            setPromptPreset(5); // Chrome blob
+            setPromptPreset(5); // Magic Forest
         }
     }
 });
@@ -9505,6 +9497,11 @@ async function validateSavedStream(savedStream) {
             // Check if stream is in a valid state (not ended or failed)
             const validStates = ['created', 'running', 'ready'];
             return validStates.includes(streamData.status);
+        } else if (response.status === 404) {
+            // Stream no longer exists on server - clear saved state
+            console.log(`Stream ${savedStream.streamId} no longer exists (404), clearing saved state`);
+            clearStreamState();
+            return false;
         }
         
         return false;

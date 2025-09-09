@@ -323,6 +323,7 @@
                 background: rgba(255, 255, 255, 0.05);
             }
             
+            
             .toggle-icon {
                 transition: var(--transition);
                 font-size: 12px;
@@ -3205,19 +3206,16 @@
                     
                     <!-- Prompt Presets Section -->
                     <div class="advanced-section">
-                        <div class="advanced-toggle" onclick="togglePromptPresets()" ontouchstart="togglePromptPresets(); event.preventDefault();">
-                            <div class="toggle-icon" id="promptPresetsIcon">▶</div>
+                        <div class="control-label">
                             <span>Prompt Presets</span>
                         </div>
-                        <div class="advanced-content" id="promptPresetsContent">
-                            <div class="prompt-preset-grid">
-                                <button class="preset-btn active" onclick="setPrompt('blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere')" ontouchstart="setPrompt('blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere'); event.preventDefault();">Blooming flower</button>
-                                <button class="preset-btn" onclick="setPrompt('spectacular fireworks display, colorful explosions in night sky, bright sparks and trails, celebration atmosphere, dynamic motion, festive lighting')" ontouchstart="setPrompt('spectacular fireworks display, colorful explosions in night sky, bright sparks and trails, celebration atmosphere, dynamic motion, festive lighting'); event.preventDefault();">Fireworks</button>
-                                <button class="preset-btn" onclick="setPrompt('fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light')" ontouchstart="setPrompt('fluffy cotton candy texture, pastel pink and blue swirls, soft dreamy atmosphere, sweet confection, carnival vibes, whimsical and light'); event.preventDefault();">Cotton candy</button>
-                                <button class="preset-btn" onclick="setPrompt('bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere')" ontouchstart="setPrompt('bouncing colorful balls in motion, dynamic movement, playful energy, vibrant spheres, kinetic art, fun and energetic atmosphere'); event.preventDefault();">Bouncing balls</button>
-                                <button class="preset-btn" onclick="setPrompt('autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene')" ontouchstart="setPrompt('autumn forest leaves falling, golden and red foliage, gentle breeze, natural beauty, seasonal colors, peaceful woodland scene'); event.preventDefault();">Forest leaves</button>
-                                <button class="preset-btn" onclick="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion')" ontouchstart="setPrompt('chrome liquid metal waves, reflective surface, fluid dynamics, metallic sheen, futuristic aesthetic, smooth flowing motion'); event.preventDefault();">Chrome blob</button>
-                            </div>
+                        <div class="prompt-preset-grid">
+                            <button class="preset-btn active" onclick="setPrompt('blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere')" ontouchstart="setPrompt('blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere'); event.preventDefault();">Blooming flower</button>
+                            <button class="preset-btn" onclick="setPrompt('giant glowing jellyfish, slow graceful movement, neon blue and pink bioluminescence, flowing tendrils like silk, underwater ballet, dreamlike ocean atmosphere')" ontouchstart="setPrompt('giant glowing jellyfish, slow graceful movement, neon blue and pink bioluminescence, flowing tendrils like silk, underwater ballet, dreamlike ocean atmosphere'); event.preventDefault();">Jellyfish Ballet</button>
+                            <button class="preset-btn" onclick="setPrompt('evolving fractal jellyfish, recursive growth, rainbow light trails, kaleidoscopic motion')" ontouchstart="setPrompt('evolving fractal jellyfish, recursive growth, rainbow light trails, kaleidoscopic motion'); event.preventDefault();">Fractal Jellyfish</button>
+                            <button class="preset-btn" onclick="setPrompt('northern lights over snow-capped mountains, aurora borealis, starry night sky, ethereal green and purple lights, pristine wilderness')" ontouchstart="setPrompt('northern lights over snow-capped mountains, aurora borealis, starry night sky, ethereal green and purple lights, pristine wilderness'); event.preventDefault();">Aurora Mountains</button>
+                            <button class="preset-btn" onclick="setPrompt('floating islands with waterfalls, magical gardens, ethereal mist, fantasy landscape, soft pastel colors, Studio Ghibli style')" ontouchstart="setPrompt('floating islands with waterfalls, magical gardens, ethereal mist, fantasy landscape, soft pastel colors, Studio Ghibli style'); event.preventDefault();">Floating Islands</button>
+                            <button class="preset-btn" onclick="setPrompt('bioluminescent mushrooms, glowing forest at night, magical blue and green lights, fairy tale atmosphere, mystical fog')" ontouchstart="setPrompt('bioluminescent mushrooms, glowing forest at night, magical blue and green lights, fairy tale atmosphere, mystical fog'); event.preventDefault();">Magic Forest</button>
                         </div>
                     </div>
                     
@@ -4080,19 +4078,19 @@
                                     <span>Ctrl+1:</span> Blooming Flower
                                 </div>
                                 <div class="shortcut-item">
-                                    <span>Ctrl+2:</span> Fireworks
+                                    <span>Ctrl+2:</span> Jellyfish Ballet
                                 </div>
                                 <div class="shortcut-item">
-                                    <span>Ctrl+3:</span> Cotton Candy
+                                    <span>Ctrl+3:</span> Fractal Jellyfish
                                 </div>
                                 <div class="shortcut-item">
-                                    <span>Ctrl+4:</span> Bouncing Balls
+                                    <span>Ctrl+4:</span> Aurora Mountains
                                 </div>
                                 <div class="shortcut-item">
-                                    <span>Ctrl+5:</span> Forest Leaves
+                                    <span>Ctrl+5:</span> Floating Islands
                                 </div>
                                 <div class="shortcut-item">
-                                    <span>Ctrl+6:</span> Chrome Blob
+                                    <span>Ctrl+6:</span> Magic Forest
                                 </div>
                             </div>
                             
