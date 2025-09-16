@@ -428,6 +428,13 @@ function startGUI () {
     if (isMobile()) {
         config.DYE_RESOLUTION = 512; // Default to medium quality on mobile
         config.BLOOM_ITERATIONS = 4;  // Reduce bloom iterations for mobile
+        
+        // Collapse control panel by default on mobile for better UX
+        const panel = document.getElementById('controlPanel');
+        if (panel) {
+            panel.classList.add('collapsed');
+            console.log('🔍 MOBILE DEBUG: Control panel collapsed by default');
+        }
     }
 }
 
