@@ -1905,11 +1905,32 @@
                 display: none; /* Safari and Chrome */
             }
 
-            .welcome-header h1 {
-                color: var(--text-primary);
+            .welcome-branding {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                margin-bottom: 1.5rem;
+            }
+            
+            .welcome-brand-logo {
+                height: 15px;
+                opacity: 0.9;
+                filter: brightness(1.1);
+                transition: opacity 0.3s ease;
+            }
+            
+            .welcome-brand-logo:hover {
+                opacity: 1;
+            }
+            
+            .welcome-title {
                 font-size: 2rem;
-                margin-bottom: 8px;
+                margin: 0;
                 color: var(--accent-color);
+                font-weight: 700;
+                letter-spacing: -0.02em;
             }
 
             .welcome-subtitle {
@@ -2154,6 +2175,15 @@
             .welcome-consent .checkbox-label {
                 margin: 0;
                 align-self: center;
+            }
+            
+            .token-input-extended {
+                width: 150% !important;
+                max-width: none;
+            }
+            
+            .welcome-consent.token-left-align {
+                justify-content: flex-start;
             }
 
             .welcome-start-btn {
@@ -2638,7 +2668,16 @@
                     margin: 10px;
                 }
 
-                .welcome-header h1 {
+                .welcome-branding {
+                    gap: 6px;
+                    margin-bottom: 1rem;
+                }
+                
+                .welcome-brand-logo {
+                    height: 12px;
+                }
+                
+                .welcome-title {
                     font-size: 1.8rem;
                 }
 
@@ -2843,7 +2882,10 @@
         <div id="welcomeOverlay" class="welcome-overlay" style="display: none;">
             <div class="welcome-content">
                 <div class="welcome-header">
-                    <h1>🌊 Diffusion Lab</h1>
+                    <div class="welcome-branding">
+                        <img src="daydream_logo.svg" alt="Daydream" class="welcome-brand-logo">
+                        <h1 class="welcome-title">🌊 Diffusion Lab</h1>
+                    </div>
                     <p class="welcome-subtitle">Watch your creations come alive as AI transforms fluid simulations, camera stream, videos or audio into mesmerizing generative art in real-time</p>
                 </div>
                 
@@ -2925,10 +2967,7 @@
                     </div>
                     
                     <div class="api-links">
-                        <a href="https://discord.com/channels/1368975848123666553/1399823418240663592/1410359887950516224" target="_blank" class="api-link">
-                            💬 Get Passcode from Discord
-                        </a>
-                        <a href="https://app.daydream.live/StreamDiffusionTD/api-key" target="_blank" class="api-link">
+                        <a href="https://app.daydream.live/dashboard/api-keys" target="_blank" class="api-link">
                             🔗 Get API Key
                         </a>
                     </div>
@@ -2945,6 +2984,11 @@
                 </div>
                 
                 <div class="welcome-attribution">
+                    <div style="margin-bottom: 8px; text-align: center;">
+                        <a href="https://daydream.live/" target="_blank">
+                            <img src="daydream_logo.svg" alt="Daydream" style="height: 10px; opacity: 0.8;">
+                        </a>
+                    </div>
                     Made with <span class="heart">❤️</span> by <a href="https://www.linkedin.com/in/simonfrubis/" target="_blank">Simon Frübis</a> using <a href="https://daydream.live/" target="_blank">Daydream.live</a><br>
                     <a href="https://github.com/smon1127/Diffusion-Lab" target="_blank"><i class="fab fa-github"></i> View on GitHub</a>
                 </div>
@@ -3009,8 +3053,8 @@
                         <div class="step-content">
                             <h3>Configure Your Bot</h3>
                             <div class="bot-config">
-                                <input type="text" id="advancedTelegramToken" class="welcome-input" placeholder="Paste your bot token here..." />
-                                <div class="welcome-consent">
+                                <input type="password" id="advancedTelegramToken" class="welcome-input token-input-extended" placeholder="Paste your bot token here..." />
+                                <div class="welcome-consent token-left-align">
                                     <input type="checkbox" id="advancedTelegramConsent" class="checkbox-input" checked>
                                     <label for="advancedTelegramConsent" class="checkbox-label">Remember token</label>
                                 </div>
@@ -3127,6 +3171,14 @@
                     <i class="fas fa-cloud"></i> Daydream Stream:
                 </div>
                 <div id="daydreamMessages" style="max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px; border-left: 3px solid #8b5cf6; scrollbar-width: none; -ms-overflow-style: none;"></div>
+            </div>
+            
+            <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.2); text-align: center;">
+                <div>
+                    <a href="https://daydream.live/" target="_blank" style="text-decoration: none;">
+                        <img src="daydream_logo.svg" alt="Daydream" style="height: 8px; opacity: 0.7;">
+                    </a>
+                </div>
             </div>
         </div>
 
@@ -3978,12 +4030,9 @@
                                 <span>API Key</span>
                             </div>
                             <div class="api-instructions" id="apiInstructions" style="display: none;">
-                                <p class="api-instructions-text">To use AI features: First get the passcode from Discord, then get your API key:</p>
+                                <p class="api-instructions-text">To use AI features, get your API key:</p>
                                 <div class="api-instructions-links">
-                                    <a href="https://discord.com/channels/1368975848123666553/1399823418240663592/1410359887950516224" target="_blank" class="api-instruction-link">
-                                        💬 Get Passcode from Discord
-                                    </a>
-                                    <a href="https://app.daydream.live/StreamDiffusionTD/api-key" target="_blank" class="api-instruction-link">
+                                    <a href="https://app.daydream.live/dashboard/api-keys" target="_blank" class="api-instruction-link">
                                         🔗 Get API Key
                                     </a>
                                 </div>
@@ -4131,6 +4180,11 @@
                             </div>
                             
                             <div class="settings-attribution">
+                                <div style="margin-bottom: 8px; text-align: center;">
+                                    <a href="https://daydream.live/" target="_blank">
+                                        <img src="daydream_logo.svg" alt="Daydream" style="height: 10px; opacity: 0.8;">
+                                    </a>
+                                </div>
                                 Made with <span class="heart">❤️</span> by <a href="https://www.linkedin.com/in/simonfrubis/" target="_blank">Simon Frübis</a> using <a href="https://daydream.live/" target="_blank">Daydream.live</a><br>
                                 <a href="https://github.com/smon1127/Diffusion-Lab" target="_blank"><i class="fab fa-github"></i> View on GitHub</a>
                             </div>
