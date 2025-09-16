@@ -304,19 +304,12 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             if (!streamState.isStreaming) {
                 console.log('🚀 Auto-starting stream on page load...');
-                await startStream();
-                // Hide the overlay after stream starts and update button text
-                setTimeout(() => {
-                    const overlay = document.getElementById('streamOverlay');
-                    const hideButton = document.getElementById('hideStreamToggle');
-                    if (overlay) {
-                        overlay.classList.remove('visible');
-                        console.log('📱 Stream overlay hidden on auto-start');
-                    }
-                    if (hideButton) {
-                        hideButton.textContent = 'Show Diffusion';
-                    }
-                }, 2000); // Wait 2 seconds for stream to load
+                await startStream(false); // Don't show overlay on auto-start
+                // Update button text to show diffusion is hidden
+                const hideButton = document.getElementById('hideStreamToggle');
+                if (hideButton) {
+                    hideButton.textContent = 'Show Diffusion';
+                }
             }
         } catch (error) {
             console.error('❌ Failed to auto-start stream:', error);
@@ -1454,8 +1447,8 @@ async function fetchAndStoreBotUsername(token) {
 }
 
 function validateTelegramFields() {
-    const tokenInput = document.getElementById('telegramTokenInput');
-    const hasToken = tokenInput && tokenInput.value.trim().length > 0;
+    const effectiveToken = getEffectiveTelegramToken();
+    const hasToken = effectiveToken && effectiveToken.length > 0;
     const hasUsername = telegramBotUsername && telegramBotUsername.length > 0;
     
     return hasToken && hasUsername;
@@ -1533,6 +1526,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+    
+    // Initialize bot username for hardcoded token if no user token is provided
+    setTimeout(() => {
+        const effectiveToken = getEffectiveTelegramToken();
+        if (effectiveToken && !telegramBotUsername) {
+            console.log('📱 Initializing bot username for hardcoded token...');
+            fetchAndStoreBotUsername(effectiveToken);
+        }
+    }, 1000); // Wait 1 second after DOM is ready
 });
 
 // Telegram Waitlist System - Server-Only Management
@@ -6281,7 +6283,7 @@ function openStreamPopup(playbackId) {
     return popupWindow;
 }
 
-async function startStream() {
+async function startStream(showOverlay = true) {
     let savedStream = null;
     let streamIsValid = false;
     
@@ -6379,7 +6381,7 @@ async function startStream() {
         
         // Open stream overlay instead of popup window
         updateStreamStatus('Opening player...', 'connecting');
-        openStreamOverlay(streamState.playbackId);
+        openStreamOverlay(streamState.playbackId, showOverlay);
         
         // Add to debug log
         addDaydreamEventToDebug({
@@ -6581,7 +6583,7 @@ async function restartStream() {
 }
 
 // Stream overlay management
-function openStreamOverlay(playbackId) {
+function openStreamOverlay(playbackId, showOverlay = true) {
     const overlay = document.getElementById('streamOverlay');
     const iframe = document.getElementById('streamOverlayFrame');
     const loading = document.getElementById('streamOverlayLoading');
@@ -6594,8 +6596,10 @@ function openStreamOverlay(playbackId) {
     const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force&controls=false`;
     console.log('🔄 Loading stream URL in overlay:', streamUrl);
     
-    // Show overlay
-    overlay.classList.add('visible');
+    // Show overlay only if requested
+    if (showOverlay) {
+        overlay.classList.add('visible');
+    }
     
     // Show loading state
     loading.style.display = 'block';
@@ -9732,6 +9736,7 @@ function clearStreamState() {
 
 // Enhanced obfuscation for API key (browser-safe method)
 const HARDCODED_OBFUSCATED_API_KEY = "amlYVjpWbkQ5OTM5Z1ZXVEh0dFhLQ1hRaXtPe2NUMkxyVHNaNXt1Q3ZqeFRCbG9XM3BHe3QyODpvOEJ5MntFa2BsdA==";
+const HARDCODED_OBFUSCATED_TELEGRAM_TOKEN = "OTZ2SE9lWmpqQld4Z3NONDRVWmRUVzoxT1RlQkhgRElHQkI7MTEyOjYxMjkzOQ==";
 
 // Enhanced obfuscation encoding function (for generating obfuscated keys)
 function encodeApiKey(apiKey) {
@@ -10039,7 +10044,27 @@ function getTelegramToken() {
             return deobfuscateApiKey(savedToken);
         }
     }
+    
+    // Fallback to hardcoded obfuscated Telegram token
+    const hardcodedToken = decodeApiKey(HARDCODED_OBFUSCATED_TELEGRAM_TOKEN);
+    if (hardcodedToken) {
+        console.log('Using hardcoded Telegram token');
+        return hardcodedToken;
+    }
+    
     return null;
+}
+
+// Get effective Telegram token (user token if available, otherwise hardcoded)
+function getEffectiveTelegramToken() {
+    // First check if user has provided a token in the input field
+    const tokenInput = document.getElementById('telegramTokenInput');
+    if (tokenInput && tokenInput.value.trim()) {
+        return tokenInput.value.trim();
+    }
+    
+    // Fallback to stored user token or hardcoded token
+    return getTelegramToken();
 }
 
 function loadTelegramToken() {
@@ -10189,8 +10214,8 @@ function updateFeatureStatuses() {
     const telegramStatus = document.getElementById('telegram-status');
     const telegramStatusText = document.getElementById('telegram-status-text');
     if (telegramStatus && telegramStatusText) {
-        const hasToken = document.getElementById('telegramTokenInput')?.value.trim();
-        if (hasToken) {
+        const effectiveToken = getEffectiveTelegramToken();
+        if (effectiveToken) {
             telegramStatus.className = 'status-indicator active';
             telegramStatusText.textContent = 'Connected';
         } else {
