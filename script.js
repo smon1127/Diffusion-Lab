@@ -2166,7 +2166,7 @@ async function fetchDaydreamStreamStatus() {
     if (!streamState.streamId || !config.DEBUG_MODE) return null;
     
     try {
-        const apiKey = document.getElementById('apiKeyInput').value;
+        const apiKey = getApiKey();
         if (!apiKey) return null;
         
         const response = await fetch(`https://daydream.live/api/streams/${streamState.streamId}/status`, {
@@ -5936,7 +5936,7 @@ function showShareFeedback(button, message = 'Copied!') {
 
 
 async function createDaydreamStream() {
-    const apiKey = document.getElementById('apiKeyInput').value;
+    const apiKey = getApiKey();
     if (!apiKey) {
         throw new Error('API key is required');
     }
@@ -5990,7 +5990,7 @@ async function updateStreamParameters() {
     streamState.isUpdatingParameters = true;
     
     try {
-        const apiKey = document.getElementById('apiKeyInput').value;
+        const apiKey = getApiKey();
         const prompt = document.getElementById('promptInput').value;
         const negativePrompt = document.getElementById('negativePromptInput').value;
         
@@ -6254,7 +6254,7 @@ async function startStream() {
         });
         
         // Validate API key
-        const apiKey = document.getElementById('apiKeyInput').value.trim();
+        const apiKey = getApiKey();
         if (!apiKey) {
             // First, ensure settings panel is open
             const settingsContent = document.getElementById('settingsContent');
@@ -9410,7 +9410,7 @@ async function validateStreamState() {
     }
     
     try {
-        const apiKey = document.getElementById('apiKeyInput').value;
+        const apiKey = getApiKey();
         if (!apiKey) {
             console.warn('No API key found for stream validation');
             return false;
@@ -9673,7 +9673,48 @@ function clearStreamState() {
     localStorage.removeItem(STORAGE_KEYS.STREAM_STATE);
 }
 
-// Simple obfuscation for API key (not cryptographically secure, just basic protection)
+// Enhanced obfuscation for API key (browser-safe method)
+const HARDCODED_OBFUSCATED_API_KEY = "amlYVjpWbkQ5OTM5Z1ZXVEh0dFhLQ1hRaXtPe2NUMkxyVHNaNXt1Q3ZqeFRCbG9XM3BHe3QyODpvOEJ5MntFa2BsdA==";
+
+// Enhanced obfuscation encoding function (for generating obfuscated keys)
+function encodeApiKey(apiKey) {
+    // Simple but effective multi-layer obfuscation
+    // Layer 1: Reverse the string
+    let encoded = apiKey.split('').reverse().join('');
+    
+    // Layer 2: Character code shift (safe range)
+    encoded = encoded.split('').map(char => {
+        let code = char.charCodeAt(0);
+        // Shift by 1 to stay in safe ASCII range
+        return String.fromCharCode(code + 1);
+    }).join('');
+    
+    // Layer 3: Base64 encode
+    return btoa(encoded);
+}
+
+// Enhanced obfuscation decoding function
+function decodeApiKey(obfuscatedKey) {
+    try {
+        // Layer 3: Base64 decode
+        let decoded = atob(obfuscatedKey);
+        
+        // Layer 2: Character code shift (reverse)
+        decoded = decoded.split('').map(char => {
+            let code = char.charCodeAt(0);
+            // Reverse the shift
+            return String.fromCharCode(code - 1);
+        }).join('');
+        
+        // Layer 1: Reverse the string
+        return decoded.split('').reverse().join('');
+    } catch (error) {
+        console.error('Failed to decode API key:', error);
+        return null;
+    }
+}
+
+// Simple obfuscation for localStorage (keeping for backward compatibility)
 function obfuscateApiKey(key) {
     return btoa(key.split('').reverse().join(''));
 }
@@ -9843,6 +9884,14 @@ function getApiKey() {
             return deobfuscateApiKey(savedKey);
         }
     }
+    
+    // Fallback to hardcoded obfuscated API key
+    const hardcodedKey = decodeApiKey(HARDCODED_OBFUSCATED_API_KEY);
+    if (hardcodedKey) {
+        console.log('Using hardcoded API key');
+        return hardcodedKey;
+    }
+    
     return null;
 }
 

@@ -48,3 +48,6 @@ jspm_packages/
 
 # Yarn Integrity file
 .yarn-integrity
+
+# API key generation utility (contains sensitive operations)
+generate-obfuscated-key.js

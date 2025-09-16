@@ -2036,6 +2036,7 @@
                 padding: 20px;
                 margin: 20px 0;
                 border: 1px solid var(--border-color);
+                display: none; /* Hidden - API key is now hardcoded */
             }
 
             .welcome-api-section h3 {
@@ -2945,7 +2946,7 @@
                         <div class="mode-option active" id="simpleMode">
                             <div class="mode-icon">🚀</div>
                             <h4>Simple Mode</h4>
-                            <p>Just add your API key and start creating immediately</p>
+                            <p>Start creating immediately with a default API key</p>
                         </div>
                         <div class="mode-option" id="advancedMode">
                             <div class="mode-icon">⚙️</div>
@@ -2974,7 +2975,7 @@
                 </div>
                 
                 <div class="welcome-actions">
-                    <p class="welcome-note">You can also start without an API key and add it later in settings</p>
+                    <p class="welcome-note">You can override the default API key in settings if needed</p>
                     <button id="welcomeStartButton" class="welcome-start-btn">
                         Start Creating
                     </button>
