@@ -298,6 +298,31 @@ if (!ext.supportLinearFiltering) {
 document.addEventListener('DOMContentLoaded', () => {
     startGUI();
     initializeCursorIndicator();
+    
+    // Auto-start stream and hide overlay initially
+    setTimeout(async () => {
+        try {
+            if (!streamState.isStreaming) {
+                console.log('🚀 Auto-starting stream on page load...');
+                await startStream();
+                // Hide the overlay after stream starts and update button text
+                setTimeout(() => {
+                    const overlay = document.getElementById('streamOverlay');
+                    const hideButton = document.getElementById('hideStreamToggle');
+                    if (overlay) {
+                        overlay.classList.remove('visible');
+                        console.log('📱 Stream overlay hidden on auto-start');
+                    }
+                    if (hideButton) {
+                        hideButton.textContent = 'Show Diffusion';
+                    }
+                }, 2000); // Wait 2 seconds for stream to load
+            }
+        } catch (error) {
+            console.error('❌ Failed to auto-start stream:', error);
+        }
+    }, 1000); // Wait 1 second for UI to initialize
+    
     // Start idle animation immediately on page load
     setTimeout(() => {
         if (Date.now() - lastActivityTime >= IDLE_TIMEOUT) {
@@ -900,6 +925,21 @@ function safeToggleStream(event) {
     }
 }
 
+function safeRestartStream(event) {
+    try {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (isMobile()) {
+            console.log('🔍 MOBILE DEBUG: Stream restart called');
+        }
+        restartStream();
+    } catch (error) {
+        console.error('Error in safeRestartStream:', error);
+    }
+}
+
 function safeToggleNegativePrompt(event) {
     try {
         if (event) {
@@ -948,6 +988,7 @@ function safeToggleAudioBlob(event) {
 // Ensure global availability of safe functions for mobile
 window.safeTogglePanel = safeTogglePanel;
 window.safeToggleStream = safeToggleStream;
+window.safeRestartStream = safeRestartStream;
 window.safeToggleNegativePrompt = safeToggleNegativePrompt;
 window.safeToggleFluidDrawing = safeToggleFluidDrawing;
 window.safeToggleAudioBlob = safeToggleAudioBlob;
@@ -958,6 +999,7 @@ window.toggleDebug = toggleDebug;
 // Ensure original functions are globally available as fallback (deferred)
 function ensureGlobalFunctions() {
     if (typeof toggleStream !== 'undefined') window.toggleStream = toggleStream;
+    if (typeof restartStream !== 'undefined') window.restartStream = restartStream;
     if (typeof toggleNegativePrompt !== 'undefined') window.toggleNegativePrompt = toggleNegativePrompt;
     if (typeof toggleFluidDrawing !== 'undefined') window.toggleFluidDrawing = toggleFluidDrawing;
     if (typeof toggleAudioBlob !== 'undefined') window.toggleAudioBlob = toggleAudioBlob;
@@ -5824,11 +5866,8 @@ function updateStreamStatus(status, className = '') {
 }
 
 function updateStreamButton(isStreaming) {
-    const button = document.getElementById('streamButton');
-    if (button) {
-        button.textContent = isStreaming ? 'Stop Stream' : 'Start Stream';
-        button.className = isStreaming ? 'modern-button streaming' : 'modern-button';
-    }
+    // The main button is now the hide/show button, no longer the stream toggle
+    const hideButton = document.getElementById('hideStreamToggle');
     
     // Show/hide stream controls row and opacity based on whether we have a valid stream
     const streamControlsRow = document.getElementById('streamControlsRow');
@@ -5844,12 +5883,14 @@ function updateStreamButton(isStreaming) {
         opacityContainer.style.display = hasValidStream ? 'block' : 'none';
     }
     
-    // Reset hide button state when stream stops
-    if (!hasValidStream) {
-        const hideIcon = document.getElementById('hideStreamIcon');
-        const hideTooltip = document.getElementById('hideStreamTooltip');
-        if (hideIcon) hideIcon.className = 'fas fa-eye';
-        if (hideTooltip) hideTooltip.textContent = 'Hide Stream';
+    // Update hide button text based on overlay visibility
+    if (hideButton && hasValidStream) {
+        const overlay = document.getElementById('streamOverlay');
+        const isVisible = overlay && overlay.classList.contains('visible');
+        hideButton.textContent = isVisible ? 'Hide Diffusion' : 'Show Diffusion';
+    } else if (hideButton) {
+        // When no valid stream, show default text
+        hideButton.textContent = 'Show Diffusion';
     }
 }
 
@@ -6520,6 +6561,25 @@ function toggleStream() {
     }
 }
 
+async function restartStream() {
+    console.log('🔄 Restarting stream...');
+    
+    if (streamState.isStreaming) {
+        console.log('🛑 Stopping current stream...');
+        await stopStream();
+        
+        // Wait a moment before restarting
+        setTimeout(async () => {
+            console.log('🚀 Starting new stream...');
+            await startStream();
+        }, 1000);
+    } else {
+        // If not streaming, just start it
+        console.log('🚀 Starting stream...');
+        await startStream();
+    }
+}
+
 // Stream overlay management
 function openStreamOverlay(playbackId) {
     const overlay = document.getElementById('streamOverlay');
@@ -6625,8 +6685,7 @@ function popOutStream() {
 
 function toggleStreamVisibility() {
     const overlay = document.getElementById('streamOverlay');
-    const hideIcon = document.getElementById('hideStreamIcon');
-    const hideTooltip = document.getElementById('hideStreamTooltip');
+    const hideButton = document.getElementById('hideStreamToggle');
     
     if (!overlay) return;
     
@@ -6634,12 +6693,10 @@ function toggleStreamVisibility() {
     
     if (isVisible) {
         overlay.classList.remove('visible');
-        if (hideIcon) hideIcon.className = 'fas fa-eye-slash';
-        if (hideTooltip) hideTooltip.textContent = 'Show Stream';
+        if (hideButton) hideButton.textContent = 'Show Diffusion';
     } else {
         overlay.classList.add('visible');
-        if (hideIcon) hideIcon.className = 'fas fa-eye';
-        if (hideTooltip) hideTooltip.textContent = 'Hide Stream';
+        if (hideButton) hideButton.textContent = 'Hide Diffusion';
         
         // Ensure iframe is still loaded when showing again
         const iframe = document.getElementById('streamOverlayFrame');
