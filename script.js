@@ -125,8 +125,12 @@ const commonParams = {
     CONTROLNET_CANNY_SCALE: 0.00, // Balanced preset default
     CONTROLNET_DEPTH_SCALE: 0.21, // Balanced preset default
     CONTROLNET_COLOR_SCALE: 0.26, // Balanced preset default
-    GUIDANCE_SCALE: 7.5,
-    DELTA: 0.5,
+    GUIDANCE_SCALE: 1,  // SDXL uses lower guidance scale
+    DELTA: 0.7,
+    // SDXL parameters
+    WIDTH: 512,
+    HEIGHT: 512,
+    T_INDEX: 12,
     // Denoise controls
     DENOISE_X: 3,
     DENOISE_Y: 6,
@@ -158,6 +162,12 @@ const commonParams = {
     
     // OSC Multi-splat channels REMOVED - replaced by OSC velocity drawing system
     HIDE_CURSOR: false,
+    
+    // Style Transfer
+    STYLE_TRANSFER_ENABLED: true,
+    STYLE_STRENGTH: 0.5,
+    STYLE_WEIGHT_TYPE: 'linear',
+    STYLE_IMAGE_URL: null,
 };
 
 // Initialize config based on device type with common parameters
@@ -1296,6 +1306,57 @@ function toggleTelegramReceive() {
     saveTelegramSettings();
     
     console.log(`📱 Telegram receive ${config.TELEGRAM_RECEIVE ? 'enabled' : 'disabled'}`);
+}
+
+// Style Transfer Functions
+function toggleStyleTransfer() {
+    config.STYLE_TRANSFER_ENABLED = !config.STYLE_TRANSFER_ENABLED;
+    updateToggle('styleTransferToggle', config.STYLE_TRANSFER_ENABLED);
+    saveConfig();
+}
+
+function updateStyleWeightType() {
+    const select = document.getElementById('styleWeightType');
+    config.STYLE_WEIGHT_TYPE = select.value;
+    saveConfig();
+}
+
+function handleStyleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Validate file type
+    if (!file.type.match(/^image\/(png|jpeg|jpg)$/)) {
+        alert('Please select a PNG or JPG image file.');
+        return;
+    }
+    
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+        alert('Image file is too large. Please select an image smaller than 5MB.');
+        return;
+    }
+    
+    // Read the file and display preview
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const dataURL = e.target.result;
+        const previewImg = document.getElementById('styleImagePreviewImg');
+        const previewContainer = document.getElementById('styleImagePreview');
+        const placeholder = previewContainer.querySelector('.style-upload-placeholder');
+        
+        // Show image and hide placeholder
+        previewImg.src = dataURL;
+        previewImg.style.display = 'block';
+        if (placeholder) placeholder.style.display = 'none';
+        
+        // Store in config
+        config.STYLE_IMAGE_URL = dataURL;
+        saveConfig();
+        
+        console.log('✅ Style image uploaded:', file.name);
+    };
+    reader.readAsDataURL(file);
 }
 
 
@@ -2800,6 +2861,15 @@ function initializeMediaUpload() {
         console.log('✅ Fluid background media upload initialized');
     } else {
         console.warn('⚠️ Fluid background media upload input not found');
+    }
+    
+    // Initialize style image upload
+    const styleImageUpload = document.getElementById('styleImageUpload');
+    if (styleImageUpload) {
+        styleImageUpload.onchange = handleStyleImageUpload;
+        console.log('✅ Style image upload initialized');
+    } else {
+        console.warn('⚠️ Style image upload input not found');
     }
     
     // Set up Choose Media button handler
@@ -5857,7 +5927,7 @@ function hashCode (s) {
 
 // StreamDiffusion functionality (state variables moved to top of file)
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
-const PIPELINE_ID = 'pip_qpUgXycjWF6YMeSL';
+const PIPELINE_ID = 'pip_SDXL-turbo';
 
 function updateStreamStatus(status, className = '') {
     const statusElement = document.getElementById('streamStatus');
@@ -6047,72 +6117,64 @@ async function updateStreamParameters() {
         console.log('🔄 Updating stream parameters:', { prompt, negativePrompt });
         
         const params = {
-            pipeline: "live-video-to-video",
-            model_id: "streamdiffusion",
-            params: {
-                model_id: "stabilityai/sd-turbo",
-                prompt: prompt,
-                prompt_interpolation_method: "slerp",
-                normalize_prompt_weights: true,
-                normalize_seed_weights: true,
-                negative_prompt: negativePrompt,
-                num_inference_steps: config.INFERENCE_STEPS,
-                seed: config.SEED,
-                t_index_list: [Math.round(config.DENOISE_X), Math.round(config.DENOISE_Y), Math.round(config.DENOISE_Z)],
-                controlnets: [
-                    {
-                        conditioning_scale: config.CONTROLNET_POSE_SCALE,
-                        control_guidance_end: 1,
-                        control_guidance_start: 0,
-                        enabled: true,
-                        model_id: "thibaud/controlnet-sd21-openpose-diffusers",
-                        preprocessor: "pose_tensorrt",
-                        preprocessor_params: {}
-                    },
-                    {
-                        conditioning_scale: config.CONTROLNET_HED_SCALE,
-                        control_guidance_end: 1,
-                        control_guidance_start: 0,
-                        enabled: true,
-                        model_id: "thibaud/controlnet-sd21-hed-diffusers",
-                        preprocessor: "soft_edge",
-                        preprocessor_params: {}
-                    },
-                    {
-                        conditioning_scale: config.CONTROLNET_CANNY_SCALE,
-                        control_guidance_end: 1,
-                        control_guidance_start: 0,
-                        enabled: true,
-                        model_id: "thibaud/controlnet-sd21-canny-diffusers",
-                        preprocessor: "canny",
-                        preprocessor_params: {
-                            high_threshold: 200,
-                            low_threshold: 100
-                        }
-                    },
-                    {
-                        conditioning_scale: config.CONTROLNET_DEPTH_SCALE,
-                        control_guidance_end: 1,
-                        control_guidance_start: 0,
-                        enabled: true,
-                        model_id: "thibaud/controlnet-sd21-depth-diffusers",
-                        preprocessor: "depth_tensorrt",
-                        preprocessor_params: {}
-                    },
-                    {
-                        conditioning_scale: config.CONTROLNET_COLOR_SCALE,
-                        control_guidance_end: 1,
-                        control_guidance_start: 0,
-                        enabled: true,
-                        model_id: "thibaud/controlnet-sd21-color-diffusers",
-                        preprocessor: "passthrough",
-                        preprocessor_params: {}
+            seed: config.SEED,
+            delta: config.DELTA,
+            width: config.WIDTH,
+            height: config.HEIGHT,
+            prompt: prompt,
+            model_id: "stabilityai/sdxl-turbo",
+            lora_dict: null,
+            ip_adapter: {
+                scale: config.STYLE_STRENGTH || 0.5,
+                enabled: config.STYLE_TRANSFER_ENABLED
+            },
+            num_inference_steps: config.INFERENCE_STEPS,
+            negative_prompt: negativePrompt,
+            use_denoising_batch: true,
+            normalize_seed_weights: true,
+            normalize_prompt_weights: true,
+            seed_interpolation_method: "linear",
+            ip_adapter_style_image_url: config.STYLE_IMAGE_URL || "https://storage.googleapis.com/thom-vod-testing/style-presets/default_preset.png",
+            enable_similar_image_filter: false,
+            prompt_interpolation_method: "linear",
+            similar_image_filter_threshold: 0.98,
+            similar_image_filter_max_skip_frame: 10,
+            acceleration: "tensorrt",
+            do_add_noise: true,
+            t_index_list: [config.T_INDEX],
+            use_lcm_lora: true,
+            guidance_scale: config.GUIDANCE_SCALE,
+            controlnets: [
+                {
+                    enabled: true,
+                    model_id: "xinsir/controlnet-depth-sdxl-1.0",
+                    preprocessor: "depth_tensorrt",
+                    conditioning_scale: config.CONTROLNET_DEPTH_SCALE,
+                    preprocessor_params: {}
+                },
+                {
+                    enabled: true,
+                    model_id: "xinsir/controlnet-canny-sdxl-1.0",
+                    preprocessor: "canny",
+                    conditioning_scale: config.CONTROLNET_CANNY_SCALE,
+                    preprocessor_params: {
+                        low_threshold: 100,
+                        high_threshold: 200
                     }
-                ]
-            }
+                },
+                {
+                    enabled: true,
+                    model_id: "xinsir/controlnet-tile-sdxl-1.0",
+                    preprocessor: "feedback",
+                    conditioning_scale: 0.1,
+                    preprocessor_params: {
+                        feedback_strength: 0.5
+                    }
+                }
+            ]
         };
 
-        const response = await fetch(`https://api.daydream.live/beta/streams/${streamState.streamId}/prompts`, {
+        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/prompts`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -6502,10 +6564,8 @@ async function startStream(showOverlay = true) {
             return;
         }
         
-        // Show user notification for other errors
-        if (window.confirm(`Stream failed: ${errorMessage}\n\nWould you like to try again?`)) {
-            setTimeout(() => startStream(), 1000);
-        }
+        // Log error for debugging
+        console.log(`Stream failed: ${errorMessage}`);
     }
 }
 
@@ -9299,6 +9359,9 @@ document.addEventListener('DOMContentLoaded', () => {
         fluidMediaScale: { min: 0.1, max: 2.0, updateFn: updateFluidMediaScale, precision: 2 },
         fluidCameraScale: { min: 0.1, max: 2.0, updateFn: updateFluidCameraScale, precision: 2 },
         
+        // Style Transfer
+        styleStrength: { min: 0, max: 1, updateFn: (v) => { config.STYLE_STRENGTH = v; saveConfig(); }, precision: 2 },
+        
         // ControlNet weights
         controlnetPose: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetPose', v/1, false, false), precision: 2 },
         controlnetHed: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetHed', v/1, false, false), precision: 2 },
@@ -9484,7 +9547,7 @@ async function validateStreamState() {
             return false;
         }
         
-        const response = await fetch(`https://api.daydream.live/beta/streams/${streamState.streamId}`, {
+        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${apiKey}`
@@ -9686,7 +9749,7 @@ async function validateSavedStream(savedStream) {
         if (!apiKey) return false;
         
         // Check if stream still exists on Daydream servers
-        const response = await fetch(`https://api.daydream.live/beta/streams/${savedStream.streamId}`, {
+        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${savedStream.streamId}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,

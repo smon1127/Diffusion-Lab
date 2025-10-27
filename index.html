@@ -297,6 +297,89 @@
             .toggle-switch.active .toggle-handle {
                 transform: translateX(20px);
             }
+            
+            /* Style Upload Container */
+            .style-upload-container {
+                width: 100%;
+            }
+            
+            .style-image-preview {
+                position: relative;
+                width: 100%;
+                aspect-ratio: 1;
+                background: rgba(40, 40, 50, 0.5);
+                border: 1px solid var(--border-color);
+                border-radius: 8px;
+                overflow: hidden;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .style-upload-placeholder {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                color: var(--text-secondary);
+                pointer-events: none;
+            }
+            
+            .style-upload-button {
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                background: rgba(6, 163, 215, 0.8);
+                border: none;
+                border-radius: 50%;
+                width: 32px;
+                height: 32px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                transition: var(--transition);
+                z-index: 10;
+            }
+            
+            .style-upload-button:hover {
+                background: var(--accent-hover);
+                transform: scale(1.05);
+            }
+            
+            /* Select Input */
+            .select-input {
+                width: 100px;
+                background: rgba(6, 163, 215, 0.1);
+                border: 1px solid var(--accent-color);
+                border-radius: 4px;
+                padding: 4px 8px;
+                color: var(--accent-color);
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+            
+            .select-input:focus {
+                outline: none;
+                border-color: var(--accent-hover);
+                background: rgba(6, 163, 215, 0.2);
+            }
+            
+            /* Select Optgroup Styling */
+            .select-input optgroup {
+                background: rgba(40, 40, 50, 0.9);
+                color: var(--text-secondary);
+                font-weight: 600;
+                padding: 4px 0;
+            }
+            
+            .select-input option {
+                background: var(--primary-bg);
+                color: var(--text-primary);
+                padding: 4px 8px;
+            }
 
             /* Advanced Section */
             .advanced-section {
@@ -3782,6 +3865,86 @@
                     
                 </div>
 
+                <!-- Transfer Style Section -->
+                <div class="control-group">
+                    <div class="group-title">
+                        <span>Transfer Style <div class="tooltip"><span class="info-icon">i</span>
+                            <span class="tooltiptext">Apply style transfer using IP Adapter. Upload a style image to transfer its artistic style to your generation.</span>
+                        </div></span>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="toggleStyleTransfer()" ontouchstart="toggleStyleTransfer()">
+                            <span>Enable Style Transfer</span>
+                            <div class="toggle-switch active" id="styleTransferToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="style-upload-container">
+                            <input type="file" id="styleImageUpload" accept="image/png,image/jpeg,image/jpg" style="display: none;">
+                            <div class="style-image-preview" id="styleImagePreview">
+                                <img id="styleImagePreviewImg" src="" style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 4px;">
+                                <div class="style-upload-placeholder">
+                                    <i class="fas fa-image" style="font-size: 24px; opacity: 0.3; margin-bottom: 8px;"></i>
+                                    <span style="font-size: 11px; opacity: 0.5;">Upload style image</span>
+                                </div>
+                                <button class="style-upload-button" onclick="document.getElementById('styleImageUpload').click()" title="Upload style image">
+                                    <i class="fas fa-upload"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Style Strength <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">How strongly the style is applied. Higher values make the style more dominant.</span>
+                            </div></span>
+                            <input type="text" class="control-value number-input" id="styleStrengthValue" value="0.5" />
+                        </div>
+                        <div class="slider-container" onclick="handleSliderClick(event, 'styleStrength', 0, 1)" ontouchstart="handleSliderClick(event, 'styleStrength', 0, 1)">
+                            <div class="slider-fill" id="styleStrengthFill" style="width: 50%">
+                                <div class="slider-handle" id="styleStrengthHandle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Weight Type <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Interpolation method for style transfer</span>
+                            </div></span>
+                            <select class="control-value select-input" id="styleWeightType" onchange="updateStyleWeightType()">
+                                <optgroup label="Basic">
+                                    <option value="linear" selected>Linear</option>
+                                </optgroup>
+                                <optgroup label="Easing Functions">
+                                    <option value="ease-in">Ease In</option>
+                                    <option value="ease-out">Ease Out</option>
+                                    <option value="ease-in-out">Ease In-Out</option>
+                                    <option value="reverse-in-out">Reverse In-Out</option>
+                                </optgroup>
+                                <optgroup label="Strength Variations">
+                                    <option value="weak-input">Weak Input</option>
+                                    <option value="weak-output">Weak Output</option>
+                                    <option value="weak-middle">Weak Middle</option>
+                                    <option value="strong-middle">Strong Middle</option>
+                                </optgroup>
+                                <optgroup label="Style & Composition">
+                                    <option value="style-transfer">Style Transfer</option>
+                                    <option value="composition">Composition</option>
+                                    <option value="strong-style-transfer">Strong Style Transfer</option>
+                                    <option value="style-composition">Style & Composition</option>
+                                    <option value="style-transfer-precise">Style Transfer (Precise)</option>
+                                    <option value="composition-precise">Composition (Precise)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- ControlNet Section -->
                 <div class="control-group">
