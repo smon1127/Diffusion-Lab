@@ -461,7 +461,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale', 'streamOpacity', 'audioReactivity', 'audioDelay', 'audioOpacity', 'audioColorful', 'audioEdgeSoftness', 'telegramWaitlistInterval'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale', 'streamOpacity', 'audioReactivity', 'audioDelay', 'audioOpacity', 'audioColorful', 'audioEdgeSoftness', 'telegramWaitlistInterval', 'styleStrength'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -632,7 +632,8 @@ function updateSliderValue(sliderName, percentage, skipSave = false, updateInput
         'audioColorful': { min: 0, max: 1, prop: 'AUDIO_COLORFUL', decimals: 1, handler: updateAudioColorful },
         'audioEdgeSoftness': { min: 0, max: 1, prop: 'AUDIO_EDGE_SOFTNESS', decimals: 2, handler: updateAudioEdgeSoftness },
         'streamOpacity': { min: 0, max: 1, prop: 'STREAM_OPACITY', decimals: 2, handler: updateStreamOpacity },
-        'telegramWaitlistInterval': { min: 1, max: 30, prop: 'TELEGRAM_WAITLIST_INTERVAL', decimals: 0, handler: updateTelegramWaitlistInterval }
+        'telegramWaitlistInterval': { min: 1, max: 30, prop: 'TELEGRAM_WAITLIST_INTERVAL', decimals: 0, handler: updateTelegramWaitlistInterval },
+        'styleStrength': { min: 0, max: 1, prop: 'STYLE_STRENGTH', decimals: 2 }
     };
     
     const slider = sliderMap[sliderName];
@@ -724,7 +725,8 @@ function updateSliderPositions() {
         'audioOpacity': { prop: 'AUDIO_OPACITY', min: 0, max: 1 },
         'audioColorful': { prop: 'AUDIO_COLORFUL', min: 0, max: 1 },
         'audioEdgeSoftness': { prop: 'AUDIO_EDGE_SOFTNESS', min: 0, max: 1 },
-        'telegramWaitlistInterval': { prop: 'TELEGRAM_WAITLIST_INTERVAL', min: 1, max: 30 }
+        'telegramWaitlistInterval': { prop: 'TELEGRAM_WAITLIST_INTERVAL', min: 1, max: 30 },
+        'styleStrength': { prop: 'STYLE_STRENGTH', min: 0, max: 1 }
     };
     
     Object.keys(sliderMap).forEach(sliderName => {
@@ -759,6 +761,8 @@ function updateToggleStates() {
     updateToggle('animateToggle', config.ANIMATE);
     updateToggle('hideCursorToggle', config.HIDE_CURSOR);
     updateToggle('bloomToggle', config.BLOOM);
+    updateToggle('styleTransferToggle', config.STYLE_TRANSFER_ENABLED);
+    updateStyleTransferVisibility();
     updateToggle('sunraysToggle', config.SUNRAYS);
     updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
     updateToggle('forceClickToggle', config.FORCE_CLICK);
@@ -1312,7 +1316,30 @@ function toggleTelegramReceive() {
 function toggleStyleTransfer() {
     config.STYLE_TRANSFER_ENABLED = !config.STYLE_TRANSFER_ENABLED;
     updateToggle('styleTransferToggle', config.STYLE_TRANSFER_ENABLED);
+    updateStyleTransferVisibility();
     saveConfig();
+}
+
+function updateStyleTransferVisibility() {
+    const isEnabled = config.STYLE_TRANSFER_ENABLED;
+    const styleUploadContainer = document.querySelector('.style-upload-container');
+    const styleStrengthItem = document.querySelector('#styleStrengthValue')?.closest('.control-item');
+    const styleWeightTypeItem = document.querySelector('#styleWeightType')?.closest('.control-item');
+    
+    // Hide/show style upload container
+    if (styleUploadContainer) {
+        styleUploadContainer.style.display = isEnabled ? 'block' : 'none';
+    }
+    
+    // Hide/show style strength slider
+    if (styleStrengthItem) {
+        styleStrengthItem.style.display = isEnabled ? 'block' : 'none';
+    }
+    
+    // Hide/show weight type dropdown
+    if (styleWeightTypeItem) {
+        styleWeightTypeItem.style.display = isEnabled ? 'block' : 'none';
+    }
 }
 
 function updateStyleWeightType() {
@@ -1352,11 +1379,82 @@ function handleStyleImageUpload(event) {
         
         // Store in config
         config.STYLE_IMAGE_URL = dataURL;
+        
+        // Save to localStorage for persistence
+        saveToLocalStorage(STORAGE_KEYS.STYLE_IMAGE, dataURL);
+        
         saveConfig();
+        
+        // Show delete button
+        showStyleImageDeleteButton();
         
         console.log('✅ Style image uploaded:', file.name);
     };
     reader.readAsDataURL(file);
+}
+
+function deleteStyleImage() {
+    // Clear the image
+    config.STYLE_IMAGE_URL = null;
+    
+    // Clear from localStorage
+    localStorage.removeItem(STORAGE_KEYS.STYLE_IMAGE);
+    
+    // Hide image preview
+    const previewImg = document.getElementById('styleImagePreviewImg');
+    const previewContainer = document.getElementById('styleImagePreview');
+    const placeholder = previewContainer.querySelector('.style-upload-placeholder');
+    const deleteButton = previewContainer.querySelector('.style-delete-button');
+    
+    if (previewImg) previewImg.style.display = 'none';
+    if (previewImg) previewImg.src = '';
+    if (placeholder) placeholder.style.display = 'flex';
+    if (deleteButton) deleteButton.style.display = 'none';
+    
+    // Clear file input
+    const fileInput = document.getElementById('styleImageUpload');
+    if (fileInput) fileInput.value = '';
+    
+    saveConfig();
+    console.log('🗑️ Style image deleted');
+}
+
+function showStyleImageDeleteButton() {
+    const previewContainer = document.getElementById('styleImagePreview');
+    if (!previewContainer) return;
+    
+    let deleteButton = previewContainer.querySelector('.style-delete-button');
+    if (!deleteButton) {
+        // Create delete button
+        deleteButton = document.createElement('button');
+        deleteButton.className = 'style-delete-button';
+        deleteButton.innerHTML = '<i class="fas fa-times"></i>';
+        deleteButton.title = 'Delete style image';
+        deleteButton.onclick = (e) => {
+            e.stopPropagation();
+            deleteStyleImage();
+        };
+        previewContainer.appendChild(deleteButton);
+    }
+    deleteButton.style.display = 'block';
+}
+
+function loadStyleImage() {
+    const savedImageUrl = loadFromLocalStorage(STORAGE_KEYS.STYLE_IMAGE);
+    if (savedImageUrl) {
+        config.STYLE_IMAGE_URL = savedImageUrl;
+        const previewImg = document.getElementById('styleImagePreviewImg');
+        const previewContainer = document.getElementById('styleImagePreview');
+        
+        if (previewImg && previewContainer) {
+            const placeholder = previewContainer.querySelector('.style-upload-placeholder');
+            previewImg.src = savedImageUrl;
+            previewImg.style.display = 'block';
+            if (placeholder) placeholder.style.display = 'none';
+            showStyleImageDeleteButton();
+            console.log('✅ Style image loaded from storage');
+        }
+    }
 }
 
 
@@ -6180,7 +6278,9 @@ async function updateStreamParameters() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            body: JSON.stringify(params)
+            body: JSON.stringify({
+                pipeline_params: params
+            })
         });
 
         if (response.ok) {
@@ -9360,7 +9460,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fluidCameraScale: { min: 0.1, max: 2.0, updateFn: updateFluidCameraScale, precision: 2 },
         
         // Style Transfer
-        styleStrength: { min: 0, max: 1, updateFn: (v) => { config.STYLE_STRENGTH = v; saveConfig(); }, precision: 2 },
+        styleStrength: { min: 0, max: 1, updateFn: (v) => updateSliderValue('styleStrength', v/1, false, false), precision: 2 },
         
         // ControlNet weights
         controlnetPose: { min: 0, max: 1, updateFn: (v) => updateSliderValue('controlnetPose', v/1, false, false), precision: 2 },
@@ -9378,7 +9478,8 @@ document.addEventListener('DOMContentLoaded', () => {
         inferenceSteps: { min: 1, max: 150, updateFn: (v) => updateSliderValue('inferenceSteps', (v-1)/149, false, false), precision: 0 },
         seed: { min: -1, max: 2147483647, updateFn: (v) => updateSliderValue('seed', (v+1)/2147483648, false, false), precision: 0 },
         guidanceScale: { min: 1, max: 20, updateFn: (v) => updateSliderValue('guidanceScale', (v-1)/19, false, false), precision: 1 },
-        delta: { min: 0, max: 1, updateFn: (v) => updateSliderValue('delta', v/1, false, false), precision: 2 }
+        delta: { min: 0, max: 1, updateFn: (v) => updateSliderValue('delta', v/1, false, false), precision: 2 },
+        styleStrength: { min: 0, max: 1, updateFn: (v) => { config.STYLE_STRENGTH = v; updateSliderValue('styleStrength', v/1, false, false); saveConfig(); }, precision: 2 }
     };
     
     // Initialize all inputs
@@ -9680,7 +9781,8 @@ const STORAGE_KEYS = {
     TELEGRAM_SETTINGS: STORAGE_PREFIX + 'telegramSettings',
     TELEGRAM_TOKEN: STORAGE_PREFIX + 'telegramToken',
     TELEGRAM_TOKEN_CONSENT: STORAGE_PREFIX + 'telegramTokenConsent',
-    WELCOME_SKIPPED: STORAGE_PREFIX + 'welcomeSkipped'
+    WELCOME_SKIPPED: STORAGE_PREFIX + 'welcomeSkipped',
+    STYLE_IMAGE: STORAGE_PREFIX + 'styleImage'
 };
 
 function isLocalStorageAvailable() {
@@ -10822,6 +10924,7 @@ function initializeLocalStorage() {
         loadApiKey();
         loadTelegramToken();
         updateTelegramBotElements(); // Update visibility based on loaded values
+        loadStyleImage(); // Load saved style image
         setupInputSaveHandlers();
         initializeStreamRecovery();
         initializeColorPickers();
