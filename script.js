@@ -6555,7 +6555,6 @@ async function getWhepUrl() {
 
 async function startStreamPlayback(attempt = 1) {
     const video = document.getElementById('streamOverlayVideo');
-    const loading = document.getElementById('streamOverlayLoading');
     if (!video || !streamState.streamId) return;
 
     stopStreamPlayback();
@@ -6571,7 +6570,7 @@ async function startStreamPlayback(attempt = 1) {
         pc.addTransceiver('audio', { direction: 'recvonly' });
         pc.ontrack = (event) => {
             video.srcObject = event.streams[0] || new MediaStream([event.track]);
-            if (loading) loading.style.display = 'none';
+            // Stays under the loader until watchStreamWarmup() sees real AI frames
             video.style.display = 'block';
             syncPopupVideo();
             startStreamUpscaler();
@@ -6605,7 +6604,7 @@ async function startStreamPlayback(attempt = 1) {
             setTimeout(() => startStreamPlayback(attempt + 1), 2000);
         } else {
             console.error('❌ Stream playback failed:', error);
-            if (loading) loading.textContent = 'Failed to load stream';
+            setStreamLoader('error', 'Failed to load stream');
             showStreamGatewayError();
         }
     }
@@ -6902,6 +6901,75 @@ function renderUpscaledFrame() {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
+// Stream loader
+// While Daydream loads the pipeline it streams its own grey "Loading pipeline..."
+// frames. The overlay keeps its own loader on top until the status endpoint reports
+// real inference output, then fades the stream in.
+const STREAM_WARMUP_POLL_MS = 1000;
+const STREAM_WARMUP_TIMEOUT_MS = 120000; // reveal anyway if the status never confirms
+const streamWarmup = { timer: null, startedAt: 0 };
+
+function setStreamLoader(state, title = '', detail = '') {
+    const loader = document.getElementById('streamOverlayLoading');
+    if (!loader) return;
+    loader.classList.toggle('error', state === 'error');
+    loader.style.display = state === 'hidden' ? 'none' : '';
+    document.getElementById('streamLoaderTitle').textContent = title;
+    document.getElementById('streamLoaderDetail').textContent = detail;
+    document.querySelector('.stream-overlay-content')?.classList.toggle('stream-warming', state !== 'hidden');
+}
+
+function getStreamLoaderDetail() {
+    const model = document.getElementById('modelSelect');
+    const modelLabel = model?.selectedOptions[0]?.textContent || getCurrentModelId();
+    const size = getStreamResolution();
+    const seconds = Math.round((Date.now() - streamWarmup.startedAt) / 1000);
+    return `${modelLabel} · ${size} × ${size} · ${seconds}s`;
+}
+
+function watchStreamWarmup() {
+    stopStreamWarmup();
+    streamWarmup.startedAt = Date.now();
+    setStreamLoader('loading', 'Warming up the AI', getStreamLoaderDetail());
+
+    const poll = async () => {
+        if (!streamState.streamId) return;
+        const elapsed = Date.now() - streamWarmup.startedAt;
+        setStreamLoader('loading', elapsed < 4000 ? 'Connecting' : 'Warming up the AI', getStreamLoaderDetail());
+
+        try {
+            const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/status`, {
+                headers: { 'Authorization': `Bearer ${getApiKey()}` }
+            });
+            const data = response.ok ? (await response.json()).data : null;
+            const inference = data?.inference_status;
+            const gatewayError = data?.gateway_status?.error?.error_message;
+            if (!streamWarmup.timer) return; // stopped while waiting
+
+            if (gatewayError) {
+                stopStreamWarmup();
+                setStreamLoader('error', 'Stream failed', gatewayError);
+                return;
+            }
+            const producing = inference?.fps > 0 && Date.now() - inference.last_output_time < 5000;
+            if (producing || elapsed > STREAM_WARMUP_TIMEOUT_MS) {
+                stopStreamWarmup();
+                setStreamLoader('hidden');
+                return;
+            }
+        } catch (error) {
+            console.warn('Stream status check failed:', error);
+        }
+        if (streamWarmup.timer) streamWarmup.timer = setTimeout(poll, STREAM_WARMUP_POLL_MS);
+    };
+    streamWarmup.timer = setTimeout(poll, STREAM_WARMUP_POLL_MS);
+}
+
+function stopStreamWarmup() {
+    clearTimeout(streamWarmup.timer);
+    streamWarmup.timer = null;
+}
+
 // Show Daydream's reason when the output never arrives, e.g. "no orchestrators
 // available" when no GPU is serving the selected model right now
 async function showStreamGatewayError() {
@@ -6914,8 +6982,7 @@ async function showStreamGatewayError() {
         const message = data?.data?.gateway_status?.error?.error_message || data?.data?.inference_status?.last_error;
         if (!message) return;
 
-        const loading = document.getElementById('streamOverlayLoading');
-        if (loading) loading.textContent = `Stream failed: ${message}`;
+        setStreamLoader('error', 'Stream failed', message);
         updateStreamStatus('Error: ' + message, 'error');
         addDaydreamEventToDebug({ type: 'stream_error', error: message });
     } catch (error) {
@@ -7219,6 +7286,7 @@ function stopStream() {
         streamState.peerConnection = null;
     }
     stopStreamPlayback();
+    stopStreamWarmup();
     
     // Clean up media stream
     if (streamState.mediaStream) {
@@ -7302,11 +7370,10 @@ function openStreamOverlay(playbackId, showOverlay = true) {
         overlay.classList.add('visible');
     }
     
-    // Show loading until startStreamPlayback() receives the AI output
+    // Show the loader until watchStreamWarmup() sees real AI frames
     if (!streamState.playbackConnection) {
-        loading.textContent = 'Loading stream...';
-        loading.style.display = 'block';
         video.style.display = 'none';
+        watchStreamWarmup();
     }
     
     console.log('🆕 Opened stream overlay');
@@ -7369,7 +7436,7 @@ function toggleStreamVisibility() {
 // as a fraction of width/height, the size as a fraction of the window height.
 const OVERLAY_MIN_SIZE = 80; // px
 const OVERLAY_SNAP_DISTANCE = 20; // px from a screen border that snaps to full screen
-let overlayLayout = null;   // { x, y, w, h } or null for the default centered square
+let overlayLayout = null;   // { x, y, w, h }, { fullscreen: true }, or null for the default centered square
 let overlayDrag = null;
 
 function initializeOverlayEditor() {
@@ -7392,9 +7459,15 @@ function initializeOverlayEditor() {
     overlay.addEventListener('pointercancel', endOverlayDrag);
     overlay.addEventListener('dblclick', () => {
         if (!overlay.classList.contains('editing')) return;
-        // Double-click resets to the default centered square
-        overlayLayout = null;
-        localStorage.removeItem(STORAGE_KEYS.OVERLAY_LAYOUT);
+        // Double-click toggles: a centered square jumps to full screen,
+        // anything else (including full screen) goes back to the default square
+        if (isCenteredSquareFrame()) {
+            overlayLayout = { fullscreen: true };
+            saveToLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT, overlayLayout);
+        } else {
+            overlayLayout = null;
+            localStorage.removeItem(STORAGE_KEYS.OVERLAY_LAYOUT);
+        }
         applyOverlayLayout();
     });
     window.addEventListener('resize', applyOverlayLayout);
@@ -7417,6 +7490,15 @@ function toggleOverlayEdit() {
     }
 }
 
+function isCenteredSquareFrame() {
+    if (!overlayLayout) return true;
+    if (overlayLayout.fullscreen) return false;
+    const frame = getOverlayScreenRect();
+    return Math.abs(frame.w - frame.h) < 4 &&
+        Math.abs(frame.cx - window.innerWidth / 2) < 12 &&
+        Math.abs(frame.cy - window.innerHeight / 2) < 30;
+}
+
 function applyOverlayLayout() {
     const overlay = document.getElementById('streamOverlay');
     if (!overlay) return;
@@ -7424,6 +7506,15 @@ function applyOverlayLayout() {
     if (!overlayLayout) {
         // Back to the stylesheet's centered square
         ['left', 'top', 'width', 'height', 'transform'].forEach(prop => overlay.style[prop] = '');
+        return;
+    }
+
+    if (overlayLayout.fullscreen) {
+        overlay.style.left = '0px';
+        overlay.style.top = '0px';
+        overlay.style.width = `${window.innerWidth}px`;
+        overlay.style.height = `${window.innerHeight}px`;
+        overlay.style.transform = 'none';
         return;
     }
 
@@ -9798,6 +9889,9 @@ function drawStreamInputPreview() {
 function getOverlayScreenRect() {
     const W = window.innerWidth;
     const H = window.innerHeight;
+    if (overlayLayout?.fullscreen) {
+        return { cx: W / 2, cy: H / 2, w: W, h: H };
+    }
     if (overlayLayout) {
         return { cx: overlayLayout.x * W, cy: overlayLayout.y * H, w: overlayLayout.w * H, h: overlayLayout.h * H };
     }
