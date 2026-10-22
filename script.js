@@ -7051,6 +7051,7 @@ function toggleStreamVisibility() {
 // The layout is stored relative to the window so it survives resizes: the center
 // as a fraction of width/height, the size as a fraction of the window height.
 const OVERLAY_MIN_SIZE = 80; // px
+const OVERLAY_SNAP_DISTANCE = 20; // px from a screen border that snaps to full screen
 let overlayLayout = null;   // { x, y, w, h } or null for the default centered square
 let overlayDrag = null;
 
@@ -7153,6 +7154,21 @@ function moveOverlayDrag(e) {
         if (handle.includes('n')) h -= 2 * dy;
         w = Math.max(OVERLAY_MIN_SIZE, w);
         h = Math.max(OVERLAY_MIN_SIZE, h);
+
+        // An edge near (or past) a screen border snaps that axis to full screen.
+        // Computed from the drag start each move, so dragging back in unsnaps it.
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+        const resizesX = handle.includes('e') || handle.includes('w');
+        const resizesY = handle.includes('n') || handle.includes('s');
+        if (resizesX && (cx - w / 2 <= OVERLAY_SNAP_DISTANCE || cx + w / 2 >= W - OVERLAY_SNAP_DISTANCE)) {
+            cx = W / 2;
+            w = W;
+        }
+        if (resizesY && (cy - h / 2 <= OVERLAY_SNAP_DISTANCE || cy + h / 2 >= H - OVERLAY_SNAP_DISTANCE)) {
+            cy = H / 2;
+            h = H;
+        }
     }
 
     const H = window.innerHeight;

@@ -1435,15 +1435,9 @@
 
             .stream-input-preview {
                 display: none;
-                position: fixed;
-                top: 10px;
-                right: 10px;
-                z-index: 9999;
-                padding: 8px;
-                background: rgba(0, 0, 0, 0.9);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 8px;
-                pointer-events: none;
+                margin-top: 12px;
+                border-top: 1px solid rgba(255, 255, 255, 0.2);
+                padding-top: 8px;
             }
 
             .stream-input-preview.visible {
@@ -1452,7 +1446,7 @@
 
             .stream-input-preview-title {
                 color: #06a3d7;
-                font: bold 12px monospace;
+                font-weight: bold;
                 margin-bottom: 6px;
             }
 
@@ -3334,17 +3328,16 @@
         </div>
 
         <!-- Debug Overlay (OSC & Mobile) -->
-        <!-- Debug: what the stream sends (dashed box = part the frame shows) -->
-        <div id="streamInputPreview" class="stream-input-preview">
-            <div class="stream-input-preview-title"><i class="fas fa-video"></i> Stream input</div>
-            <canvas id="streamInputPreviewCanvas" width="256" height="256"></canvas>
-        </div>
-
-        <div id="mobileDebug" style="display: none !important; position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: white; padding: 12px; font-size: 12px; border-radius: 8px; z-index: 9999; max-width: 300px; font-family: monospace; border: 1px solid rgba(255,255,255,0.2);">
+        <div id="mobileDebug" style="display: none !important; position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.9); color: white; padding: 12px; font-size: 12px; border-radius: 8px; z-index: 9999; max-width: 300px; font-family: monospace; border: 1px solid rgba(255,255,255,0.2);">
             <div style="color: #06a3d7; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid rgba(6,163,215,0.3); padding-bottom: 4px;">
                 <i class="fas fa-bug"></i> Debug Info
             </div>
             <div id="debugInfo"></div>
+            <!-- What the stream sends (dashed box = part the frame shows) -->
+            <div id="streamInputPreview" class="stream-input-preview">
+                <div class="stream-input-preview-title"><i class="fas fa-video"></i> Stream Input:</div>
+                <canvas id="streamInputPreviewCanvas" width="256" height="256"></canvas>
+            </div>
             <div id="oscInfo" style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
                 <div style="color: #22c55e; font-weight: bold; margin-bottom: 6px;">
                     <i class="fas fa-broadcast-tower"></i> OSC Messages:
