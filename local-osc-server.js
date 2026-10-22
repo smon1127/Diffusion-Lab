@@ -8,7 +8,7 @@
 const osc = require('node-osc');
 const WebSocket = require('ws');
 const os = require('os');
-const TelegramBot = require('node-telegram-bot-api');
+const { TelegramBot } = require('node-telegram-bot-api');
 
 // Configuration
 const OSC_PORT = 8000;
