@@ -2379,7 +2379,7 @@ async function fetchDaydreamStreamStatus() {
         const apiKey = getApiKey();
         if (!apiKey) return null;
         
-        const response = await fetch(`https://daydream.live/api/streams/${streamState.streamId}/status`, {
+        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/status`, {
             headers: {
                 'Authorization': `Bearer ${apiKey}`
             }
@@ -2387,7 +2387,7 @@ async function fetchDaydreamStreamStatus() {
         
         if (response.ok) {
             const data = await response.json();
-            return data.data;
+            return data.data ?? data;
         }
     } catch (error) {
         console.warn('Failed to fetch stream status:', error);
@@ -6025,7 +6025,9 @@ function hashCode (s) {
 
 // StreamDiffusion functionality (state variables moved to top of file)
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
-const PIPELINE_ID = 'pip_SDXL-turbo';
+// `pipeline` + `params.model_id` replaces the deprecated `pipeline_id: 'pip_SDXL-turbo'`
+const DAYDREAM_PIPELINE = 'streamdiffusion';
+const DAYDREAM_MODEL_ID = 'stabilityai/sdxl-turbo';
 
 function updateStreamStatus(status, className = '') {
     const statusElement = document.getElementById('streamStatus');
@@ -6166,7 +6168,8 @@ async function createDaydreamStream() {
             'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-            pipeline_id: PIPELINE_ID
+            pipeline: DAYDREAM_PIPELINE,
+            params: buildStreamParams()
         })
         });
 
@@ -6176,6 +6179,69 @@ async function createDaydreamStream() {
     }
 
     return await response.json();
+}
+
+function buildStreamParams() {
+    const prompt = document.getElementById('promptInput').value;
+    const negativePrompt = document.getElementById('negativePromptInput').value;
+
+    return {
+        seed: config.SEED,
+        delta: config.DELTA,
+        width: config.WIDTH,
+        height: config.HEIGHT,
+        prompt: prompt,
+        model_id: DAYDREAM_MODEL_ID,
+        lora_dict: null,
+        ip_adapter: {
+            scale: config.STYLE_STRENGTH || 0.5,
+            enabled: config.STYLE_TRANSFER_ENABLED
+        },
+        num_inference_steps: config.INFERENCE_STEPS,
+        negative_prompt: negativePrompt,
+        use_denoising_batch: true,
+        normalize_seed_weights: true,
+        normalize_prompt_weights: true,
+        seed_interpolation_method: "linear",
+        ip_adapter_style_image_url: config.STYLE_IMAGE_URL || "https://storage.googleapis.com/thom-vod-testing/style-presets/default_preset.png",
+        enable_similar_image_filter: false,
+        prompt_interpolation_method: "linear",
+        similar_image_filter_threshold: 0.98,
+        similar_image_filter_max_skip_frame: 10,
+        acceleration: "tensorrt",
+        do_add_noise: true,
+        t_index_list: [config.T_INDEX],
+        use_lcm_lora: true,
+        guidance_scale: config.GUIDANCE_SCALE,
+        controlnets: [
+            {
+                enabled: true,
+                model_id: "xinsir/controlnet-depth-sdxl-1.0",
+                preprocessor: "depth_tensorrt",
+                conditioning_scale: config.CONTROLNET_DEPTH_SCALE,
+                preprocessor_params: {}
+            },
+            {
+                enabled: true,
+                model_id: "xinsir/controlnet-canny-sdxl-1.0",
+                preprocessor: "canny",
+                conditioning_scale: config.CONTROLNET_CANNY_SCALE,
+                preprocessor_params: {
+                    low_threshold: 100,
+                    high_threshold: 200
+                }
+            },
+            {
+                enabled: true,
+                model_id: "xinsir/controlnet-tile-sdxl-1.0",
+                preprocessor: "feedback",
+                conditioning_scale: 0.1,
+                preprocessor_params: {
+                    feedback_strength: 0.5
+                }
+            }
+        ]
+    };
 }
 
 async function updateStreamParameters() {
@@ -6209,77 +6275,20 @@ async function updateStreamParameters() {
     
     try {
         const apiKey = getApiKey();
-        const prompt = document.getElementById('promptInput').value;
-        const negativePrompt = document.getElementById('negativePromptInput').value;
+        const params = buildStreamParams();
+        const { prompt, negative_prompt: negativePrompt } = params;
         
         console.log('🔄 Updating stream parameters:', { prompt, negativePrompt });
-        
-        const params = {
-            seed: config.SEED,
-            delta: config.DELTA,
-            width: config.WIDTH,
-            height: config.HEIGHT,
-            prompt: prompt,
-            model_id: "stabilityai/sdxl-turbo",
-            lora_dict: null,
-            ip_adapter: {
-                scale: config.STYLE_STRENGTH || 0.5,
-                enabled: config.STYLE_TRANSFER_ENABLED
-            },
-            num_inference_steps: config.INFERENCE_STEPS,
-            negative_prompt: negativePrompt,
-            use_denoising_batch: true,
-            normalize_seed_weights: true,
-            normalize_prompt_weights: true,
-            seed_interpolation_method: "linear",
-            ip_adapter_style_image_url: config.STYLE_IMAGE_URL || "https://storage.googleapis.com/thom-vod-testing/style-presets/default_preset.png",
-            enable_similar_image_filter: false,
-            prompt_interpolation_method: "linear",
-            similar_image_filter_threshold: 0.98,
-            similar_image_filter_max_skip_frame: 10,
-            acceleration: "tensorrt",
-            do_add_noise: true,
-            t_index_list: [config.T_INDEX],
-            use_lcm_lora: true,
-            guidance_scale: config.GUIDANCE_SCALE,
-            controlnets: [
-                {
-                    enabled: true,
-                    model_id: "xinsir/controlnet-depth-sdxl-1.0",
-                    preprocessor: "depth_tensorrt",
-                    conditioning_scale: config.CONTROLNET_DEPTH_SCALE,
-                    preprocessor_params: {}
-                },
-                {
-                    enabled: true,
-                    model_id: "xinsir/controlnet-canny-sdxl-1.0",
-                    preprocessor: "canny",
-                    conditioning_scale: config.CONTROLNET_CANNY_SCALE,
-                    preprocessor_params: {
-                        low_threshold: 100,
-                        high_threshold: 200
-                    }
-                },
-                {
-                    enabled: true,
-                    model_id: "xinsir/controlnet-tile-sdxl-1.0",
-                    preprocessor: "feedback",
-                    conditioning_scale: 0.1,
-                    preprocessor_params: {
-                        feedback_strength: 0.5
-                    }
-                }
-            ]
-        };
 
-        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/prompts`, {
-            method: 'POST',
+        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}`, {
+            method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-                pipeline_params: params
+                pipeline: DAYDREAM_PIPELINE,
+                params: params
             })
         });
 
@@ -9861,9 +9870,10 @@ async function validateSavedStream(savedStream) {
         
         if (response.ok) {
             const streamData = await response.json();
-            // Check if stream is in a valid state (not ended or failed)
-            const validStates = ['created', 'running', 'ready'];
-            return validStates.includes(streamData.status);
+            // Check if stream is in a valid state (not ended or failed).
+            // The API reports e.g. "active" or "running", so reject only terminal states.
+            const endedStates = ['ended', 'failed', 'deleted', 'error'];
+            return !endedStates.includes(streamData.status);
         } else if (response.status === 404) {
             // Stream no longer exists on server - clear saved state
             console.log(`Stream ${savedStream.streamId} no longer exists (404), clearing saved state`);
