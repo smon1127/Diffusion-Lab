@@ -6533,6 +6533,7 @@ async function startStreamPlayback(attempt = 1) {
             video.srcObject = event.streams[0] || new MediaStream([event.track]);
             if (loading) loading.style.display = 'none';
             video.style.display = 'block';
+            syncPopupVideo();
         };
         streamState.playbackConnection = pc;
 
@@ -6602,45 +6603,23 @@ function stopStreamPlayback() {
     }
 }
 
-function openStreamPopup(playbackId) {
-    // Check if we already have a popup window open
+// The pop-out shows the same WebRTC stream as the overlay; lvpr.tv no longer
+// receives the AI output, so a link to it only ever showed a loading spinner.
+function openStreamPopup() {
     if (streamState.popupWindow && !streamState.popupWindow.closed) {
-        // Get the current URL of the existing popup
-        try {
-            const currentUrl = streamState.popupWindow.location.href;
-            const expectedUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force&controls=false`;
-            
-            // If the popup is showing the same playback ID, just focus it
-            if (currentUrl === expectedUrl) {
-                console.log('🔄 Reusing existing popup window for same stream');
-                streamState.popupWindow.focus();
-                return streamState.popupWindow;
-            } else {
-                console.log('🔄 Updating existing popup window to new stream');
-                // Update the popup to show the new stream
-                streamState.popupWindow.location.href = expectedUrl;
-                streamState.popupWindow.focus();
-                return streamState.popupWindow;
-            }
-        } catch (e) {
-            // Cross-origin error - popup might be from different domain
-            // In this case, we'll close the old popup and open a new one
-            console.log('🔄 Closing old popup due to cross-origin restrictions');
-            streamState.popupWindow.close();
-        }
+        syncPopupVideo(streamState.popupWindow);
+        streamState.popupWindow.focus();
+        return streamState.popupWindow;
     }
     
-    // Create new popup window
     const width = 512;
     const height = 512;
     const left = (window.screen.width - width) / 2;
     const top = (window.screen.height - height) / 2;
-    
-    const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force&controls=false`;
 
     console.log('🆕 Opening new popup window for stream');
     const popupWindow = window.open(
-        streamUrl,
+        '',
         'AI_Daydream_Stream',
         `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,menubar=no,toolbar=no,status=no`
     );
@@ -6649,7 +6628,28 @@ function openStreamPopup(playbackId) {
         throw new Error('Popup blocked. Please allow popups for this site.');
     }
 
+    const doc = popupWindow.document;
+    doc.title = 'Diffusion Lab – AI Stream';
+    doc.body.style.cssText = 'margin:0;background:#000;overflow:hidden;';
+    doc.body.innerHTML = `
+        <div id="streamPopupWaiting" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font:14px sans-serif;">Waiting for stream...</div>
+        <video id="streamPopupVideo" autoplay muted playsinline style="width:100vw;height:100vh;object-fit:contain;display:block;"></video>`;
+    syncPopupVideo(popupWindow);
+
     return popupWindow;
+}
+
+// Point the pop-out's video at the overlay's current stream (also after reconnects)
+function syncPopupVideo(popupWindow = streamState.popupWindow) {
+    if (!popupWindow || popupWindow.closed) return;
+    const popupVideo = popupWindow.document.getElementById('streamPopupVideo');
+    const source = document.getElementById('streamOverlayVideo')?.srcObject;
+    if (!popupVideo || !source || popupVideo.srcObject === source) return;
+
+    popupVideo.srcObject = source;
+    popupVideo.play().catch(() => {});
+    const waiting = popupWindow.document.getElementById('streamPopupWaiting');
+    if (waiting) waiting.style.display = 'none';
 }
 
 async function startStream(showOverlay = true) {
@@ -7003,7 +7003,7 @@ function popOutStream() {
     }
     
     // Keep the overlay visible, just open popup window
-    streamState.popupWindow = openStreamPopup(streamState.playbackId);
+    streamState.popupWindow = openStreamPopup();
     
     console.log('🔄 Popped out stream to new window (overlay stays visible)');
 }
