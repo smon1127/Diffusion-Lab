@@ -165,6 +165,10 @@ const commonParams = {
     
     // Daydream model (see DAYDREAM_MODELS)
     MODEL_ID: 'stabilityai/sdxl-turbo',
+    STREAM_OPACITY: 0.8,
+    STREAM_VISIBLE: false,   // AI overlay shown (restored on load)
+    PANEL_COLLAPSED: null,   // null = device default (collapsed on mobile)
+    PANEL_HIDDEN: false,
     FSR_ENABLED: true, // sharp FSR upscaling of the stream output
     
     // Style Transfer
@@ -326,11 +330,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             if (!streamState.isStreaming) {
                 console.log('🚀 Auto-starting stream on page load...');
-                await startStream(false); // Don't show overlay on auto-start
-                // Update button text to show diffusion is hidden
+                await startStream(config.STREAM_VISIBLE); // Overlay as it was last time
                 const hideButton = document.getElementById('hideStreamToggle');
                 if (hideButton) {
-                    hideButton.textContent = 'Show Diffusion';
+                    hideButton.textContent = config.STREAM_VISIBLE ? 'Hide Diffusion' : 'Show Diffusion';
                 }
             }
         } catch (error) {
@@ -738,7 +741,8 @@ function updateSliderPositions() {
         'audioColorful': { prop: 'AUDIO_COLORFUL', min: 0, max: 1 },
         'audioEdgeSoftness': { prop: 'AUDIO_EDGE_SOFTNESS', min: 0, max: 1 },
         'telegramWaitlistInterval': { prop: 'TELEGRAM_WAITLIST_INTERVAL', min: 1, max: 30 },
-        'styleStrength': { prop: 'STYLE_STRENGTH', min: 0, max: 1 }
+        'styleStrength': { prop: 'STYLE_STRENGTH', min: 0, max: 1 },
+        'streamOpacity': { prop: 'STREAM_OPACITY', min: 0, max: 1 }
     };
     
     Object.keys(sliderMap).forEach(sliderName => {
@@ -1180,6 +1184,11 @@ function toggleAnimate() {
 
 function toggleHideCursor() {
     config.HIDE_CURSOR = !config.HIDE_CURSOR;
+    applyHideCursor();
+    saveConfig();
+}
+
+function applyHideCursor() {
     updateToggle('hideCursorToggle', config.HIDE_CURSOR);
     
     // Apply or remove cursor hiding CSS class
@@ -1194,7 +1203,6 @@ function toggleHideCursor() {
         cursorIndicator.style.display = config.HIDE_CURSOR ? 'block' : 'none';
     }
     
-    saveConfig();
 }
 
 // Cursor indicator functionality
@@ -1261,6 +1269,11 @@ function toggleSettings() {
 
 function toggleDebug() {
     config.DEBUG_MODE = !config.DEBUG_MODE;
+    applyDebugMode();
+    saveConfig();
+}
+
+function applyDebugMode() {
     updateToggle('debugToggle', config.DEBUG_MODE);
     
     // Control mobile debug overlay visibility
@@ -1289,9 +1302,7 @@ function toggleDebug() {
     
     updateStreamButton(streamState.isStreaming);
     updateStreamInputPreview();
-    
-          saveConfig();
-  }
+}
   
 
   
@@ -7416,6 +7427,9 @@ function toggleStreamVisibility() {
     
     const isVisible = overlay.classList.contains('visible');
     
+    config.STREAM_VISIBLE = !isVisible;
+    saveConfig();
+    
     if (isVisible) {
         overlay.classList.remove('visible');
         if (hideButton) hideButton.textContent = 'Show Diffusion';
@@ -10787,45 +10801,19 @@ function deobfuscateApiKey(obfuscated) {
     }
 }
 
+// Saved settings are everything in config except device/performance internals
+// without a UI control, and values stored under their own keys (style image, Telegram)
+const CONFIG_NOT_SAVED = new Set([
+    'BLOOM_ITERATIONS', 'BLOOM_RESOLUTION', 'BLOOM_SOFT_KNEE', 'BLOOM_THRESHOLD',
+    'CAPTURE_RESOLUTION', 'COLOR_UPDATE_SPEED', 'DYE_RESOLUTION', 'PRESSURE_ITERATIONS',
+    'SHADING', 'SIM_RESOLUTION', 'SPLAT_FORCE', 'SUNRAYS_RESOLUTION', 'TRANSPARENT',
+    'STYLE_IMAGE_URL', 'TELEGRAM_RECEIVE', 'TELEGRAM_WAITLIST_INTERVAL'
+]);
+
 function saveConfig() {
-    const configToSave = {
-        DENSITY_DISSIPATION: config.DENSITY_DISSIPATION,
-        VELOCITY_DISSIPATION: config.VELOCITY_DISSIPATION,
-        PRESSURE: config.PRESSURE,
-        CURL: config.CURL,
-        SPLAT_RADIUS: config.SPLAT_RADIUS,
-        BLOOM_INTENSITY: config.BLOOM_INTENSITY,
-        SUNRAYS_WEIGHT: config.SUNRAYS_WEIGHT,
-        INFERENCE_STEPS: config.INFERENCE_STEPS,
-        SEED: config.SEED,
-        CONTROLNET_POSE_SCALE: config.CONTROLNET_POSE_SCALE,
-        CONTROLNET_HED_SCALE: config.CONTROLNET_HED_SCALE,
-        CONTROLNET_CANNY_SCALE: config.CONTROLNET_CANNY_SCALE,
-        CONTROLNET_DEPTH_SCALE: config.CONTROLNET_DEPTH_SCALE,
-        CONTROLNET_COLOR_SCALE: config.CONTROLNET_COLOR_SCALE,
-        MODEL_ID: config.MODEL_ID,
-        FSR_ENABLED: config.FSR_ENABLED,
-        WIDTH: config.WIDTH,
-        HEIGHT: config.HEIGHT,
-        GUIDANCE_SCALE: config.GUIDANCE_SCALE,
-        DELTA: config.DELTA,
-        DENOISE_X: config.DENOISE_X,
-        DENOISE_Y: config.DENOISE_Y,
-        DENOISE_Z: config.DENOISE_Z,
-        COLORFUL: config.COLORFUL,
-        PAUSED: config.PAUSED,
-        ANIMATE: config.ANIMATE,
-        LIVELINESS: config.LIVELINESS,
-        CHAOS: config.CHAOS,
-        BREATHING: config.BREATHING,
-        COLOR_LIFE: config.COLOR_LIFE,
-        ANIMATION_INTERVAL: config.ANIMATION_INTERVAL,
-        BACKGROUND_IMAGE_SCALE: config.BACKGROUND_IMAGE_SCALE,
-        BLOOM: config.BLOOM,
-        SUNRAYS: config.SUNRAYS,
-        STATIC_COLOR: config.STATIC_COLOR,
-        BACK_COLOR: config.BACK_COLOR
-    };
+    const configToSave = Object.fromEntries(
+        Object.entries(config).filter(([key]) => !CONFIG_NOT_SAVED.has(key))
+    );
     
     saveToLocalStorage(STORAGE_KEYS.CONFIG, configToSave);
 }
@@ -11734,6 +11722,30 @@ function clearAllSettings() {
     }
 }
 
+// Settings that do more than set a value or a toggle's look
+function applySavedUiState() {
+    applyDebugMode();
+    applyHideCursor();
+
+    const weightType = document.getElementById('styleWeightType');
+    if (weightType && config.STYLE_WEIGHT_TYPE) weightType.value = config.STYLE_WEIGHT_TYPE;
+
+    const panel = document.getElementById('controlPanel');
+    if (!panel) return;
+    if (typeof config.PANEL_COLLAPSED === 'boolean') panel.classList.toggle('collapsed', config.PANEL_COLLAPSED);
+    if (config.PANEL_HIDDEN) panel.style.display = 'none';
+
+    // Remember the panel state however it changes (buttons, keys, mobile gestures)
+    new MutationObserver(() => {
+        const collapsed = panel.classList.contains('collapsed');
+        const hidden = panel.style.display === 'none';
+        if (collapsed === config.PANEL_COLLAPSED && hidden === config.PANEL_HIDDEN) return;
+        config.PANEL_COLLAPSED = collapsed;
+        config.PANEL_HIDDEN = hidden;
+        saveConfig();
+    }).observe(panel, { attributes: true, attributeFilter: ['class', 'style'] });
+}
+
 function initializeLocalStorage() {
     loadConfig();
     
@@ -11750,6 +11762,7 @@ function initializeLocalStorage() {
         loadTelegramSettings(); // Load before slider initialization
         updateSliderPositions();
         updateToggleStates();
+        applySavedUiState();
         loadPrompts();
         loadApiKey();
         loadTelegramToken();
