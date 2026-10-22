@@ -128,7 +128,7 @@ const commonParams = {
     GUIDANCE_SCALE: 1,  // SDXL uses lower guidance scale
     DELTA: 0.7,
     // SDXL parameters
-    WIDTH: 512,
+    WIDTH: 512,   // Daydream output resolution (square): see STREAM_RESOLUTIONS
     HEIGHT: 512,
     T_INDEX: 12,
     // Denoise controls
@@ -165,6 +165,7 @@ const commonParams = {
     
     // Daydream model (see DAYDREAM_MODELS)
     MODEL_ID: 'stabilityai/sdxl-turbo',
+    FSR_ENABLED: true, // sharp FSR upscaling of the stream output
     
     // Style Transfer
     STYLE_TRANSFER_ENABLED: true,
@@ -182,7 +183,8 @@ let config = {
 // Global State Variables (declared early to avoid initialization order issues)
 // Square stream input canvas (see getStreamInputStream). Declared up here because
 // update() reads it and first runs while the script is still loading.
-const STREAM_INPUT_SIZE = 512;
+// Square resolutions Daydream generates at (multiples of 64, 384-1024)
+const STREAM_RESOLUTIONS = [512, 768, 1024];
 const streamInput = { canvas: null, ctx: null, source: null, loopId: null };
 
 let streamState = {
@@ -774,6 +776,7 @@ function updateToggleStates() {
     updateToggle('styleTransferToggle', config.STYLE_TRANSFER_ENABLED);
     updateStyleTransferVisibility();
     updateModelControls();
+    updateToggle('fsrToggle', config.FSR_ENABLED);
     updateToggle('sunraysToggle', config.SUNRAYS);
     updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
     updateToggle('forceClickToggle', config.FORCE_CLICK);
@@ -1368,15 +1371,34 @@ function updateModel() {
     saveConfig();
     updateModelControls();
 
-    if (streamState.isStreaming) {
-        // A PATCH can't drop params the old model stored (e.g. the IP Adapter that
-        // sd-turbo rejects), so a model change starts a fresh stream instead
-        const overlayVisible = document.getElementById('streamOverlay')?.classList.contains('visible');
-        addDaydreamEventToDebug({ type: 'model_changed', model: config.MODEL_ID });
-        stopStream();
-        clearStreamState();
-        startStream(overlayVisible);
-    }
+    // A PATCH can't drop params the old model stored (e.g. the IP Adapter that
+    // sd-turbo rejects), so a model change starts a fresh stream instead
+    restartStreamWithNewSettings({ type: 'model_changed', model: config.MODEL_ID });
+}
+
+function updateResolution() {
+    const select = document.getElementById('resolutionSelect');
+    const size = getStreamResolution(Number(select.value));
+    config.WIDTH = size;
+    config.HEIGHT = size;
+    saveConfig();
+    if (streamInput.canvas) ensureStreamInputCanvas();
+
+    // Daydream restarts the pipeline for a new resolution anyway
+    restartStreamWithNewSettings({ type: 'resolution_changed', resolution: size });
+}
+
+function getStreamResolution(size = config.WIDTH) {
+    return STREAM_RESOLUTIONS.includes(size) ? size : STREAM_RESOLUTIONS[0];
+}
+
+function restartStreamWithNewSettings(debugEvent) {
+    if (!streamState.isStreaming) return;
+    const overlayVisible = document.getElementById('streamOverlay')?.classList.contains('visible');
+    addDaydreamEventToDebug(debugEvent);
+    stopStream();
+    clearStreamState();
+    startStream(overlayVisible);
 }
 
 // Show only the ControlNet sliders and style section the current model supports
@@ -1385,6 +1407,8 @@ function updateModelControls() {
     const model = DAYDREAM_MODELS[modelId];
     const select = document.getElementById('modelSelect');
     if (select) select.value = modelId;
+    const resolutionSelect = document.getElementById('resolutionSelect');
+    if (resolutionSelect) resolutionSelect.value = String(getStreamResolution());
 
     const supportedScales = new Set(model.controlnets.map(cn => cn.scaleProp).filter(Boolean));
     const sliderScales = {
@@ -6299,8 +6323,8 @@ function buildStreamParams() {
     const params = {
         seed: config.SEED,
         delta: config.DELTA,
-        width: config.WIDTH,
-        height: config.HEIGHT,
+        width: getStreamResolution(),
+        height: getStreamResolution(),
         prompt: prompt,
         model_id: modelId,
         lora_dict: null,
@@ -6550,6 +6574,7 @@ async function startStreamPlayback(attempt = 1) {
             if (loading) loading.style.display = 'none';
             video.style.display = 'block';
             syncPopupVideo();
+            startStreamUpscaler();
         };
         streamState.playbackConnection = pc;
 
@@ -6586,6 +6611,297 @@ async function startStreamPlayback(attempt = 1) {
     }
 }
 
+// FSR display upscaling
+// AMD FidelityFX FSR 1 (MIT): EASU upscales the square stream output to the frame's
+// screen size with edge-aware filtering, then RCAS sharpens it. The RCAS pass crops
+// the square to the frame like object-fit: cover, so alignment is unchanged. The
+// <video> stays underneath, invisible, as the frame source.
+const FSR_MAX_SIZE = 2048;       // px, cap on the upscaled square
+const FSR_SHARPNESS_STOPS = 0.2; // RCAS: 0 = sharpest, each stop halves it
+
+const FSR_VERTEX_SHADER = `#version 300 es
+in vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+// Port of FsrEasuF from ffx_fsr1.h: 12 taps around the source pixel, local edge
+// direction and length from 4 bilinear quads, anisotropic Lanczos-like weights
+const FSR_EASU_SHADER = `#version 300 es
+precision highp float;
+uniform sampler2D uTex;
+uniform vec2 uInputSize;
+uniform vec2 uOutputSize;
+out vec4 outColor;
+
+vec3 fetch(vec2 p) {
+    ivec2 i = clamp(ivec2(p), ivec2(0), ivec2(uInputSize) - 1);
+    return texelFetch(uTex, i, 0).rgb;
+}
+float luma(vec3 c) { return c.b * 0.5 + (c.r * 0.5 + c.g); }
+
+void easuSet(inout vec2 dir, inout float len, float w, float lA, float lB, float lC, float lD, float lE) {
+    float lenX = max(abs(lD - lC), abs(lC - lB));
+    float dirX = lD - lB;
+    dir.x += dirX * w;
+    lenX = clamp(abs(dirX) / max(lenX, 1e-5), 0.0, 1.0);
+    len += lenX * lenX * w;
+    float lenY = max(abs(lE - lC), abs(lC - lA));
+    float dirY = lE - lA;
+    dir.y += dirY * w;
+    lenY = clamp(abs(dirY) / max(lenY, 1e-5), 0.0, 1.0);
+    len += lenY * lenY * w;
+}
+
+void easuTap(inout vec3 aC, inout float aW, vec2 off, vec2 dir, vec2 len, float lob, float clp, vec3 c) {
+    vec2 v = vec2(dot(off, dir), dot(off, vec2(-dir.y, dir.x))) * len;
+    float d2 = min(dot(v, v), clp);
+    float wB = 0.4 * d2 - 1.0;
+    float wA = lob * d2 - 1.0;
+    wB *= wB;
+    wA *= wA;
+    wB = 1.5625 * wB - 0.5625;
+    float w = wB * wA;
+    aC += c * w;
+    aW += w;
+}
+
+void main() {
+    vec2 pp = gl_FragCoord.xy * (uInputSize / uOutputSize) - 0.5;
+    vec2 fp = floor(pp);
+    pp -= fp;
+
+    //    b c
+    //  e f g h
+    //  i j k l
+    //    n o
+    vec3 b = fetch(fp + vec2(0.0, -1.0)), c = fetch(fp + vec2(1.0, -1.0));
+    vec3 e = fetch(fp + vec2(-1.0, 0.0)), f = fetch(fp), g = fetch(fp + vec2(1.0, 0.0)), h = fetch(fp + vec2(2.0, 0.0));
+    vec3 i = fetch(fp + vec2(-1.0, 1.0)), j = fetch(fp + vec2(0.0, 1.0)), k = fetch(fp + vec2(1.0, 1.0)), l = fetch(fp + vec2(2.0, 1.0));
+    vec3 n = fetch(fp + vec2(0.0, 2.0)), o = fetch(fp + vec2(1.0, 2.0));
+
+    float bL = luma(b), cL = luma(c), eL = luma(e), fL = luma(f), gL = luma(g), hL = luma(h);
+    float iL = luma(i), jL = luma(j), kL = luma(k), lL = luma(l), nL = luma(n), oL = luma(o);
+
+    vec2 dir = vec2(0.0);
+    float len = 0.0;
+    easuSet(dir, len, (1.0 - pp.x) * (1.0 - pp.y), bL, eL, fL, gL, jL);
+    easuSet(dir, len, pp.x * (1.0 - pp.y), cL, fL, gL, hL, kL);
+    easuSet(dir, len, (1.0 - pp.x) * pp.y, fL, iL, jL, kL, nL);
+    easuSet(dir, len, pp.x * pp.y, gL, jL, kL, lL, oL);
+
+    float dirR = dot(dir, dir);
+    bool zro = dirR < 1.0 / 32768.0;
+    dirR = zro ? 1.0 : inversesqrt(dirR);
+    dir.x = zro ? 1.0 : dir.x;
+    dir *= dirR;
+    len = len * 0.5;
+    len *= len;
+    float stretch = dot(dir, dir) / max(abs(dir.x), abs(dir.y));
+    vec2 len2 = vec2(1.0 + (stretch - 1.0) * len, 1.0 - 0.5 * len);
+    float lob = 0.5 - 0.29 * len;
+    float clp = 1.0 / lob;
+
+    vec3 aC = vec3(0.0);
+    float aW = 0.0;
+    easuTap(aC, aW, vec2(0.0, -1.0) - pp, dir, len2, lob, clp, b);
+    easuTap(aC, aW, vec2(1.0, -1.0) - pp, dir, len2, lob, clp, c);
+    easuTap(aC, aW, vec2(-1.0, 1.0) - pp, dir, len2, lob, clp, i);
+    easuTap(aC, aW, vec2(0.0, 1.0) - pp, dir, len2, lob, clp, j);
+    easuTap(aC, aW, vec2(0.0, 0.0) - pp, dir, len2, lob, clp, f);
+    easuTap(aC, aW, vec2(-1.0, 0.0) - pp, dir, len2, lob, clp, e);
+    easuTap(aC, aW, vec2(1.0, 1.0) - pp, dir, len2, lob, clp, k);
+    easuTap(aC, aW, vec2(2.0, 1.0) - pp, dir, len2, lob, clp, l);
+    easuTap(aC, aW, vec2(2.0, 0.0) - pp, dir, len2, lob, clp, h);
+    easuTap(aC, aW, vec2(1.0, 0.0) - pp, dir, len2, lob, clp, g);
+    easuTap(aC, aW, vec2(1.0, 2.0) - pp, dir, len2, lob, clp, o);
+    easuTap(aC, aW, vec2(0.0, 2.0) - pp, dir, len2, lob, clp, n);
+
+    // Clamp to the 4 nearest source pixels, removing ringing
+    vec3 mn = min(min(f, g), min(j, k));
+    vec3 mx = max(max(f, g), max(j, k));
+    outColor = vec4(min(mx, max(mn, aC / aW)), 1.0);
+}`;
+
+// Port of FsrRcasF from ffx_fsr1.h: contrast-adaptive sharpening on a 5-tap cross,
+// limited so it can't create new extremes. uOffset applies the cover crop.
+const FSR_RCAS_SHADER = `#version 300 es
+precision highp float;
+uniform sampler2D uTex;
+uniform ivec2 uSize;
+uniform vec2 uOffset;
+uniform float uSharpness;
+out vec4 outColor;
+
+vec3 fetch(ivec2 p) { return texelFetch(uTex, clamp(p, ivec2(0), uSize - 1), 0).rgb; }
+
+void main() {
+    ivec2 p = ivec2(gl_FragCoord.xy + uOffset);
+    vec3 b = fetch(p + ivec2(0, 1));
+    vec3 d = fetch(p + ivec2(-1, 0));
+    vec3 e = fetch(p);
+    vec3 f = fetch(p + ivec2(1, 0));
+    vec3 h = fetch(p + ivec2(0, -1));
+
+    vec3 mn4 = min(min(b, d), min(f, h));
+    vec3 mx4 = max(max(b, d), max(f, h));
+    vec3 hitMin = min(mn4, e) / (4.0 * mx4 + 1e-5);
+    vec3 hitMax = (1.0 - max(mx4, e)) / min(4.0 * mn4 - 4.0, -1e-5);
+    vec3 lobeRGB = max(-hitMin, hitMax);
+    float lobe = max(-0.1875, min(max(lobeRGB.r, max(lobeRGB.g, lobeRGB.b)), 0.0)) * uSharpness;
+    outColor = vec4((lobe * (b + d + h + f) + e) / (4.0 * lobe + 1.0), 1.0);
+}`;
+
+const streamUpscaler = { gl: null, failed: false, running: false, easu: null, rcas: null,
+    videoTex: null, easuTex: null, easuFbo: null, easuSize: 0 };
+
+function initStreamUpscaler() {
+    if (streamUpscaler.gl || streamUpscaler.failed) return !!streamUpscaler.gl;
+    const fsrCanvas = document.getElementById('streamOverlayFsr');
+    const gl = fsrCanvas?.getContext('webgl2', { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: false });
+    if (!gl) {
+        console.warn('⚠️ WebGL2 unavailable, showing the stream without FSR');
+        streamUpscaler.failed = true;
+        return false;
+    }
+
+    const compile = (fragmentSource) => {
+        const program = gl.createProgram();
+        [[gl.VERTEX_SHADER, FSR_VERTEX_SHADER], [gl.FRAGMENT_SHADER, fragmentSource]].forEach(([type, source]) => {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+            gl.attachShader(program, shader);
+        });
+        gl.bindAttribLocation(program, 0, 'aPos');
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+        const uniforms = {};
+        for (let u = 0; u < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); u++) {
+            const name = gl.getActiveUniform(program, u).name;
+            uniforms[name] = gl.getUniformLocation(program, name);
+        }
+        return { program, uniforms };
+    };
+
+    try {
+        streamUpscaler.easu = compile(FSR_EASU_SHADER);
+        streamUpscaler.rcas = compile(FSR_RCAS_SHADER);
+    } catch (error) {
+        console.warn('⚠️ FSR shaders failed to compile, showing the stream without FSR:', error);
+        streamUpscaler.failed = true;
+        return false;
+    }
+
+    // One full-screen triangle
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+    const makeTexture = () => {
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        return texture;
+    };
+    streamUpscaler.videoTex = makeTexture();
+    streamUpscaler.easuTex = makeTexture();
+    streamUpscaler.easuFbo = gl.createFramebuffer();
+    streamUpscaler.gl = gl;
+    return true;
+}
+
+function startStreamUpscaler() {
+    if (!config.FSR_ENABLED || streamUpscaler.running || !initStreamUpscaler()) return;
+    streamUpscaler.running = true;
+    document.querySelector('.stream-overlay-content')?.classList.add('fsr-active');
+    scheduleUpscaledFrame();
+}
+
+function stopStreamUpscaler() {
+    streamUpscaler.running = false;
+    document.querySelector('.stream-overlay-content')?.classList.remove('fsr-active');
+}
+
+function toggleFsrUpscaling() {
+    config.FSR_ENABLED = !config.FSR_ENABLED;
+    updateToggle('fsrToggle', config.FSR_ENABLED);
+    saveConfig();
+    if (config.FSR_ENABLED && streamState.playbackConnection) startStreamUpscaler();
+    else stopStreamUpscaler();
+}
+
+// One upscale per decoded video frame
+function scheduleUpscaledFrame() {
+    if (!streamUpscaler.running) return;
+    const video = document.getElementById('streamOverlayVideo');
+    const next = () => {
+        renderUpscaledFrame();
+        scheduleUpscaledFrame();
+    };
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(next);
+    else requestAnimationFrame(next);
+}
+
+function renderUpscaledFrame() {
+    const { gl } = streamUpscaler;
+    const video = document.getElementById('streamOverlayVideo');
+    const fsrCanvas = document.getElementById('streamOverlayFsr');
+    const content = fsrCanvas.parentElement;
+    if (!gl || !streamUpscaler.running || !video.videoWidth || !content.clientWidth) return;
+
+    // Upscaled square = frame's longer side on screen, capped
+    const dpr = window.devicePixelRatio || 1;
+    const fullSide = Math.max(content.clientWidth, content.clientHeight) * dpr;
+    const scale = Math.min(1, FSR_MAX_SIZE / fullSide);
+    const size = Math.max(Math.round(fullSide * scale), video.videoWidth);
+    const k = size / fullSide;
+    const outW = Math.round(content.clientWidth * dpr * k);
+    const outH = Math.round(content.clientHeight * dpr * k);
+    if (fsrCanvas.width !== outW || fsrCanvas.height !== outH) {
+        fsrCanvas.width = outW;
+        fsrCanvas.height = outH;
+    }
+
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.bindTexture(gl.TEXTURE_2D, streamUpscaler.videoTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+
+    if (streamUpscaler.easuSize !== size) {
+        gl.bindTexture(gl.TEXTURE_2D, streamUpscaler.easuTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, streamUpscaler.easuFbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, streamUpscaler.easuTex, 0);
+        streamUpscaler.easuSize = size;
+    }
+
+    // EASU: video -> upscaled square
+    const { easu, rcas } = streamUpscaler;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, streamUpscaler.easuFbo);
+    gl.viewport(0, 0, size, size);
+    gl.useProgram(easu.program);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, streamUpscaler.videoTex);
+    gl.uniform1i(easu.uniforms.uTex, 0);
+    gl.uniform2f(easu.uniforms.uInputSize, video.videoWidth, video.videoHeight);
+    gl.uniform2f(easu.uniforms.uOutputSize, size, size);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // RCAS: sharpen and crop to the frame
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, outW, outH);
+    gl.useProgram(rcas.program);
+    gl.bindTexture(gl.TEXTURE_2D, streamUpscaler.easuTex);
+    gl.uniform1i(rcas.uniforms.uTex, 0);
+    gl.uniform2i(rcas.uniforms.uSize, size, size);
+    gl.uniform2f(rcas.uniforms.uOffset, Math.floor((size - outW) / 2), Math.floor((size - outH) / 2));
+    gl.uniform1f(rcas.uniforms.uSharpness, Math.pow(2, -FSR_SHARPNESS_STOPS));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
 // Show Daydream's reason when the output never arrives, e.g. "no orchestrators
 // available" when no GPU is serving the selected model right now
 async function showStreamGatewayError() {
@@ -6608,6 +6924,7 @@ async function showStreamGatewayError() {
 }
 
 function stopStreamPlayback() {
+    stopStreamUpscaler();
     if (streamState.playbackConnection) {
         streamState.playbackConnection.close();
         streamState.playbackConnection = null;
@@ -9412,12 +9729,17 @@ function getStreamInputStream(sourceCanvas) {
     return streamInput.canvas.captureStream(30);
 }
 
+// The input square matches the output resolution, so the AI gets full detail
 function ensureStreamInputCanvas() {
-    if (streamInput.canvas) return;
-    streamInput.canvas = document.createElement('canvas');
-    streamInput.canvas.width = STREAM_INPUT_SIZE;
-    streamInput.canvas.height = STREAM_INPUT_SIZE;
-    streamInput.ctx = streamInput.canvas.getContext('2d');
+    if (!streamInput.canvas) {
+        streamInput.canvas = document.createElement('canvas');
+        streamInput.ctx = streamInput.canvas.getContext('2d');
+    }
+    const size = getStreamResolution();
+    if (streamInput.canvas.width !== size) {
+        streamInput.canvas.width = size;
+        streamInput.canvas.height = size;
+    }
 }
 
 // The input is kept up to date while streaming, and in debug mode for the preview
@@ -9499,7 +9821,7 @@ function renderStreamInput() {
     const ky = src.height / view.height;
 
     drawEdgeExtended(streamInput.ctx, src,
-        (left - view.left) * kx, (top - view.top) * ky, side * kx, side * ky, STREAM_INPUT_SIZE);
+        (left - view.left) * kx, (top - view.top) * ky, side * kx, side * ky, streamInput.canvas.width);
 
     if (config.DEBUG_MODE) drawStreamInputPreview();
 }
@@ -9900,6 +10222,10 @@ function updateStreamOpacity(value, updateInput = true) {
     if (video) {
         video.style.opacity = value;
     }
+    const upscaled = document.getElementById('streamOverlayFsr');
+    if (upscaled) {
+        upscaled.style.opacity = value;
+    }
     if (updateInput) {
         document.getElementById('streamOpacityValue').value = value.toFixed(2);
     }
@@ -10233,6 +10559,7 @@ function saveStreamState() {
         playbackId: streamState.playbackId,
         whipUrl: streamState.whipUrl,
         modelId: getCurrentModelId(),
+        resolution: getStreamResolution(),
         timestamp: Date.now()
     };
     
@@ -10286,8 +10613,9 @@ function loadStreamState() {
         return null;
     }
     
-    // A stream made for another model can't be switched over, so start a new one
-    if ((savedStream.modelId || DEFAULT_MODEL_ID) !== getCurrentModelId()) {
+    // A stream made for another model or resolution can't be switched over, so start a new one
+    if ((savedStream.modelId || DEFAULT_MODEL_ID) !== getCurrentModelId() ||
+        (savedStream.resolution || STREAM_RESOLUTIONS[0]) !== getStreamResolution()) {
         clearStreamState();
         return null;
     }
@@ -10382,6 +10710,9 @@ function saveConfig() {
         CONTROLNET_DEPTH_SCALE: config.CONTROLNET_DEPTH_SCALE,
         CONTROLNET_COLOR_SCALE: config.CONTROLNET_COLOR_SCALE,
         MODEL_ID: config.MODEL_ID,
+        FSR_ENABLED: config.FSR_ENABLED,
+        WIDTH: config.WIDTH,
+        HEIGHT: config.HEIGHT,
         GUIDANCE_SCALE: config.GUIDANCE_SCALE,
         DELTA: config.DELTA,
         DENOISE_X: config.DENOISE_X,

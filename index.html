@@ -1363,7 +1363,8 @@
             }
 
             .stream-overlay iframe,
-            .stream-overlay video {
+            .stream-overlay video,
+            .stream-overlay canvas {
                 object-fit: cover; /* fill a non-square frame instead of letterboxing */
                 width: 100%;
                 height: 100%;
@@ -1389,6 +1390,25 @@
 
             /* Solid overlay to completely hide video UI controls */
 
+
+            /* FSR output on top of the video; !important beats the mobile full-screen canvas rule */
+            .stream-overlay #streamOverlayFsr {
+                display: none;
+                position: absolute !important;
+                top: 0;
+                left: 0;
+                width: 100% !important;
+                height: 100% !important;
+            }
+
+            .stream-overlay-content.fsr-active #streamOverlayFsr {
+                display: block;
+            }
+
+            /* The video keeps decoding underneath as the FSR source */
+            .stream-overlay-content.fsr-active #streamOverlayVideo {
+                opacity: 0 !important;
+            }
 
             /* Stream frame edit mode: drag to move, handles resize around the center */
             .stream-overlay.editing {
@@ -3383,6 +3403,7 @@
                 <div class="stream-overlay-loading" id="streamOverlayLoading">Loading stream...</div>
                 <iframe id="streamOverlayFrame" src="" style="display: none;"></iframe>
                 <video id="streamOverlayVideo" autoplay muted playsinline style="display: none;"></video>
+                <canvas id="streamOverlayFsr"></canvas>
             </div>
         </div>
 
@@ -3989,6 +4010,30 @@
                                 <option value="Lykon/dreamshaper-8">DreamShaper 8</option>
                                 <option value="prompthero/openjourney-v4">OpenJourney v4</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Resolution <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Square size Daydream generates at. Higher means more detail but may lower the frame rate and use more credits. Switching restarts the stream.</span>
+                            </div></span>
+                            <select class="control-value select-input" id="resolutionSelect" onchange="updateResolution()">
+                                <option value="512" selected>512 × 512</option>
+                                <option value="768">768 × 768</option>
+                                <option value="1024">1024 × 1024</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="toggleFsrUpscaling()" ontouchstart="toggleFsrUpscaling()">
+                            <span>Sharp Upscaling (FSR) <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Upscales the AI output to the frame's screen size with AMD FidelityFX FSR 1 (edge-aware upscale + sharpening) instead of plain smoothing.</span>
+                            </div></span>
+                            <div class="toggle-switch active" id="fsrToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
