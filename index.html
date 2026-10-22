@@ -1362,7 +1362,8 @@
                 pointer-events: none;
             }
 
-            .stream-overlay iframe {
+            .stream-overlay iframe,
+            .stream-overlay video {
                 width: 100%;
                 height: 100%;
                 border: none;
@@ -3306,6 +3307,7 @@
             <div class="stream-overlay-content">
                 <div class="stream-overlay-loading" id="streamOverlayLoading">Loading stream...</div>
                 <iframe id="streamOverlayFrame" src="" style="display: none;"></iframe>
+                <video id="streamOverlayVideo" autoplay muted playsinline style="display: none;"></video>
             </div>
         </div>
 
@@ -3887,6 +3889,25 @@
                         </div>
                     </div>
                     
+                </div>
+
+                <!-- Model Section -->
+                <div class="control-group">
+                    <div class="group-title">Model</div>
+
+                    <div class="control-item">
+                        <div class="control-label">
+                            <span>Diffusion Model <div class="tooltip"><span class="info-icon">i</span>
+                                <span class="tooltiptext">Switching reloads the stream pipeline (~30s). Only the ControlNets the model supports are shown.</span>
+                            </div></span>
+                            <select class="control-value select-input" id="modelSelect" onchange="updateModel()">
+                                <option value="stabilityai/sdxl-turbo" selected>SDXL Turbo</option>
+                                <option value="stabilityai/sd-turbo">SD Turbo</option>
+                                <option value="Lykon/dreamshaper-8">DreamShaper 8</option>
+                                <option value="prompthero/openjourney-v4">OpenJourney v4</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Transfer Style Section -->

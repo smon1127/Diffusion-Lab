@@ -163,6 +163,9 @@ const commonParams = {
     // OSC Multi-splat channels REMOVED - replaced by OSC velocity drawing system
     HIDE_CURSOR: false,
     
+    // Daydream model (see DAYDREAM_MODELS)
+    MODEL_ID: 'stabilityai/sdxl-turbo',
+    
     // Style Transfer
     STYLE_TRANSFER_ENABLED: true,
     STYLE_STRENGTH: 0.5,
@@ -182,6 +185,8 @@ let streamState = {
     streamId: null,
     playbackId: null,
     whipUrl: null,
+    whepUrl: null,            // WebRTC playback URL for the AI output
+    playbackConnection: null, // RTCPeerConnection receiving the AI output
     peerConnection: null,
     mediaStream: null,
     popupWindow: null,
@@ -763,6 +768,7 @@ function updateToggleStates() {
     updateToggle('bloomToggle', config.BLOOM);
     updateToggle('styleTransferToggle', config.STYLE_TRANSFER_ENABLED);
     updateStyleTransferVisibility();
+    updateModelControls();
     updateToggle('sunraysToggle', config.SUNRAYS);
     updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
     updateToggle('forceClickToggle', config.FORCE_CLICK);
@@ -1346,6 +1352,47 @@ function updateStyleWeightType() {
     const select = document.getElementById('styleWeightType');
     config.STYLE_WEIGHT_TYPE = select.value;
     saveConfig();
+}
+
+function updateModel() {
+    const select = document.getElementById('modelSelect');
+    config.MODEL_ID = select.value;
+    saveConfig();
+    updateModelControls();
+
+    if (streamState.isStreaming) {
+        // A PATCH can't drop params the old model stored (e.g. the IP Adapter that
+        // sd-turbo rejects), so a model change starts a fresh stream instead
+        const overlayVisible = document.getElementById('streamOverlay')?.classList.contains('visible');
+        addDaydreamEventToDebug({ type: 'model_changed', model: config.MODEL_ID });
+        stopStream();
+        clearStreamState();
+        startStream(overlayVisible);
+    }
+}
+
+// Show only the ControlNet sliders and style section the current model supports
+function updateModelControls() {
+    const modelId = getCurrentModelId();
+    const model = DAYDREAM_MODELS[modelId];
+    const select = document.getElementById('modelSelect');
+    if (select) select.value = modelId;
+
+    const supportedScales = new Set(model.controlnets.map(cn => cn.scaleProp).filter(Boolean));
+    const sliderScales = {
+        controlnetPose: 'CONTROLNET_POSE_SCALE',
+        controlnetHed: 'CONTROLNET_HED_SCALE',
+        controlnetCanny: 'CONTROLNET_CANNY_SCALE',
+        controlnetDepth: 'CONTROLNET_DEPTH_SCALE',
+        controlnetColor: 'CONTROLNET_COLOR_SCALE'
+    };
+    Object.entries(sliderScales).forEach(([slider, prop]) => {
+        const item = document.getElementById(`${slider}Fill`)?.closest('.control-item');
+        if (item) item.style.display = supportedScales.has(prop) ? '' : 'none';
+    });
+
+    const styleGroup = document.getElementById('styleTransferToggle')?.closest('.control-group');
+    if (styleGroup) styleGroup.style.display = model.ipAdapter ? '' : 'none';
 }
 
 function handleStyleImageUpload(event) {
@@ -6027,7 +6074,53 @@ function hashCode (s) {
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
 // `pipeline` + `params.model_id` replaces the deprecated `pipeline_id: 'pip_SDXL-turbo'`
 const DAYDREAM_PIPELINE = 'streamdiffusion';
-const DAYDREAM_MODEL_ID = 'stabilityai/sdxl-turbo';
+const DEFAULT_MODEL_ID = 'stabilityai/sdxl-turbo';
+
+// Tile ControlNet with the feedback preprocessor, shared by SDXL and SD1.5
+const feedbackControlnet = (modelId) => ({
+    model_id: modelId, preprocessor: 'feedback', fixedScale: 0.1,
+    preprocessor_params: { feedback_strength: 0.5 }
+});
+const CANNY_PARAMS = { low_threshold: 100, high_threshold: 200 };
+
+// ControlNets per model, from Daydream's docs. `scaleProp` ties a ControlNet to its
+// slider; a model without a slider's ControlNet hides that slider.
+const SD15_MODEL = {
+    ipAdapter: true,
+    lcmLoraId: 'latent-consistency/lcm-lora-sdv1-5',
+    controlnets: [
+        { model_id: 'lllyasviel/control_v11f1p_sd15_depth', preprocessor: 'depth_tensorrt', scaleProp: 'CONTROLNET_DEPTH_SCALE' },
+        { model_id: 'lllyasviel/control_v11p_sd15_canny', preprocessor: 'canny', scaleProp: 'CONTROLNET_CANNY_SCALE', preprocessor_params: CANNY_PARAMS },
+        feedbackControlnet('lllyasviel/control_v11f1e_sd15_tile')
+    ]
+};
+const DAYDREAM_MODELS = {
+    'stabilityai/sdxl-turbo': {
+        ipAdapter: true,
+        controlnets: [
+            { model_id: 'xinsir/controlnet-depth-sdxl-1.0', preprocessor: 'depth_tensorrt', scaleProp: 'CONTROLNET_DEPTH_SCALE' },
+            { model_id: 'xinsir/controlnet-canny-sdxl-1.0', preprocessor: 'canny', scaleProp: 'CONTROLNET_CANNY_SCALE', preprocessor_params: CANNY_PARAMS },
+            feedbackControlnet('xinsir/controlnet-tile-sdxl-1.0')
+        ]
+    },
+    'stabilityai/sd-turbo': {
+        ipAdapter: false,
+        lcmLoraId: 'latent-consistency/lcm-lora-sdv1-5',
+        controlnets: [
+            { model_id: 'thibaud/controlnet-sd21-openpose-diffusers', preprocessor: 'pose_tensorrt', scaleProp: 'CONTROLNET_POSE_SCALE' },
+            { model_id: 'thibaud/controlnet-sd21-hed-diffusers', preprocessor: 'soft_edge', scaleProp: 'CONTROLNET_HED_SCALE' },
+            { model_id: 'thibaud/controlnet-sd21-canny-diffusers', preprocessor: 'canny', scaleProp: 'CONTROLNET_CANNY_SCALE', preprocessor_params: CANNY_PARAMS },
+            { model_id: 'thibaud/controlnet-sd21-depth-diffusers', preprocessor: 'depth_tensorrt', scaleProp: 'CONTROLNET_DEPTH_SCALE' },
+            { model_id: 'thibaud/controlnet-sd21-color-diffusers', preprocessor: 'passthrough', scaleProp: 'CONTROLNET_COLOR_SCALE' }
+        ]
+    },
+    'Lykon/dreamshaper-8': SD15_MODEL,
+    'prompthero/openjourney-v4': SD15_MODEL
+};
+
+function getCurrentModelId() {
+    return DAYDREAM_MODELS[config.MODEL_ID] ? config.MODEL_ID : DEFAULT_MODEL_ID;
+}
 
 function updateStreamStatus(status, className = '') {
     const statusElement = document.getElementById('streamStatus');
@@ -6184,26 +6277,23 @@ async function createDaydreamStream() {
 function buildStreamParams() {
     const prompt = document.getElementById('promptInput').value;
     const negativePrompt = document.getElementById('negativePromptInput').value;
+    const modelId = getCurrentModelId();
+    const model = DAYDREAM_MODELS[modelId];
 
-    return {
+    const params = {
         seed: config.SEED,
         delta: config.DELTA,
         width: config.WIDTH,
         height: config.HEIGHT,
         prompt: prompt,
-        model_id: DAYDREAM_MODEL_ID,
+        model_id: modelId,
         lora_dict: null,
-        ip_adapter: {
-            scale: config.STYLE_STRENGTH || 0.5,
-            enabled: config.STYLE_TRANSFER_ENABLED
-        },
         num_inference_steps: config.INFERENCE_STEPS,
         negative_prompt: negativePrompt,
         use_denoising_batch: true,
         normalize_seed_weights: true,
         normalize_prompt_weights: true,
         seed_interpolation_method: "linear",
-        ip_adapter_style_image_url: config.STYLE_IMAGE_URL || "https://storage.googleapis.com/thom-vod-testing/style-presets/default_preset.png",
         enable_similar_image_filter: false,
         prompt_interpolation_method: "linear",
         similar_image_filter_threshold: 0.98,
@@ -6213,35 +6303,29 @@ function buildStreamParams() {
         t_index_list: [config.T_INDEX],
         use_lcm_lora: true,
         guidance_scale: config.GUIDANCE_SCALE,
-        controlnets: [
-            {
-                enabled: true,
-                model_id: "xinsir/controlnet-depth-sdxl-1.0",
-                preprocessor: "depth_tensorrt",
-                conditioning_scale: config.CONTROLNET_DEPTH_SCALE,
-                preprocessor_params: {}
-            },
-            {
-                enabled: true,
-                model_id: "xinsir/controlnet-canny-sdxl-1.0",
-                preprocessor: "canny",
-                conditioning_scale: config.CONTROLNET_CANNY_SCALE,
-                preprocessor_params: {
-                    low_threshold: 100,
-                    high_threshold: 200
-                }
-            },
-            {
-                enabled: true,
-                model_id: "xinsir/controlnet-tile-sdxl-1.0",
-                preprocessor: "feedback",
-                conditioning_scale: 0.1,
-                preprocessor_params: {
-                    feedback_strength: 0.5
-                }
-            }
-        ]
+        controlnets: model.controlnets.map(cn => ({
+            enabled: true,
+            model_id: cn.model_id,
+            preprocessor: cn.preprocessor,
+            conditioning_scale: cn.scaleProp ? config[cn.scaleProp] : cn.fixedScale,
+            preprocessor_params: cn.preprocessor_params || {}
+        }))
     };
+
+    if (model.lcmLoraId) {
+        params.lcm_lora_id = model.lcmLoraId;
+    }
+
+    // sd-turbo has no IP Adapter and rejects these keys, even as null
+    if (model.ipAdapter) {
+        params.ip_adapter = {
+            scale: config.STYLE_STRENGTH || 0.5,
+            enabled: config.STYLE_TRANSFER_ENABLED
+        };
+        params.ip_adapter_style_image_url = config.STYLE_IMAGE_URL || "https://storage.googleapis.com/thom-vod-testing/style-presets/default_preset.png";
+    }
+
+    return params;
 }
 
 async function updateStreamParameters() {
@@ -6402,6 +6486,9 @@ async function setupWebRTCConnection(whipUrl, mediaStream) {
         throw new Error(`WHIP connection failed: ${response.statusText}`);
     }
 
+    // Daydream returns the WHEP playback URL for the AI output in this header
+    streamState.whepUrl = response.headers.get('livepeer-playback-url') || null;
+
     const answerSdp = await response.text();
     await peerConnection.setRemoteDescription(new RTCSessionDescription({
         type: 'answer',
@@ -6409,6 +6496,110 @@ async function setupWebRTCConnection(whipUrl, mediaStream) {
     }));
 
     return peerConnection;
+}
+
+// The lvpr.tv player no longer receives the AI output ("stream offline"), so the
+// overlay plays it over WebRTC (WHEP) like Daydream's Browser SDK does.
+async function getWhepUrl() {
+    if (streamState.whepUrl) return streamState.whepUrl;
+
+    // Fallback when the WHIP header isn't readable: the status endpoint reports it
+    const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/status`, {
+        headers: { 'Authorization': `Bearer ${getApiKey()}` }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    streamState.whepUrl = data?.data?.gateway_status?.whep_url || null;
+    return streamState.whepUrl;
+}
+
+async function startStreamPlayback(attempt = 1) {
+    const video = document.getElementById('streamOverlayVideo');
+    const loading = document.getElementById('streamOverlayLoading');
+    if (!video || !streamState.streamId) return;
+
+    stopStreamPlayback();
+
+    try {
+        const whepUrl = await getWhepUrl();
+        if (!whepUrl) throw new Error('No playback URL yet');
+
+        const pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+        pc.addTransceiver('video', { direction: 'recvonly' });
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+        pc.ontrack = (event) => {
+            video.srcObject = event.streams[0] || new MediaStream([event.track]);
+            if (loading) loading.style.display = 'none';
+            video.style.display = 'block';
+        };
+        streamState.playbackConnection = pc;
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const response = await fetch(whepUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/sdp' },
+            body: offer.sdp
+        });
+        if (!response.ok) throw new Error(`WHEP playback failed: ${response.status}`);
+
+        await pc.setRemoteDescription({ type: 'answer', sdp: await response.text() });
+
+        pc.addEventListener('connectionstatechange', () => {
+            if (pc.connectionState === 'failed' && streamState.playbackConnection === pc && streamState.isStreaming) {
+                console.warn('⚠️ Playback connection failed, reconnecting...');
+                startStreamPlayback();
+            }
+        });
+        console.log('✅ Stream playback connected (WHEP)');
+    } catch (error) {
+        stopStreamPlayback();
+        // The output takes a few seconds to come up after the input connects
+        if (attempt < 10 && streamState.streamId) {
+            console.log(`⏳ Waiting for stream output (${attempt}/10):`, error.message);
+            setTimeout(() => startStreamPlayback(attempt + 1), 2000);
+        } else {
+            console.error('❌ Stream playback failed:', error);
+            if (loading) loading.textContent = 'Failed to load stream';
+            showStreamGatewayError();
+        }
+    }
+}
+
+// Show Daydream's reason when the output never arrives, e.g. "no orchestrators
+// available" when no GPU is serving the selected model right now
+async function showStreamGatewayError() {
+    try {
+        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/status`, {
+            headers: { 'Authorization': `Bearer ${getApiKey()}` }
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const message = data?.data?.gateway_status?.error?.error_message || data?.data?.inference_status?.last_error;
+        if (!message) return;
+
+        const loading = document.getElementById('streamOverlayLoading');
+        if (loading) loading.textContent = `Stream failed: ${message}`;
+        updateStreamStatus('Error: ' + message, 'error');
+        addDaydreamEventToDebug({ type: 'stream_error', error: message });
+    } catch (error) {
+        console.warn('Failed to fetch stream error:', error);
+    }
+}
+
+function stopStreamPlayback() {
+    if (streamState.playbackConnection) {
+        streamState.playbackConnection.close();
+        streamState.playbackConnection = null;
+    }
+    const video = document.getElementById('streamOverlayVideo');
+    if (video) {
+        video.srcObject = null;
+        video.style.display = 'none';
+    }
 }
 
 function openStreamPopup(playbackId) {
@@ -6574,6 +6765,9 @@ async function startStream(showOverlay = true) {
             streamState.mediaStream
         );
         
+        // Play the AI output in the overlay (WHEP)
+        startStreamPlayback();
+        
         // Monitor connection state
         streamState.peerConnection.addEventListener('connectionstatechange', () => {
             const state = streamState.peerConnection.connectionState;
@@ -6686,11 +6880,12 @@ function stopStream() {
         type: 'stream_stopped'
     });
     
-    // Clean up WebRTC connection
+    // Clean up WebRTC connections
     if (streamState.peerConnection) {
         streamState.peerConnection.close();
         streamState.peerConnection = null;
     }
+    stopStreamPlayback();
     
     // Clean up media stream
     if (streamState.mediaStream) {
@@ -6761,76 +6956,25 @@ async function restartStream() {
 // Stream overlay management
 function openStreamOverlay(playbackId, showOverlay = true) {
     const overlay = document.getElementById('streamOverlay');
-    const iframe = document.getElementById('streamOverlayFrame');
+    const video = document.getElementById('streamOverlayVideo');
     const loading = document.getElementById('streamOverlayLoading');
     
-    if (!overlay || !iframe || !loading) {
+    if (!overlay || !video || !loading) {
         console.error('Stream overlay elements not found');
         return;
     }
-    
-    const streamUrl = `https://lvpr.tv/?v=${playbackId}&lowLatency=force&controls=false`;
-    console.log('🔄 Loading stream URL in overlay:', streamUrl);
     
     // Show overlay only if requested
     if (showOverlay) {
         overlay.classList.add('visible');
     }
     
-    // Show loading state
-    loading.style.display = 'block';
-    iframe.style.display = 'none';
-    
-    // Set iframe source and show when loaded
-    iframe.onload = function() {
-        console.log('✅ Stream iframe loaded successfully');
-        loading.style.display = 'none';
-        iframe.style.display = 'block';
-    };
-    
-    // Add error handling
-    iframe.onerror = function() {
-        console.error('❌ Stream iframe failed to load');
-        loading.textContent = 'Failed to load stream';
-    };
-    
-    // Set a timeout to show if loading takes too long
-    setTimeout(() => {
-        if (loading.style.display !== 'none') {
-            console.warn('⚠️ Stream taking longer than expected to load');
-            loading.textContent = 'Stream loading...';
-        }
-    }, 10000);
-    
-    iframe.src = streamUrl;
-    
-    // Try to hide video controls after iframe loads
-    iframe.addEventListener('load', function() {
-        try {
-            // Attempt to hide video controls (may be blocked by CORS)
-            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-            if (iframeDoc) {
-                const style = iframeDoc.createElement('style');
-                style.textContent = `
-                    video::-webkit-media-controls { display: none !important; }
-                    video::-webkit-media-controls-panel { display: none !important; }
-                    video::-webkit-media-controls-play-button { display: none !important; }
-                    video::-webkit-media-controls-volume-slider { display: none !important; }
-                    video::-webkit-media-controls-timeline { display: none !important; }
-                    video::-webkit-media-controls-current-time-display { display: none !important; }
-                    video::-webkit-media-controls-time-remaining-display { display: none !important; }
-                    video::-webkit-media-controls-fullscreen-button { display: none !important; }
-                    video { pointer-events: none !important; }
-                    .video-controls, .controls, .player-controls { display: none !important; }
-                    .vjs-control-bar { display: none !important; }
-                `;
-                iframeDoc.head.appendChild(style);
-                console.log('✅ Successfully injected video control hiding styles');
-            }
-        } catch (e) {
-            console.log('⚠️ Could not inject styles into iframe (CORS restriction):', e.message);
-        }
-    });
+    // Show loading until startStreamPlayback() receives the AI output
+    if (!streamState.playbackConnection) {
+        loading.textContent = 'Loading stream...';
+        loading.style.display = 'block';
+        video.style.display = 'none';
+    }
     
     console.log('🆕 Opened stream overlay');
 }
@@ -6843,9 +6987,10 @@ function closeStreamOverlay(clearIframe = true) {
         overlay.classList.remove('visible');
     }
     
-    // Only clear iframe if explicitly requested (when stopping stream)
-    if (clearIframe && iframe) {
-        iframe.src = '';
+    // Only clear the player if explicitly requested (when stopping stream)
+    if (clearIframe) {
+        stopStreamPlayback();
+        if (iframe) iframe.src = '';
     }
     
     console.log('🔄 Closed stream overlay');
@@ -6878,11 +7023,9 @@ function toggleStreamVisibility() {
         overlay.classList.add('visible');
         if (hideButton) hideButton.textContent = 'Hide Diffusion';
         
-        // Ensure iframe is still loaded when showing again
-        const iframe = document.getElementById('streamOverlayFrame');
-        if (iframe && streamState.playbackId && !iframe.src) {
-            const streamUrl = `https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force&controls=false`;
-            iframe.src = streamUrl;
+        // Ensure playback is still connected when showing again
+        if (streamState.isStreaming && !streamState.playbackConnection) {
+            startStreamPlayback();
         }
     }
 }
@@ -9511,9 +9654,9 @@ function updateAudioOpacity(value, updateInput = true) {
 }
 
 function updateStreamOpacity(value, updateInput = true) {
-    const iframe = document.getElementById('streamOverlayFrame');
-    if (iframe) {
-        iframe.style.opacity = value;
+    const video = document.getElementById('streamOverlayVideo');
+    if (video) {
+        video.style.opacity = value;
     }
     if (updateInput) {
         document.getElementById('streamOpacityValue').value = value.toFixed(2);
@@ -9714,8 +9857,9 @@ async function updateStreamParametersWithRetry() {
     }
 }
 
-updateSliderValue = function(sliderName, percentage) {
-    originalUpdateSliderValue(sliderName, percentage);
+updateSliderValue = function(sliderName, percentage, skipSave = false) {
+    // Pass skipSave through, or syncing sliders on load saves defaults over the stored config
+    originalUpdateSliderValue(sliderName, percentage, skipSave);
     
     // Handle denoise slider synchronization
     if (['denoiseX', 'denoiseY', 'denoiseZ'].includes(sliderName)) {
@@ -9845,6 +9989,7 @@ function saveStreamState() {
         streamId: streamState.streamId,
         playbackId: streamState.playbackId,
         whipUrl: streamState.whipUrl,
+        modelId: getCurrentModelId(),
         timestamp: Date.now()
     };
     
@@ -9894,6 +10039,12 @@ function loadStreamState() {
     
     // Validate stream data structure
     if (!savedStream.streamId || !savedStream.playbackId || !savedStream.whipUrl) {
+        clearStreamState();
+        return null;
+    }
+    
+    // A stream made for another model can't be switched over, so start a new one
+    if ((savedStream.modelId || DEFAULT_MODEL_ID) !== getCurrentModelId()) {
         clearStreamState();
         return null;
     }
@@ -9987,6 +10138,7 @@ function saveConfig() {
         CONTROLNET_CANNY_SCALE: config.CONTROLNET_CANNY_SCALE,
         CONTROLNET_DEPTH_SCALE: config.CONTROLNET_DEPTH_SCALE,
         CONTROLNET_COLOR_SCALE: config.CONTROLNET_COLOR_SCALE,
+        MODEL_ID: config.MODEL_ID,
         GUIDANCE_SCALE: config.GUIDANCE_SCALE,
         DELTA: config.DELTA,
         DENOISE_X: config.DENOISE_X,
