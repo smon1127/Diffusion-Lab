@@ -180,6 +180,11 @@ let config = {
 };
 
 // Global State Variables (declared early to avoid initialization order issues)
+// Square stream input canvas (see getStreamInputStream). Declared up here because
+// update() reads it and first runs while the script is still loading.
+const STREAM_INPUT_SIZE = 512;
+const streamInput = { canvas: null, ctx: null, source: null, loopId: null };
+
 let streamState = {
     isStreaming: false,
     streamId: null,
@@ -1278,6 +1283,9 @@ function toggleDebug() {
             console.log('🔍 Debug mode disabled');
         }
     }
+    
+    updateStreamButton(streamState.isStreaming);
+    updateStreamInputPreview();
     
           saveConfig();
   }
@@ -4851,6 +4859,7 @@ function update () {
     if (!config.PAUSED)
         step(dt);
     render(null);
+    if (streamInput.source === canvas && isStreamInputActive()) renderStreamInput();
     requestAnimationFrame(update);
 }
 
@@ -5463,14 +5472,19 @@ canvas.addEventListener('mousedown', e => {
     updatePointerDownData(pointer, -1, posX, posY);
 });
 
-canvas.addEventListener('mousemove', e => {
+// Listen on window so drawing continues over the menu and the stream frame;
+// positions are converted to canvas coordinates. pointermove rather than mousemove:
+// dragging the frame suppresses mouse events, pointer events still arrive.
+window.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return; // touch has its own handlers
     let pointer = pointers[0];
     
     // Allow movement without clicking when velocity drawing is enabled
     if (!pointer.down && !config.VELOCITY_DRAWING) return;
     
-    let posX = e.offsetX;
-    let posY = e.offsetY;
+    const rect = canvas.getBoundingClientRect();
+    let posX = e.clientX - rect.left;
+    let posY = e.clientY - rect.top;
     
     // Initialize pointer if velocity drawing is on but pointer isn't down
     if (!pointer.down && config.VELOCITY_DRAWING) {
@@ -5947,7 +5961,7 @@ function initializeIdleAnimation() {
     // Only track canvas interactions to reset idle timer
     // UI interactions (sliders, buttons) won't stop the animation
     canvas.addEventListener('mousedown', resetActivityTimer, { passive: true });
-    canvas.addEventListener('mousemove', resetActivityTimer, { passive: true });
+    window.addEventListener('mousemove', resetActivityTimer, { passive: true });
     canvas.addEventListener('touchstart', resetActivityTimer, { passive: true });
     canvas.addEventListener('touchmove', resetActivityTimer, { passive: true });
     
@@ -6146,13 +6160,15 @@ function updateStreamButton(isStreaming) {
     const opacityContainer = document.getElementById('streamOpacityContainer');
     
     const hasValidStream = streamState.playbackId && streamState.streamId && isStreaming;
+    // Debug mode shows the stream controls without a stream, e.g. to edit the frame
+    const showControls = hasValidStream || config.DEBUG_MODE;
     
     if (streamControlsRow) {
-        streamControlsRow.style.display = hasValidStream ? 'flex' : 'none';
+        streamControlsRow.style.display = showControls ? 'flex' : 'none';
     }
     
     if (opacityContainer) {
-        opacityContainer.style.display = hasValidStream ? 'block' : 'none';
+        opacityContainer.style.display = showControls ? 'block' : 'none';
     }
     
     // Update hide button text based on overlay visibility
@@ -6688,7 +6704,7 @@ async function startStream(showOverlay = true) {
         
         // Create canvas media stream from appropriate canvas (audio blob or fluid)
         const streamingCanvas = getStreamingCanvas();
-        streamState.mediaStream = streamingCanvas.captureStream(30);
+        streamState.mediaStream = getStreamInputStream(streamingCanvas);
         if (!streamState.mediaStream) {
             throw new Error('Failed to capture canvas stream');
         }
@@ -9366,6 +9382,136 @@ function removeAudioFromStream() {
     }
 }
 
+// Square stream input
+// Daydream processes a square, so the stream gets the square around the stream frame
+// (side = the frame's longer side, same center) instead of the whole screen. The
+// overlay crops that square back to the frame (object-fit: cover), so every output
+// pixel lands on the background pixel it was made from, at any frame aspect ratio.
+
+function getStreamInputStream(sourceCanvas) {
+    ensureStreamInputCanvas();
+    streamInput.source = sourceCanvas;
+    renderStreamInput();
+    startStreamInputLoop();
+    return streamInput.canvas.captureStream(30);
+}
+
+function ensureStreamInputCanvas() {
+    if (streamInput.canvas) return;
+    streamInput.canvas = document.createElement('canvas');
+    streamInput.canvas.width = STREAM_INPUT_SIZE;
+    streamInput.canvas.height = STREAM_INPUT_SIZE;
+    streamInput.ctx = streamInput.canvas.getContext('2d');
+}
+
+// The input is kept up to date while streaming, and in debug mode for the preview
+function isStreamInputActive() {
+    return !!streamState.mediaStream || config.DEBUG_MODE;
+}
+
+function startStreamInputLoop() {
+    if (!streamInput.loopId) streamInput.loopId = requestAnimationFrame(streamInputLoop);
+}
+
+// 2D sources (media, camera, audio) are copied here. The WebGL fluid canvas is copied
+// from update() right after it renders, since its buffer is cleared once displayed.
+function streamInputLoop() {
+    if (!isStreamInputActive()) {
+        streamInput.loopId = null;
+        return;
+    }
+    if (streamInput.source !== canvas) renderStreamInput();
+    streamInput.loopId = requestAnimationFrame(streamInputLoop);
+}
+
+// Debug preview (top right): what the stream sends, with the part the frame shows outlined
+function updateStreamInputPreview() {
+    const preview = document.getElementById('streamInputPreview');
+    if (!preview) return;
+    preview.classList.toggle('visible', config.DEBUG_MODE);
+    if (!config.DEBUG_MODE) return;
+
+    ensureStreamInputCanvas();
+    if (!streamState.mediaStream) streamInput.source = getStreamingCanvas();
+    renderStreamInput();
+    startStreamInputLoop();
+}
+
+function drawStreamInputPreview() {
+    const previewCanvas = document.getElementById('streamInputPreviewCanvas');
+    if (!previewCanvas) return;
+    const ctx = previewCanvas.getContext('2d');
+    const size = previewCanvas.width;
+    ctx.drawImage(streamInput.canvas, 0, 0, size, size);
+
+    const frame = getOverlayScreenRect();
+    const side = Math.max(frame.w, frame.h);
+    const w = frame.w / side * size;
+    const h = frame.h / side * size;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1;
+    ctx.strokeRect((size - w) / 2 + 0.5, (size - h) / 2 + 0.5, w - 1, h - 1);
+    ctx.restore();
+}
+
+// The stream frame in screen pixels, matching .stream-overlay's default when unedited
+function getOverlayScreenRect() {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    if (overlayLayout) {
+        return { cx: overlayLayout.x * W, cy: overlayLayout.y * H, w: overlayLayout.w * H, h: overlayLayout.h * H };
+    }
+    const side = H - 40;
+    return { cx: W / 2, cy: 20 + side / 2, w: side, h: side };
+}
+
+function renderStreamInput() {
+    const src = streamInput.source;
+    if (!src || !src.width || !src.height || !streamInput.ctx) return;
+
+    const frame = getOverlayScreenRect();
+    const side = Math.max(frame.w, frame.h);
+    const left = frame.cx - side / 2;
+    const top = frame.cy - side / 2;
+
+    // Screen pixels -> source canvas pixels (canvases may render at another resolution)
+    const box = src.getBoundingClientRect();
+    const view = box.width > 0 ? box : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const kx = src.width / view.width;
+    const ky = src.height / view.height;
+
+    drawEdgeExtended(streamInput.ctx, src,
+        (left - view.left) * kx, (top - view.top) * ky, side * kx, side * ky, STREAM_INPUT_SIZE);
+
+    if (config.DEBUG_MODE) drawStreamInputPreview();
+}
+
+// Draws the source region into a size x size square. Parts outside the source repeat
+// its edge pixels, so ControlNets see no hard border next to the visible area.
+function drawEdgeExtended(ctx, src, sx, sy, sw, sh, size) {
+    const bands = (start, length, limit) => {
+        const k = size / length;
+        const end = start + length;
+        const a = Math.max(start, 0);
+        const b = Math.min(end, limit);
+        if (b <= a) return [{ s: end <= 0 ? 0 : limit - 1, sLen: 1, d: 0, dLen: size }];
+
+        const out = [];
+        if (start < 0) out.push({ s: 0, sLen: 1, d: 0, dLen: (a - start) * k });
+        out.push({ s: a, sLen: b - a, d: (a - start) * k, dLen: (b - a) * k });
+        if (end > limit) out.push({ s: limit - 1, sLen: 1, d: (b - start) * k, dLen: (end - b) * k });
+        return out;
+    };
+
+    const cols = bands(sx, sw, src.width);
+    const rows = bands(sy, sh, src.height);
+    rows.forEach(r => cols.forEach(c => {
+        ctx.drawImage(src, c.s, r.s, c.sLen, r.sLen, c.d, r.d, c.dLen, r.dLen);
+    }));
+}
+
 function getStreamingCanvas() {
     // Return active input canvas based on current input mode
     // Priority: media > camera > audio > fluid (media gets highest priority when active)
@@ -9407,8 +9553,8 @@ function getStreamingCanvas() {
 }
 
 function switchStreamingCanvas(useAudioBlob = null) {
-    // Only switch if streaming is active
-    if (!streamState.isStreaming || !streamState.peerConnection) return;
+    // Only switch if streaming is active (or debug mode is previewing the input)
+    if ((!streamState.isStreaming || !streamState.peerConnection) && !config.DEBUG_MODE) return;
     
     try {
         // Get the target canvas - use active canvas or specified canvas
@@ -9421,52 +9567,12 @@ function switchStreamingCanvas(useAudioBlob = null) {
             return;
         }
         
-        // Create new media stream from target canvas
-        console.log('🎥 Attempting to capture stream from canvas:', {
-            canvas: targetCanvas,
-            id: targetCanvas.id,
-            width: targetCanvas.width,
-            height: targetCanvas.height,
-            isConnected: targetCanvas.isConnected
-        });
-        
-        const newMediaStream = targetCanvas.captureStream(30);
-        if (!newMediaStream) {
-            console.error('❌ Failed to capture stream from target canvas');
-            return;
-        }
-        
-        console.log('✅ Successfully captured stream from canvas:', {
-            streamId: newMediaStream.id,
-            tracks: newMediaStream.getTracks().length
-        });
-        
-        // Get video tracks from new stream
-        const newVideoTracks = newMediaStream.getVideoTracks();
-        if (newVideoTracks.length === 0) {
-            console.error('No video tracks in new media stream');
-            return;
-        }
-        
-        // Replace video track in peer connection
-        const senders = streamState.peerConnection.getSenders();
-        const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
-        
-        if (videoSender) {
-            videoSender.replaceTrack(newVideoTracks[0])
-                .then(() => {
-                    const canvasType = targetCanvas === audioBlobState.canvas ? 'audio blob' :
-                                     targetCanvas === cameraState.canvas ? 'camera' :
-                                     targetCanvas === mediaState.canvas ? 'media' : 'fluid';
-                    console.log(`✅ Switched streaming canvas to ${canvasType}`);
-                })
-                .catch(error => {
-                    console.error('Failed to replace video track:', error);
-                });
-        }
-        
-        // Update stored media stream reference
-        streamState.mediaStream = newMediaStream;
+        // The stream always sends the square input canvas; only its source changes
+        streamInput.source = targetCanvas;
+        const canvasType = targetCanvas === audioBlobState.canvas ? 'audio blob' :
+                         targetCanvas === cameraState.canvas ? 'camera' :
+                         targetCanvas === mediaState.canvas ? 'media' : 'fluid';
+        console.log(`✅ Switched streaming canvas to ${canvasType}`);
         
     } catch (error) {
         console.error('Error switching streaming canvas:', error);
