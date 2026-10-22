@@ -1364,6 +1364,7 @@
 
             .stream-overlay iframe,
             .stream-overlay video {
+                object-fit: cover; /* fill a non-square frame instead of letterboxing */
                 width: 100%;
                 height: 100%;
                 border: none;
@@ -1388,6 +1389,49 @@
 
             /* Solid overlay to completely hide video UI controls */
 
+
+            /* Stream frame edit mode: drag to move, handles resize around the center */
+            .stream-overlay.editing {
+                pointer-events: auto;
+                overflow: visible;
+                cursor: move;
+                outline: 2px dashed var(--accent-color);
+                outline-offset: 0;
+                touch-action: none;
+            }
+
+            .overlay-handle {
+                display: none;
+                position: absolute;
+                width: 14px;
+                height: 14px;
+                background: #fff;
+                border: 2px solid var(--accent-color);
+                border-radius: 3px;
+                transform: translate(-50%, -50%);
+                z-index: 20;
+                pointer-events: auto;
+                touch-action: none;
+            }
+
+            .stream-overlay.editing .overlay-handle {
+                display: block;
+            }
+
+            .overlay-handle[data-handle="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+            .overlay-handle[data-handle="n"] { left: 50%; top: 0; cursor: ns-resize; }
+            .overlay-handle[data-handle="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+            .overlay-handle[data-handle="e"] { left: 100%; top: 50%; cursor: ew-resize; }
+            .overlay-handle[data-handle="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+            .overlay-handle[data-handle="s"] { left: 50%; top: 100%; cursor: ns-resize; }
+            .overlay-handle[data-handle="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+            .overlay-handle[data-handle="w"] { left: 0; top: 50%; cursor: ew-resize; }
+
+            .stream-control-button.active {
+                background: var(--accent-color);
+                border-color: var(--accent-color);
+                color: #fff;
+            }
 
             .stream-overlay-loading {
                 position: absolute;
@@ -3356,6 +3400,14 @@
                                     <i class="fas fa-external-link-alt"></i>
                                 </button>
                                 <span class="tooltiptext">Pop-Out Stream</span>
+                            </div>
+                            <div class="tooltip">
+                                <button class="stream-control-button" id="editOverlayButton"
+                                        onclick="toggleOverlayEdit()"
+                                        ontouchstart="toggleOverlayEdit(); event.preventDefault();">
+                                    <i class="fas fa-vector-square"></i>
+                                </button>
+                                <span class="tooltiptext">Edit Stream Frame</span>
                             </div>
                             <div class="tooltip">
                                 <button class="stream-control-button" id="streamButton" 

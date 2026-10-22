@@ -7031,6 +7031,126 @@ function toggleStreamVisibility() {
 }
 
 
+// Stream frame editor
+// The layout is stored relative to the window so it survives resizes: the center
+// as a fraction of width/height, the size as a fraction of the window height.
+const OVERLAY_MIN_SIZE = 80; // px
+let overlayLayout = null;   // { x, y, w, h } or null for the default centered square
+let overlayDrag = null;
+
+function initializeOverlayEditor() {
+    const overlay = document.getElementById('streamOverlay');
+    if (!overlay) return;
+
+    ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(name => {
+        const handle = document.createElement('div');
+        handle.className = 'overlay-handle';
+        handle.dataset.handle = name;
+        overlay.appendChild(handle);
+    });
+
+    overlayLayout = loadFromLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT);
+    applyOverlayLayout();
+
+    overlay.addEventListener('pointerdown', startOverlayDrag);
+    overlay.addEventListener('pointermove', moveOverlayDrag);
+    overlay.addEventListener('pointerup', endOverlayDrag);
+    overlay.addEventListener('pointercancel', endOverlayDrag);
+    overlay.addEventListener('dblclick', () => {
+        if (!overlay.classList.contains('editing')) return;
+        // Double-click resets to the default centered square
+        overlayLayout = null;
+        localStorage.removeItem(STORAGE_KEYS.OVERLAY_LAYOUT);
+        applyOverlayLayout();
+    });
+    window.addEventListener('resize', applyOverlayLayout);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && overlay.classList.contains('editing')) toggleOverlayEdit();
+    });
+}
+
+function toggleOverlayEdit() {
+    const overlay = document.getElementById('streamOverlay');
+    const button = document.getElementById('editOverlayButton');
+    if (!overlay) return;
+
+    const editing = overlay.classList.toggle('editing');
+    if (button) button.classList.toggle('active', editing);
+
+    // The frame has to be visible to edit it
+    if (editing && !overlay.classList.contains('visible')) {
+        toggleStreamVisibility();
+    }
+}
+
+function applyOverlayLayout() {
+    const overlay = document.getElementById('streamOverlay');
+    if (!overlay) return;
+
+    if (!overlayLayout) {
+        // Back to the stylesheet's centered square
+        ['left', 'top', 'width', 'height', 'transform'].forEach(prop => overlay.style[prop] = '');
+        return;
+    }
+
+    const H = window.innerHeight;
+    overlay.style.left = `${overlayLayout.x * window.innerWidth}px`;
+    overlay.style.top = `${overlayLayout.y * H}px`;
+    overlay.style.width = `${overlayLayout.w * H}px`;
+    overlay.style.height = `${overlayLayout.h * H}px`;
+    overlay.style.transform = 'translate(-50%, -50%)';
+}
+
+function startOverlayDrag(e) {
+    const overlay = e.currentTarget;
+    if (!overlay.classList.contains('editing')) return;
+
+    const rect = overlay.getBoundingClientRect();
+    overlayDrag = {
+        handle: e.target.dataset.handle || 'move',
+        startX: e.clientX,
+        startY: e.clientY,
+        cx: rect.left + rect.width / 2,
+        cy: rect.top + rect.height / 2,
+        w: rect.width,
+        h: rect.height
+    };
+    overlay.setPointerCapture(e.pointerId);
+    e.preventDefault();
+}
+
+function moveOverlayDrag(e) {
+    if (!overlayDrag) return;
+    const { handle, startX, startY } = overlayDrag;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    let { cx, cy, w, h } = overlayDrag;
+
+    if (handle === 'move') {
+        cx += dx;
+        cy += dy;
+    } else {
+        // Sides and corners resize symmetrically, so the center stays put
+        if (handle.includes('e')) w += 2 * dx;
+        if (handle.includes('w')) w -= 2 * dx;
+        if (handle.includes('s')) h += 2 * dy;
+        if (handle.includes('n')) h -= 2 * dy;
+        w = Math.max(OVERLAY_MIN_SIZE, w);
+        h = Math.max(OVERLAY_MIN_SIZE, h);
+    }
+
+    const H = window.innerHeight;
+    overlayLayout = { x: cx / window.innerWidth, y: cy / H, w: w / H, h: h / H };
+    applyOverlayLayout();
+}
+
+function endOverlayDrag(e) {
+    if (!overlayDrag) return;
+    overlayDrag = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    saveToLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT, overlayLayout);
+}
+
 
 // Audio Blob System
 
@@ -9935,7 +10055,8 @@ const STORAGE_KEYS = {
     TELEGRAM_TOKEN: STORAGE_PREFIX + 'telegramToken',
     TELEGRAM_TOKEN_CONSENT: STORAGE_PREFIX + 'telegramTokenConsent',
     WELCOME_SKIPPED: STORAGE_PREFIX + 'welcomeSkipped',
-    STYLE_IMAGE: STORAGE_PREFIX + 'styleImage'
+    STYLE_IMAGE: STORAGE_PREFIX + 'styleImage',
+    OVERLAY_LAYOUT: STORAGE_PREFIX + 'overlayLayout'
 };
 
 function isLocalStorageAvailable() {
@@ -11231,6 +11352,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeWelcomeOverlay();
         initializeIdleAnimation();
         initializeMediaUpload();
+        initializeOverlayEditor();
         initializeMobileDebug();
         
         
