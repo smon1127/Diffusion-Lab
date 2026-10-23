@@ -1,0 +1,88 @@
+name: Deploy to diffusionlab.de
+
+# Uploads the static site to the Hetzner web hosting behind diffusionlab.de
+# whenever master changes. Configure in Settings > Environments > production:
+#   secrets:   DEPLOY_HOST (e.g. www66.your-server.de), DEPLOY_USER, DEPLOY_PASSWORD
+#              DEPLOY_KNOWN_HOSTS (sftp only: output of `ssh-keyscan <host>`)
+#   variables: DEPLOY_PATH (web root, e.g. public_html), DEPLOY_PROTOCOL (ftps or sftp, default ftps)
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Upload site files
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_PROTOCOL: ${{ vars.DEPLOY_PROTOCOL || 'ftps' }}
+        run: |
+          set -euo pipefail
+
+          # Only the static site; the OSC server and start scripts are for local use
+          files=(index.html script.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4)
+
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Secret $var is not set in the production environment"
+              exit 1
+            fi
+          done
+
+          # Credentials go through a private netrc file, never the command line
+          umask 077
+          netrc="$RUNNER_TEMP/deploy.netrc"
+          printf 'machine %s login %s password %s\n' "$DEPLOY_HOST" "$DEPLOY_USER" "$DEPLOY_PASSWORD" > "$netrc"
+          trap 'rm -f "$netrc"' EXIT
+
+          path="${DEPLOY_PATH%/}"
+          case "$DEPLOY_PROTOCOL" in
+            ftps)
+              # FTP with mandatory TLS; paths are relative to the FTP login directory
+              base="ftp://$DEPLOY_HOST${path:+/$path}"
+              tls=(--ssl-reqd)
+              ;;
+            sftp)
+              if [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
+                echo "::error::sftp needs the DEPLOY_KNOWN_HOSTS secret to verify the server"
+                exit 1
+              fi
+              mkdir -p ~/.ssh
+              printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+              base="sftp://$DEPLOY_HOST/~${path:+/$path}"
+              tls=()
+              ;;
+            *)
+              echo "::error::DEPLOY_PROTOCOL must be ftps or sftp, got '$DEPLOY_PROTOCOL'"
+              exit 1
+              ;;
+          esac
+
+          for file in "${files[@]}"; do
+            echo "Uploading $file"
+            curl --fail --silent --show-error --retry 2 \
+              --netrc-file "$netrc" "${tls[@]}" --ftp-create-dirs \
+              --upload-file "$file" "$base/$file"
+          done
+          echo "Deployed ${#files[@]} files to $DEPLOY_PROTOCOL://$DEPLOY_HOST/${path}"
