@@ -58,3 +58,6 @@ deploy-backups/
 # Proxy secrets on the server only; keep just the folder lock in git
 api/.secrets/*
 !api/.secrets/.htaccess
+
+# Local Claude Code settings
+.claude/
