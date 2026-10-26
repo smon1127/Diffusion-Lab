@@ -3,7 +3,8 @@
 //
 // The page calls api/daydream.php?path=streams/... instead of api.daydream.live, and
 // this script adds the API key server-side, so the key never reaches a browser. The
-// key is read from a file outside public_html (uploaded by deploy.sh from .env).
+// key is read from api/.secrets/, which .htaccess blocks for web access (PHP on the
+// host can't read outside the site folder); deploy.sh uploads it from .env.
 //
 // Safeguards: only the stream endpoints the app uses (fixed routes, validated stream
 // ids, so no other URL can be reached), same-site requests only, a cap on new streams
@@ -13,7 +14,7 @@ declare(strict_types=1);
 ini_set('display_errors', '0');
 
 const DAYDREAM_API = 'https://api.daydream.live/v1/';
-const SECRETS_DIR = __DIR__ . '/../../diffusionlab-secrets';
+const SECRETS_DIR = __DIR__ . '/.secrets';
 const KEY_FILE = SECRETS_DIR . '/daydream.key';
 const RATE_FILE = SECRETS_DIR . '/stream-creations.json';
 const ALLOWED_HOSTS = ['diffusionlab.de', 'www.diffusionlab.de'];

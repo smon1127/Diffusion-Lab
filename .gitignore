@@ -54,3 +54,7 @@ generate-obfuscated-key.js
 
 # Live-site backups made by deploy.sh
 deploy-backups/
+
+# Proxy secrets on the server only; keep just the folder lock in git
+api/.secrets/*
+!api/.secrets/.htaccess
