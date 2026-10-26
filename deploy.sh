@@ -9,10 +9,13 @@
 # Files come from a git commit, not the working copy, so uncommitted changes
 # (like a local API key in script.js) never go live. The current live files are
 # downloaded to deploy-backups/<timestamp>/ before anything is overwritten.
-# Login details are read from .env (see .env.example).
+# Login details are read from .env (see .env.example). If .env sets DAYDREAM_API_KEY,
+# it is uploaded to diffusionlab-secrets/ next to public_html (outside the web
+# folder) for the PHP proxy in api/daydream.php, which keeps it out of the page.
 set -euo pipefail
 
-FILES=(index.html script.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4)
+FILES=(index.html script.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4 api/daydream.php)
+SECRETS_DIR="diffusionlab-secrets" # relative to the FTP login dir; api/daydream.php expects it there
 
 ref="HEAD"
 dry_run=false
@@ -54,6 +57,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 chmod 700 "$work"
 for file in "${FILES[@]}"; do
+  mkdir -p "$work/$(dirname "$file")"
   git show "$commit:$file" > "$work/$file" 2>/dev/null || { echo "$file is not in $ref" >&2; exit 1; }
 done
 
@@ -63,6 +67,11 @@ if [ -n "$(git status --porcelain -- "${FILES[@]}")" ]; then
   echo "  Note: local changes to site files are NOT included (only the committed version is)."
 fi
 printf '  %s\n' "${FILES[@]}"
+if [ -n "${DAYDREAM_API_KEY:-}" ]; then
+  echo "  + Daydream API key -> ftp://$DEPLOY_HOST/$SECRETS_DIR/daydream.key (outside the web folder)"
+else
+  echo "  (no DAYDREAM_API_KEY in .env: the proxy keeps its current key, if any)"
+fi
 
 if $dry_run; then
   echo "Dry run: nothing was uploaded."
@@ -83,6 +92,7 @@ backup="deploy-backups/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$backup"
 echo "Backing up live files to $backup/"
 for file in "${FILES[@]}"; do
+  mkdir -p "$backup/$(dirname "$file")"
   ftp_curl --output "$backup/$file" "$base/$file" 2>/dev/null || echo "  (no live $file yet)"
 done
 
@@ -91,4 +101,13 @@ for file in "${FILES[@]}"; do
   echo "  $file"
   ftp_curl --ftp-create-dirs --upload-file "$work/$file" "$base/$file"
 done
-echo "Done: https://${DEPLOY_SITE_URL:-diffusionlab.de}/ now serves $(git log -1 --format=%h "$commit")."
+
+if [ -n "${DAYDREAM_API_KEY:-}" ]; then
+  echo "Uploading the Daydream API key for the proxy"
+  ( umask 077; printf '%s\n' "$DAYDREAM_API_KEY" > "$work/daydream.key" )
+  ftp_curl --ftp-create-dirs --upload-file "$work/daydream.key" "ftp://$DEPLOY_HOST/$SECRETS_DIR/daydream.key"
+  # Owner-only, if the server allows it (PHP runs as the same user)
+  ftp_curl --quote "SITE CHMOD 600 $SECRETS_DIR/daydream.key" --list-only "ftp://$DEPLOY_HOST/$SECRETS_DIR/" >/dev/null 2>&1 \
+    || echo "  (could not set file permissions; the folder is outside public_html either way)"
+fi
+echo "Done: https://diffusionlab.de/ now serves $(git log -1 --format=%h "$commit")."

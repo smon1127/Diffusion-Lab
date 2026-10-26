@@ -2466,14 +2466,9 @@ async function fetchDaydreamStreamStatus() {
     if (!streamState.streamId || !config.DEBUG_MODE) return null;
     
     try {
-        const apiKey = getApiKey();
-        if (!apiKey) return null;
+        if (!hasDaydreamAccess()) return null;
         
-        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/status`, {
-            headers: {
-                'Authorization': `Bearer ${apiKey}`
-            }
-        });
+        const response = await daydreamFetch(`streams/${streamState.streamId}/status`);
         
         if (response.ok) {
             const data = await response.json();
@@ -6121,6 +6116,31 @@ function hashCode (s) {
 
 // StreamDiffusion functionality (state variables moved to top of file)
 const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
+// On diffusionlab.de the API key stays on the server: requests go through the PHP
+// proxy in api/daydream.php, unless the visitor saved their own key in settings
+const DAYDREAM_PROXY_URL = 'api/daydream.php';
+const DAYDREAM_PROXY_HOSTS = ['diffusionlab.de', 'www.diffusionlab.de'];
+
+function hasOwnApiKey() {
+    return !!loadFromLocalStorage(STORAGE_KEYS.API_KEY_CONSENT, false) && !!loadFromLocalStorage(STORAGE_KEYS.API_KEY);
+}
+
+function useDaydreamProxy() {
+    return DAYDREAM_PROXY_HOSTS.includes(window.location.hostname) && !hasOwnApiKey();
+}
+
+function hasDaydreamAccess() {
+    return useDaydreamProxy() || !!getApiKey();
+}
+
+// fetch() for a Daydream API path like 'streams/str_x/status', via the proxy or directly
+function daydreamFetch(path, options = {}) {
+    if (useDaydreamProxy()) {
+        return fetch(`${DAYDREAM_PROXY_URL}?path=${encodeURIComponent(path)}`, options);
+    }
+    const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${getApiKey()}` };
+    return fetch(`${DAYDREAM_API_BASE}/${path}`, { ...options, headers });
+}
 // `pipeline` + `params.model_id` replaces the deprecated `pipeline_id: 'pip_SDXL-turbo'`
 const DAYDREAM_PIPELINE = 'streamdiffusion';
 const DEFAULT_MODEL_ID = 'stabilityai/sdxl-turbo';
@@ -6300,16 +6320,14 @@ function showShareFeedback(button, message = 'Copied!') {
 
 
 async function createDaydreamStream() {
-    const apiKey = getApiKey();
-    if (!apiKey) {
+    if (!hasDaydreamAccess()) {
         throw new Error('API key is required');
     }
 
-    const response = await fetch(`${DAYDREAM_API_BASE}/streams`, {
+    const response = await daydreamFetch('streams', {
         method: 'POST',
-            headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
+        headers: {
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({
             pipeline: DAYDREAM_PIPELINE,
@@ -6409,17 +6427,15 @@ async function updateStreamParameters() {
     streamState.isUpdatingParameters = true;
     
     try {
-        const apiKey = getApiKey();
         const params = buildStreamParams();
         const { prompt, negative_prompt: negativePrompt } = params;
         
         console.log('🔄 Updating stream parameters:', { prompt, negativePrompt });
 
-        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}`, {
+        const response = await daydreamFetch(`streams/${streamState.streamId}`, {
             method: 'PATCH',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 pipeline: DAYDREAM_PIPELINE,
@@ -6555,9 +6571,7 @@ async function getWhepUrl() {
     if (streamState.whepUrl) return streamState.whepUrl;
 
     // Fallback when the WHIP header isn't readable: the status endpoint reports it
-    const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/status`, {
-        headers: { 'Authorization': `Bearer ${getApiKey()}` }
-    });
+    const response = await daydreamFetch(`streams/${streamState.streamId}/status`);
     if (!response.ok) return null;
     const data = await response.json();
     streamState.whepUrl = data?.data?.gateway_status?.whep_url || null;
@@ -6949,9 +6963,7 @@ function watchStreamWarmup() {
         setStreamLoader('loading', elapsed < 4000 ? 'Connecting' : 'Warming up the AI', getStreamLoaderDetail());
 
         try {
-            const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/status`, {
-                headers: { 'Authorization': `Bearer ${getApiKey()}` }
-            });
+            const response = await daydreamFetch(`streams/${streamState.streamId}/status`);
             const data = response.ok ? (await response.json()).data : null;
             const inference = data?.inference_status;
             const gatewayError = data?.gateway_status?.error?.error_message;
@@ -6985,9 +6997,7 @@ function stopStreamWarmup() {
 // available" when no GPU is serving the selected model right now
 async function showStreamGatewayError() {
     try {
-        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}/status`, {
-            headers: { 'Authorization': `Bearer ${getApiKey()}` }
-        });
+        const response = await daydreamFetch(`streams/${streamState.streamId}/status`);
         if (!response.ok) return;
         const data = await response.json();
         const message = data?.data?.gateway_status?.error?.error_message || data?.data?.inference_status?.last_error;
@@ -7076,9 +7086,8 @@ async function startStream(showOverlay = true) {
             type: 'stream_connecting'
         });
         
-        // Validate API key
-        const apiKey = getApiKey();
-        if (!apiKey) {
+        // Validate API key (not needed when the diffusionlab.de proxy holds it)
+        if (!hasDaydreamAccess()) {
             // First, ensure settings panel is open
             const settingsContent = document.getElementById('settingsContent');
             const apiKeyInput = document.getElementById('apiKeyInput');
@@ -10470,18 +10479,12 @@ async function validateStreamState() {
     }
     
     try {
-        const apiKey = getApiKey();
-        if (!apiKey) {
+        if (!hasDaydreamAccess()) {
             console.warn('No API key found for stream validation');
             return false;
         }
         
-        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${streamState.streamId}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`
-            }
-        });
+        const response = await daydreamFetch(`streams/${streamState.streamId}`);
         
         if (response.ok) {
             console.log('✅ Stream validation successful');
@@ -10679,17 +10682,10 @@ async function validateSavedStream(savedStream) {
     if (!savedStream || !savedStream.streamId) return false;
     
     try {
-        const apiKey = getApiKey();
-        if (!apiKey) return false;
+        if (!hasDaydreamAccess()) return false;
         
         // Check if stream still exists on Daydream servers
-        const response = await fetch(`${DAYDREAM_API_BASE}/streams/${savedStream.streamId}`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            }
-        });
+        const response = await daydreamFetch(`streams/${savedStream.streamId}`);
         
         if (response.ok) {
             const streamData = await response.json();
