@@ -3,8 +3,10 @@ name: Deploy to diffusionlab.de
 # Uploads the static site to the Hetzner web hosting behind diffusionlab.de
 # whenever master changes. Configure in Settings > Environments > production:
 #   secrets:   DEPLOY_HOST (e.g. www66.your-server.de), DEPLOY_USER, DEPLOY_PASSWORD
+#              DEPLOY_PATH (web root, e.g. public_html; may also be a variable)
+#              DAYDREAM_API_KEY (optional: uploaded to api/.secrets/ for the PHP proxy)
 #              DEPLOY_KNOWN_HOSTS (sftp only: output of `ssh-keyscan <host>`)
-#   variables: DEPLOY_PATH (web root, e.g. public_html), DEPLOY_PROTOCOL (ftps or sftp, default ftps)
+#   variables: DEPLOY_PROTOCOL (ftps or sftp, default ftps)
 
 on:
   push:
@@ -35,13 +37,16 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
+          DAYDREAM_API_KEY: ${{ secrets.DAYDREAM_API_KEY }}
           DEPLOY_PROTOCOL: ${{ vars.DEPLOY_PROTOCOL || 'ftps' }}
         run: |
           set -euo pipefail
 
-          # Only the static site; the OSC server and start scripts are for local use
-          files=(index.html script.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4)
+          # The static site and the Daydream proxy; the OSC server and start scripts are for local use
+          files=(index.html script.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4 api/daydream.php api/.secrets/.htaccess)
+          site_url="https://diffusionlab.de"
+          secrets_dir="api/.secrets" # inside the web folder, blocked by its .htaccess
 
           for var in DEPLOY_HOST DEPLOY_USER DEPLOY_PASSWORD; do
             if [ -z "${!var}" ]; then
@@ -86,3 +91,34 @@ jobs:
               --upload-file "$file" "$base/$file"
           done
           echo "Deployed ${#files[@]} files to $DEPLOY_PROTOCOL://$DEPLOY_HOST/${path}"
+
+          if [ -z "$DAYDREAM_API_KEY" ]; then
+            echo "No DAYDREAM_API_KEY secret: the proxy keeps its current key, if any"
+            exit 0
+          fi
+
+          # Prove the folder is blocked for web access before putting the key there
+          probe="probe-$(date +%s)-$RANDOM.txt"
+          echo "harmless deploy probe" > "$RUNNER_TEMP/$probe"
+          curl --fail --silent --show-error --netrc-file "$netrc" "${tls[@]}" \
+            --upload-file "$RUNNER_TEMP/$probe" "$base/$secrets_dir/$probe"
+          probe_status="$(curl -s -o /dev/null -w '%{http_code}' "$site_url/$secrets_dir/$probe")"
+          # Best-effort cleanup; a leftover probe file is harmless
+          if [ "$DEPLOY_PROTOCOL" = ftps ]; then
+            remove=(--quote "DELE ${path:+$path/}$secrets_dir/$probe")
+          else
+            remove=(--quote "rm ${path:+$path/}$secrets_dir/$probe")
+          fi
+          curl --silent --netrc-file "$netrc" "${tls[@]}" "${remove[@]}" \
+            --list-only "$base/$secrets_dir/" >/dev/null 2>&1 || true
+          if [ "$probe_status" != "403" ] && [ "$probe_status" != "404" ]; then
+            echo "::error::NOT uploading the API key: $secrets_dir/ is reachable from the web (HTTP $probe_status)"
+            exit 1
+          fi
+
+          echo "Uploading the Daydream API key ($secrets_dir/ is blocked for web access: HTTP $probe_status)"
+          key_file="$RUNNER_TEMP/daydream.key"
+          printf '%s\n' "$DAYDREAM_API_KEY" > "$key_file"
+          trap 'rm -f "$netrc" "$key_file"' EXIT
+          curl --fail --silent --show-error --retry 2 --netrc-file "$netrc" "${tls[@]}" \
+            --upload-file "$key_file" "$base/$secrets_dir/daydream.key"
