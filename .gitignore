@@ -51,3 +51,6 @@ jspm_packages/
 
 # API key generation utility (contains sensitive operations)
 generate-obfuscated-key.js
+
+# Live-site backups made by deploy.sh
+deploy-backups/
