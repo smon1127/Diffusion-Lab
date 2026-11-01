@@ -217,6 +217,28 @@ let cameraState = {
     animationId: null
 };
 
+// Camera background removal (see drawCameraVideo)
+let cameraSegmentation = {
+    enabled: true,             // on by default; the model loads once the camera starts
+    background: 'fluid',       // 'transparent', 'blur', 'color' or 'fluid'
+    color: '#06a3d7',
+    segmenter: null,
+    loading: false,
+    generation: 0,             // bumped on close, so a load that finishes later is discarded
+    hasMask: false,
+    lastVideoTime: -1,
+    inferenceMs: 0,            // moving average of the inference time
+    inferenceRuns: 0,
+    skipUntil: 0,              // inference pauses until then when it lags behind
+    input: null,               // video scaled down to ~640x480 for the model
+    mask: null,                // confidence as alpha, same size as input
+    maskImage: null,
+    person: null,              // full-resolution frame with the mask applied
+    blur: null,                // tiny copy of the frame, upscaled as the blurred background
+    fluidRunning: false,       // fluid simulation kept running as the background
+    fluidFrame: null           // copy of the last fluid frame (its WebGL buffer is cleared once shown)
+};
+
 // Media System
 let mediaState = {
     active: false,
@@ -4889,6 +4911,7 @@ function update () {
     if (!config.PAUSED)
         step(dt);
     render(null);
+    if (cameraSegmentation.fluidRunning) copyCameraFluidFrame();
     if (streamInput.source === canvas && isStreamInputActive()) renderStreamInput();
     requestAnimationFrame(update);
 }
@@ -8189,6 +8212,18 @@ async function loadVideoMedia(url, filename) {
     });
 }
 
+// The video element is never added to the page, and iOS Safari only autoplays videos that
+// are visible, so it has to be started explicitly (otherwise the first frame stays frozen)
+async function playCameraVideo(video) {
+    try {
+        await video.play();
+    } catch (error) {
+        // Without a recent tap some browsers refuse; the next tap anywhere starts it
+        console.warn('⚠️ Camera video did not start, waiting for a tap:', error);
+        document.addEventListener('pointerdown', () => video.play().catch(() => {}), { once: true });
+    }
+}
+
 async function startCamera() {
     try {
         console.log('📹 Starting simple camera...');
@@ -8288,6 +8323,8 @@ async function startCamera() {
             }, { once: true });
         });
         
+        await playCameraVideo(video);
+        
         // Set up canvas
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -8385,7 +8422,7 @@ async function startCamera() {
                 }
                 
                 // Draw video to canvas
-                ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+                drawCameraVideo(ctx, video, drawX, drawY, drawWidth, drawHeight);
                 
                 // Debug: Log first few successful draws
                 if (!cameraState.debugDrawCount) cameraState.debugDrawCount = 0;
@@ -8463,7 +8500,7 @@ async function startCamera() {
             }
         }
         
-        alert(errorMessage);
+        showCameraNotice(errorMessage);
         stopCamera();
     }
 }
@@ -8508,6 +8545,8 @@ async function startCameraFallback() {
             video.addEventListener('loadedmetadata', resolve, { once: true });
         });
         
+        await playCameraVideo(video);
+        
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         const ctx = canvas.getContext('2d');
@@ -8542,8 +8581,8 @@ async function startCameraFallback() {
                     drawX = 0;
                     drawY = (canvas.height - drawHeight) / 2;
                 }
-                
-                ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+
+                drawCameraVideo(ctx, video, drawX, drawY, drawWidth, drawHeight);
             }
             
             cameraState.animationId = requestAnimationFrame(renderCamera);
@@ -8559,9 +8598,274 @@ async function startCameraFallback() {
         
     } catch (fallbackError) {
         console.error('❌ Camera fallback also failed:', fallbackError);
-        alert('Camera access failed completely. Please check your browser settings.');
+        showCameraNotice('Camera access failed completely. Please check your browser settings.');
         stopCamera();
     }
+}
+
+// Camera background removal: MediaPipe ImageSegmenter, loaded only while the toggle is on.
+// The bundle and WASM come from jsDelivr (keep the version in sync with package.json),
+// the model is served from this site.
+const MEDIAPIPE_VISION_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.0';
+const SELFIE_SEGMENTER_MODEL = 'models/selfie_segmenter.tflite';
+const SEGMENTATION_MAX_WIDTH = 640;
+const SEGMENTATION_FRAME_BUDGET_MS = 16;
+const SEGMENTATION_MAX_SKIP_MS = 250;
+
+
+// Draws into the rect flipped horizontally, so the camera looks like a mirror (selfie view)
+function drawCameraImage(ctx, image, x, y, w, h) {
+    ctx.save();
+    ctx.translate(2 * x + w, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(image, x, y, w, h);
+    ctx.restore();
+}
+
+function toggleCameraBackgroundRemoval() {
+    setCameraBackgroundRemoval(!cameraSegmentation.enabled);
+}
+
+function setCameraBackgroundRemoval(enabled) {
+    cameraSegmentation.enabled = enabled;
+    updateToggle('removeBackgroundToggle', enabled);
+    updateCameraBackgroundControls();
+    if (!enabled) closeCameraSegmenter();
+    syncCameraFluidBackground();
+}
+
+function setCameraBackgroundMode(mode) {
+    cameraSegmentation.background = mode;
+    updateCameraBackgroundControls();
+    syncCameraFluidBackground();
+}
+
+function setCameraBackgroundColor(color) {
+    cameraSegmentation.color = color;
+}
+
+function updateCameraBackgroundControls() {
+    const seg = cameraSegmentation;
+    const modeRow = document.getElementById('cameraBackgroundModeRow');
+    if (modeRow) modeRow.style.display = seg.enabled ? 'block' : 'none';
+    const colorRow = document.getElementById('cameraBackgroundColorRow');
+    if (colorRow) colorRow.style.display = seg.enabled && seg.background === 'color' ? 'block' : 'none';
+}
+
+// With the fluid as background, the simulation keeps running and the fluid canvas stays
+// interactive (so you can draw behind yourself), but invisible: it shows through the
+// camera canvas, which is also what gets streamed.
+function syncCameraFluidBackground() {
+    const seg = cameraSegmentation;
+    const wanted = cameraState.active && seg.enabled && seg.background === 'fluid';
+    if (wanted === seg.fluidRunning) return;
+    seg.fluidRunning = wanted;
+
+    const fluidCanvas = document.getElementById('fluidCanvas');
+    if (fluidCanvas) {
+        fluidCanvas.style.display = wanted ? 'block' : 'none';
+        fluidCanvas.style.opacity = wanted ? '0' : '';
+    }
+    isFluidVisible = wanted;
+    config.PAUSED = !wanted;
+}
+
+// Called from update() right after the fluid renders, while its buffer is still readable
+function copyCameraFluidFrame() {
+    const seg = cameraSegmentation;
+    if (!seg.fluidFrame) seg.fluidFrame = createSegmentationCanvas();
+    const frame = seg.fluidFrame.canvas;
+    if (frame.width !== canvas.width || frame.height !== canvas.height) {
+        frame.width = canvas.width;
+        frame.height = canvas.height;
+    }
+    seg.fluidFrame.ctx.drawImage(canvas, 0, 0);
+}
+
+function createSegmentationCanvas() {
+    const canvas = document.createElement('canvas');
+    return { canvas, ctx: canvas.getContext('2d') };
+}
+
+async function loadCameraSegmenter() {
+    const { FilesetResolver, ImageSegmenter } = await import(`${MEDIAPIPE_VISION_URL}/vision_bundle.mjs`);
+    const fileset = await FilesetResolver.forVisionTasks(`${MEDIAPIPE_VISION_URL}/wasm`);
+    const create = (delegate) => ImageSegmenter.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: SELFIE_SEGMENTER_MODEL, delegate },
+        // A regular canvas for WebGL, since older Safari has no WebGL on OffscreenCanvas
+        canvas: document.createElement('canvas'),
+        runningMode: 'VIDEO',
+        outputConfidenceMasks: true,
+        outputCategoryMask: false
+    });
+
+    try {
+        return await create('GPU');
+    } catch (gpuError) {
+        console.warn('⚠️ Segmenter GPU delegate unavailable, using CPU:', gpuError);
+        return await create('CPU');
+    }
+}
+
+function ensureCameraSegmenter() {
+    const seg = cameraSegmentation;
+    if (seg.segmenter || seg.loading) return;
+
+    seg.loading = true;
+    const generation = seg.generation;
+    console.log('🧍 Loading background removal model...');
+    loadCameraSegmenter().then(segmenter => {
+        if (generation !== seg.generation) {
+            segmenter.close();
+            return;
+        }
+        seg.segmenter = segmenter;
+        console.log('✅ Background removal ready');
+    }).catch(error => {
+        if (generation !== seg.generation) return;
+        console.error('❌ Failed to load background removal:', error);
+        failCameraSegmentation();
+    }).finally(() => {
+        if (generation === seg.generation) seg.loading = false;
+    });
+}
+
+// Turns the toggle off and keeps showing the plain camera
+function failCameraSegmentation() {
+    setCameraBackgroundRemoval(false);
+    showCameraNotice('Background removal is not available on this device. Showing the normal camera.');
+}
+
+function closeCameraSegmenter() {
+    const seg = cameraSegmentation;
+    seg.generation++;
+    seg.loading = false;
+    if (seg.segmenter) {
+        seg.segmenter.close();
+        seg.segmenter = null;
+    }
+    seg.hasMask = false;
+    seg.lastVideoTime = -1;
+    seg.inferenceMs = 0;
+    seg.inferenceRuns = 0;
+    seg.skipUntil = 0;
+}
+
+// Draws the camera frame into the given rect, without its background when the toggle is on.
+// The background (color, fluid) is never mirrored, so drawing on the fluid stays aligned.
+// The plain frame is shown while the model loads.
+function drawCameraVideo(ctx, video, x, y, w, h) {
+    const seg = cameraSegmentation;
+    syncCameraFluidBackground();
+    if (seg.enabled) {
+        ensureCameraSegmenter();
+        if (seg.segmenter) updateCameraMask(video);
+    }
+    if (!seg.enabled || !seg.hasMask) {
+        drawCameraImage(ctx, video, x, y, w, h);
+        return;
+    }
+
+    // Person: the full-resolution frame, cut out by the upscaled (and so softened) mask
+    const person = seg.person;
+    if (person.canvas.width !== video.videoWidth || person.canvas.height !== video.videoHeight) {
+        person.canvas.width = video.videoWidth;
+        person.canvas.height = video.videoHeight;
+    }
+    person.ctx.globalCompositeOperation = 'copy';
+    person.ctx.drawImage(video, 0, 0);
+    person.ctx.globalCompositeOperation = 'destination-in';
+    person.ctx.imageSmoothingEnabled = true;
+    person.ctx.drawImage(seg.mask.canvas, 0, 0, person.canvas.width, person.canvas.height);
+
+    if (seg.background === 'color') {
+        ctx.fillStyle = seg.color;
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    } else if (seg.background === 'fluid' && seg.fluidFrame) {
+        ctx.drawImage(seg.fluidFrame.canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+    } else if (seg.background === 'blur') {
+        // Scaling a tiny copy up blurs it in every browser (ctx.filter needs Safari 18)
+        seg.blur.ctx.drawImage(video, 0, 0, seg.blur.canvas.width, seg.blur.canvas.height);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        drawCameraImage(ctx, seg.blur.canvas, x, y, w, h);
+    }
+    drawCameraImage(ctx, person.canvas, x, y, w, h);
+}
+
+function updateCameraMask(video) {
+    const seg = cameraSegmentation;
+    const now = performance.now();
+    // Only new video frames, and none while inference is catching up (the last mask is reused)
+    if (video.currentTime === seg.lastVideoTime || now < seg.skipUntil) return;
+    seg.lastVideoTime = video.currentTime;
+
+    if (!seg.input) {
+        seg.input = createSegmentationCanvas();
+        seg.mask = createSegmentationCanvas();
+        seg.person = createSegmentationCanvas();
+        seg.blur = createSegmentationCanvas();
+    }
+    const scale = Math.min(1, SEGMENTATION_MAX_WIDTH / video.videoWidth);
+    const width = Math.round(video.videoWidth * scale);
+    const height = Math.round(video.videoHeight * scale);
+    if (seg.input.canvas.width !== width || seg.input.canvas.height !== height) {
+        seg.input.canvas.width = seg.mask.canvas.width = width;
+        seg.input.canvas.height = seg.mask.canvas.height = height;
+        seg.blur.canvas.width = Math.max(1, Math.round(width / 12));
+        seg.blur.canvas.height = Math.max(1, Math.round(height / 12));
+        seg.maskImage = seg.mask.ctx.createImageData(width, height);
+    }
+    seg.input.ctx.drawImage(video, 0, 0, width, height);
+
+    try {
+        // With a callback, the masks are freed by MediaPipe as soon as it returns
+        seg.segmenter.segmentForVideo(seg.input.canvas, now, result => {
+            const mask = result.confidenceMasks && result.confidenceMasks[0];
+            if (!mask) return;
+            writeMaskAlpha(mask.getAsFloat32Array());
+            seg.hasMask = true;
+        });
+    } catch (error) {
+        console.error('❌ Background removal failed:', error);
+        failCameraSegmentation();
+        return;
+    }
+
+    // The first run compiles shaders and would skew the average, so it isn't counted
+    const took = performance.now() - now;
+    if (!seg.inferenceRuns++) return;
+    seg.inferenceMs = seg.inferenceMs ? seg.inferenceMs * 0.9 + took * 0.1 : took;
+    if (seg.inferenceMs > SEGMENTATION_FRAME_BUDGET_MS) {
+        seg.skipUntil = now + Math.min(seg.inferenceMs, SEGMENTATION_MAX_SKIP_MS);
+    }
+}
+
+function writeMaskAlpha(confidence) {
+    const seg = cameraSegmentation;
+    const data = seg.maskImage.data;
+    for (let i = 0, a = 3; i < confidence.length; i++, a += 4) {
+        // Smoothstep from 0.25 to 0.75 feathers the edge instead of a hard cut at 0.5
+        const t = Math.min(1, Math.max(0, (confidence[i] - 0.25) * 2));
+        data[a] = t * t * (3 - 2 * t) * 255;
+    }
+    seg.mask.ctx.putImageData(seg.maskImage, 0, 0);
+}
+
+// Non-blocking message at the bottom of the screen
+function showCameraNotice(message) {
+    let notice = document.getElementById('cameraNotice');
+    if (!notice) {
+        notice = document.createElement('div');
+        notice.id = 'cameraNotice';
+        notice.className = 'camera-notice';
+        notice.setAttribute('role', 'status');
+        document.body.appendChild(notice);
+    }
+    notice.textContent = message;
+    notice.classList.add('visible');
+    clearTimeout(notice.hideTimer);
+    notice.hideTimer = setTimeout(() => notice.classList.remove('visible'), 6000);
 }
 
 // renderCameraFeed function removed - now using WebGL texture integration
@@ -8574,7 +8878,10 @@ function stopCamera() {
         cancelAnimationFrame(cameraState.animationId);
         cameraState.animationId = null;
     }
-    
+
+    // Free the segmenter; it loads again on the next start if the toggle is still on
+    closeCameraSegmenter();
+
     // Stop camera stream
     if (cameraState.stream) {
         cameraState.stream.getTracks().forEach(track => track.stop());
@@ -8599,6 +8906,7 @@ function stopCamera() {
     
     // Reset state
     cameraState.active = false;
+    syncCameraFluidBackground();
     
     console.log('🔄 Simple camera stopped');
 }
@@ -11965,6 +12273,8 @@ function initializeColoris() {
                 updateBackgroundColor(color);
             } else if (input.id === 'audioBlobColorPicker') {
                 updateAudioBlobColor(color);
+            } else if (input.id === 'cameraBackgroundColorPicker') {
+                setCameraBackgroundColor(color);
             }
         }
     });
@@ -12011,6 +12321,7 @@ function initializeColoris() {
     // Set up audio blob color picker
     const audioBlobColorPicker = document.getElementById('audioBlobColorPicker');
     setupColorPickerEvents(audioBlobColorPicker);
+    setupColorPickerEvents(document.getElementById('cameraBackgroundColorPicker'));
 
     console.log('Coloris initialized successfully');
 }
