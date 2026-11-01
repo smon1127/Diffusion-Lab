@@ -7490,6 +7490,7 @@ let overlayLayout = null;   // { x, y, w, h }, { fullscreen: true }, or null for
 let overlayDrag = null;
 let overlayLastTap = null;
 let overlayLastPointerType = 'mouse';
+const overlayPointers = new Map(); // pointerId -> { x, y } of the pointers down on the frame
 
 // Phone-sized screen with touch input, judged by the device screen (either orientation),
 // so a narrow desktop window doesn't count
@@ -7523,6 +7524,12 @@ function initializeOverlayEditor() {
         if (overlayLastPointerType !== 'mouse') return;
         if (overlay.classList.contains('editing')) toggleOverlayFullscreen();
     });
+    overlay.addEventListener('wheel', (e) => {
+        // A trackpad pinch arrives as ctrl+wheel: scale the frame instead of zooming the page
+        if (!overlay.classList.contains('editing') || !e.ctrlKey) return;
+        e.preventDefault();
+        scaleOverlayBy(Math.exp(-e.deltaY / 100));
+    }, { passive: false });
     window.addEventListener('resize', applyOverlayLayout);
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && overlay.classList.contains('editing')) toggleOverlayEdit();
@@ -7536,6 +7543,8 @@ function toggleOverlayEdit() {
 
     const editing = overlay.classList.toggle('editing');
     if (button) button.classList.toggle('active', editing);
+    overlayPointers.clear();
+    overlayDrag = null;
 
     // The frame has to be visible to edit it
     if (editing && !overlay.classList.contains('visible')) {
@@ -7597,23 +7606,67 @@ function startOverlayDrag(e) {
     overlayLastPointerType = e.pointerType;
     if (!overlay.classList.contains('editing')) return;
 
+    overlayPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    overlay.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    if (overlayPointers.size > 2) return;
+
     const rect = overlay.getBoundingClientRect();
+    const frame = { cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2, w: rect.width, h: rect.height };
+    if (overlayPointers.size === 2) {
+        // A second finger turns the drag into a pinch
+        const [a, b] = [...overlayPointers.values()];
+        overlayDrag = {
+            handle: 'pinch',
+            startDistance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+            startMidX: (a.x + b.x) / 2,
+            startMidY: (a.y + b.y) / 2,
+            ...frame
+        };
+        overlayLastTap = null;
+        return;
+    }
     overlayDrag = {
         handle: e.target.dataset.handle || 'move',
         startX: e.clientX,
         startY: e.clientY,
         startTime: e.timeStamp,
-        cx: rect.left + rect.width / 2,
-        cy: rect.top + rect.height / 2,
-        w: rect.width,
-        h: rect.height
+        ...frame
     };
-    overlay.setPointerCapture(e.pointerId);
-    e.preventDefault();
+}
+
+// Scales the frame around the fingers' midpoint, which it also follows, like pinching a photo.
+// The aspect ratio stays; the frame can't get smaller than OVERLAY_MIN_SIZE.
+function pinchOverlay() {
+    const [a, b] = [...overlayPointers.values()];
+    const { startDistance, startMidX, startMidY, cx, cy, w, h } = overlayDrag;
+    const scale = Math.max(Math.hypot(b.x - a.x, b.y - a.y) / startDistance, OVERLAY_MIN_SIZE / Math.min(w, h));
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+    setOverlayFrame(midX + (cx - startMidX) * scale, midY + (cy - startMidY) * scale, w * scale, h * scale);
+}
+
+function scaleOverlayBy(factor) {
+    const rect = document.getElementById('streamOverlay').getBoundingClientRect();
+    const scale = Math.max(factor, OVERLAY_MIN_SIZE / Math.min(rect.width, rect.height));
+    setOverlayFrame(rect.left + rect.width / 2, rect.top + rect.height / 2, rect.width * scale, rect.height * scale);
+    saveToLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT, overlayLayout);
+}
+
+// Center and size in screen pixels
+function setOverlayFrame(cx, cy, w, h) {
+    const H = window.innerHeight;
+    overlayLayout = { x: cx / window.innerWidth, y: cy / H, w: w / H, h: h / H };
+    applyOverlayLayout();
 }
 
 function moveOverlayDrag(e) {
+    if (overlayPointers.has(e.pointerId)) overlayPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!overlayDrag) return;
+    if (overlayDrag.handle === 'pinch') {
+        pinchOverlay();
+        return;
+    }
     const { handle, startX, startY } = overlayDrag;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
@@ -7647,18 +7700,18 @@ function moveOverlayDrag(e) {
         }
     }
 
-    const H = window.innerHeight;
-    overlayLayout = { x: cx / window.innerWidth, y: cy / H, w: w / H, h: h / H };
-    applyOverlayLayout();
+    setOverlayFrame(cx, cy, w, h);
 }
 
 function endOverlayDrag(e) {
+    overlayPointers.delete(e.pointerId);
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
     if (!overlayDrag) return;
+    // Lifting either finger ends a pinch, so the remaining one doesn't make the frame jump
     const drag = overlayDrag;
     overlayDrag = null;
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
     saveToLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT, overlayLayout);
-    if (e.type === 'pointerup' && e.pointerType !== 'mouse') detectOverlayDoubleTap(e, drag);
+    if (drag.handle !== 'pinch' && e.type === 'pointerup' && e.pointerType !== 'mouse') detectOverlayDoubleTap(e, drag);
 }
 
 // Touch has no reliable dblclick (and touch-action: none turns off the browser's own
