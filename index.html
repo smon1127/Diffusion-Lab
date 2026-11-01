@@ -3159,6 +3159,29 @@
             body.hide-cursor .cursor-indicator {
                 display: block;
             }
+            .camera-notice {
+                position: fixed;
+                left: 50%;
+                bottom: 24px;
+                transform: translate(-50%, 12px);
+                max-width: min(420px, calc(100vw - 32px));
+                padding: 10px 14px;
+                background: var(--control-bg);
+                border: 1px solid var(--border-color);
+                border-radius: 8px;
+                color: var(--text-primary);
+                font-size: 13px;
+                white-space: pre-line;
+                z-index: 10000;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.2s ease, transform 0.2s ease;
+            }
+
+            .camera-notice.visible {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
         </style>
         <script>
             window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
@@ -3747,6 +3770,39 @@
                 </div>
                 
                             <!-- Media Controls Section -->
+            <div class="camera-controls" id="cameraControls" style="display: none; margin-top: 12px;">
+                <div class="control-group">
+                    <div class="group-title">CAMERA</div>
+                    
+                    <div class="control-item">
+                        <div class="toggle-container" onclick="toggleCameraBackgroundRemoval()" ontouchstart="toggleCameraBackgroundRemoval(); event.preventDefault();">
+                            <span>Remove background</span>
+                            <div class="toggle-switch active" id="removeBackgroundToggle">
+                                <div class="toggle-handle"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item" id="cameraBackgroundModeRow">
+                        <select id="cameraBackgroundModeSelect" class="audio-select" onchange="setCameraBackgroundMode(this.value)" style="width: 100%; padding: 8px 12px; background: var(--control-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 13px;">
+                            <option value="transparent">Transparent</option>
+                            <option value="blur">Blur</option>
+                            <option value="color">Solid color</option>
+                            <option value="fluid" selected>Fluid</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-item" id="cameraBackgroundColorRow" style="display: none;">
+                        <div class="color-row">
+                            <div class="color-container full">
+                                <span class="color-label">Background color</span>
+                                <input type="text" id="cameraBackgroundColorPicker" class="color-input" value="#06a3d7" data-coloris readonly inputmode="none" style="background-color: #06a3d7;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="media-controls" id="mediaControls" style="display: none; margin-top: 12px;">
                 <div class="control-group">
                     <div class="group-title">MEDIA</div>

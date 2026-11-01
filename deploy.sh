@@ -15,7 +15,7 @@
 # is only uploaded after a probe file there is confirmed unreachable from the web.
 set -euo pipefail
 
-FILES=(index.html script.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4 api/daydream.php api/.secrets/.htaccess)
+FILES=(index.html script.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4 models/selfie_segmenter.tflite api/daydream.php api/.secrets/.htaccess)
 SITE_URL="https://diffusionlab.de"
 SECRETS_DIR="api/.secrets" # inside the web folder, blocked by its .htaccess
 
