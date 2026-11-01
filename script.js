@@ -8310,6 +8310,12 @@ async function loadVideoMedia(url, filename) {
     });
 }
 
+// The camera couldn't start: go back to fluid drawing instead of leaving a blank screen
+function fallBackFromCamera() {
+    stopCamera();
+    activateInputMode('fluid');
+}
+
 // The video element is never added to the page, and iOS Safari only autoplays videos that
 // are visible, so it has to be started explicitly (otherwise the first frame stays frozen)
 async function playCameraVideo(video) {
@@ -8599,7 +8605,7 @@ async function startCamera() {
         }
         
         showCameraNotice(errorMessage);
-        stopCamera();
+        fallBackFromCamera();
     }
 }
 
@@ -8697,7 +8703,7 @@ async function startCameraFallback() {
     } catch (fallbackError) {
         console.error('❌ Camera fallback also failed:', fallbackError);
         showCameraNotice('Camera access failed completely. Please check your browser settings.');
-        stopCamera();
+        fallBackFromCamera();
     }
 }
 
@@ -10414,8 +10420,9 @@ function getStreamingCanvas() {
 }
 
 function switchStreamingCanvas(useAudioBlob = null) {
-    // Only switch if streaming is active (or debug mode is previewing the input)
-    if ((!streamState.isStreaming || !streamState.peerConnection) && !config.DEBUG_MODE) return;
+    // Switch whenever the stream input is in use: while streaming, also while the stream is
+    // still connecting (it captures from the start), and in debug mode for the preview
+    if (!isStreamInputActive()) return;
     
     try {
         // Get the target canvas - use active canvas or specified canvas
@@ -12311,13 +12318,16 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeMobileDebug();
         
         
-        // Start with fluid mode active
+        // Start with fluid mode active, which sets up the simulation
         activateInputMode('fluid');
         // Ensure fluid simulation is running
         config.PAUSED = false;
         if (!window.fluidAnimationFrame) {
             window.fluidAnimationFrame = requestAnimationFrame(update);
         }
+        // Then switch to the default input: the camera, cut out in front of the fluid
+        // (back to fluid drawing if the camera can't start)
+        toggleCamera();
     } catch (err) {
         console.error('Initialization error:', err);
     }
