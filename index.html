@@ -1529,15 +1529,6 @@
                 max-width: 80%;
             }
 
-            .stream-loader-bar {
-                width: clamp(120px, 24vmin, 240px);
-                height: 3px;
-                border-radius: 3px;
-                background: linear-gradient(90deg, transparent, var(--accent-color), transparent) 0 0 / 50% 100% no-repeat,
-                            rgba(255, 255, 255, 0.1);
-                animation: stream-loader-sweep 1.6s ease-in-out infinite;
-            }
-
             .stream-overlay-loading.error .stream-loader-ring {
                 animation: none;
                 background: #ef4444;
@@ -1547,10 +1538,6 @@
             .stream-overlay-loading.error .stream-loader-core {
                 animation: none;
                 background: transparent;
-            }
-
-            .stream-overlay-loading.error .stream-loader-bar {
-                display: none;
             }
 
             .stream-overlay-loading.error .stream-loader-detail {
@@ -1564,11 +1551,6 @@
             @keyframes stream-loader-pulse {
                 0%, 100% { transform: scale(0.55); opacity: 0.35; }
                 50% { transform: scale(0.8); opacity: 0.9; }
-            }
-
-            @keyframes stream-loader-sweep {
-                from { background-position: -100% 0, 0 0; }
-                to { background-position: 200% 0, 0 0; }
             }
 
             /* Keep Daydream's own "Loading pipeline" frames hidden under the loader */
@@ -3515,7 +3497,6 @@
                     <div class="stream-loader-ring"><div class="stream-loader-core"></div></div>
                     <div class="stream-loader-title" id="streamLoaderTitle">Connecting</div>
                     <div class="stream-loader-detail" id="streamLoaderDetail"></div>
-                    <div class="stream-loader-bar"></div>
                 </div>
                 <iframe id="streamOverlayFrame" src="" style="display: none;"></iframe>
                 <video id="streamOverlayVideo" autoplay muted playsinline style="display: none;"></video>
