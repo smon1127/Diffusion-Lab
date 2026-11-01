@@ -10742,8 +10742,7 @@ function clearStreamState() {
     localStorage.removeItem(STORAGE_KEYS.STREAM_STATE);
 }
 
-// Enhanced obfuscation for API key (browser-safe method)
-const HARDCODED_OBFUSCATED_API_KEY = "amlYVjpWbkQ5OTM5Z1ZXVEh0dFhLQ1hRaXtPe2NUMkxyVHNaNXt1Q3ZqeFRCbG9XM3BHe3QyODpvOEJ5MntFa2BsdA==";
+// Enhanced obfuscation for the Telegram token (browser-safe method)
 const HARDCODED_OBFUSCATED_TELEGRAM_TOKEN = "OTZ2SE9lWmpqQld4Z3NONDRVWmRUVzoxT1RlQkhgRElHQkI7MTEyOjYxMjkzOQ==";
 
 // Enhanced obfuscation encoding function (for generating obfuscated keys)
@@ -10933,13 +10932,7 @@ function getApiKey() {
         }
     }
     
-    // Fallback to hardcoded obfuscated API key
-    const hardcodedKey = decodeApiKey(HARDCODED_OBFUSCATED_API_KEY);
-    if (hardcodedKey) {
-        console.log('Using hardcoded API key');
-        return hardcodedKey;
-    }
-    
+    // No built-in key: on diffusionlab.de the PHP proxy supplies it (see useDaydreamProxy)
     return null;
 }
 
@@ -11350,12 +11343,12 @@ function saveWelcomeApiKey() {
 }
 
 function initializeWelcomeOverlay() {
-    // Check if API key is already saved or if welcome was previously skipped
-    const savedApiKey = getApiKey();
+    // Check if Daydream is reachable (proxy or saved key) or if welcome was previously skipped
+    const hasAccess = hasDaydreamAccess();
     const welcomeSkipped = getWelcomeSkipped();
     
-    if (!savedApiKey && !welcomeSkipped) {
-        // No API key saved and welcome not skipped, show welcome overlay
+    if (!hasAccess && !welcomeSkipped) {
+        // No Daydream access and welcome not skipped, show welcome overlay
         showWelcomeOverlay();
     }
     
