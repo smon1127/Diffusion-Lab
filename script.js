@@ -7482,8 +7482,21 @@ function toggleStreamVisibility() {
 // as a fraction of width/height, the size as a fraction of the window height.
 const OVERLAY_MIN_SIZE = 80; // px
 const OVERLAY_SNAP_DISTANCE = 20; // px from a screen border that snaps to full screen
+const OVERLAY_TAP_MAX_MOVE = 10;  // px a tap may move and still count as a tap
+const OVERLAY_TAP_MAX_MS = 300;
+const OVERLAY_DOUBLE_TAP_MS = 350;
+const OVERLAY_DOUBLE_TAP_DISTANCE = 40; // px between the two taps
 let overlayLayout = null;   // { x, y, w, h }, { fullscreen: true }, or null for the default centered square
 let overlayDrag = null;
+let overlayLastTap = null;
+let overlayLastPointerType = 'mouse';
+
+// Phone-sized screen with touch input, judged by the device screen (either orientation),
+// so a narrow desktop window doesn't count
+function isPhoneScreen() {
+    return Math.min(window.screen.width, window.screen.height) < 600 &&
+        window.matchMedia('(pointer: coarse)').matches;
+}
 
 function initializeOverlayEditor() {
     const overlay = document.getElementById('streamOverlay');
@@ -7496,7 +7509,8 @@ function initializeOverlayEditor() {
         overlay.appendChild(handle);
     });
 
-    overlayLayout = loadFromLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT);
+    // Phones always start with the frame filling the screen; elsewhere the saved layout is restored
+    overlayLayout = isPhoneScreen() ? { fullscreen: true } : loadFromLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT);
     applyOverlayLayout();
 
     overlay.addEventListener('pointerdown', startOverlayDrag);
@@ -7504,17 +7518,10 @@ function initializeOverlayEditor() {
     overlay.addEventListener('pointerup', endOverlayDrag);
     overlay.addEventListener('pointercancel', endOverlayDrag);
     overlay.addEventListener('dblclick', () => {
-        if (!overlay.classList.contains('editing')) return;
-        // Double-click toggles: a centered square jumps to full screen,
-        // anything else (including full screen) goes back to the default square
-        if (isCenteredSquareFrame()) {
-            overlayLayout = { fullscreen: true };
-            saveToLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT, overlayLayout);
-        } else {
-            overlayLayout = null;
-            localStorage.removeItem(STORAGE_KEYS.OVERLAY_LAYOUT);
-        }
-        applyOverlayLayout();
+        // Touch double taps are detected in endOverlayDrag(); a browser that also fires
+        // dblclick for them would otherwise toggle twice
+        if (overlayLastPointerType !== 'mouse') return;
+        if (overlay.classList.contains('editing')) toggleOverlayFullscreen();
     });
     window.addEventListener('resize', applyOverlayLayout);
     document.addEventListener('keydown', (e) => {
@@ -7534,6 +7541,19 @@ function toggleOverlayEdit() {
     if (editing && !overlay.classList.contains('visible')) {
         toggleStreamVisibility();
     }
+}
+
+// Double-click / double tap toggles: a centered square jumps to full screen,
+// anything else (including full screen) goes back to the default square
+function toggleOverlayFullscreen() {
+    if (isCenteredSquareFrame()) {
+        overlayLayout = { fullscreen: true };
+        saveToLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT, overlayLayout);
+    } else {
+        overlayLayout = null;
+        localStorage.removeItem(STORAGE_KEYS.OVERLAY_LAYOUT);
+    }
+    applyOverlayLayout();
 }
 
 function isCenteredSquareFrame() {
@@ -7574,6 +7594,7 @@ function applyOverlayLayout() {
 
 function startOverlayDrag(e) {
     const overlay = e.currentTarget;
+    overlayLastPointerType = e.pointerType;
     if (!overlay.classList.contains('editing')) return;
 
     const rect = overlay.getBoundingClientRect();
@@ -7581,6 +7602,7 @@ function startOverlayDrag(e) {
         handle: e.target.dataset.handle || 'move',
         startX: e.clientX,
         startY: e.clientY,
+        startTime: e.timeStamp,
         cx: rect.left + rect.width / 2,
         cy: rect.top + rect.height / 2,
         w: rect.width,
@@ -7632,9 +7654,32 @@ function moveOverlayDrag(e) {
 
 function endOverlayDrag(e) {
     if (!overlayDrag) return;
+    const drag = overlayDrag;
     overlayDrag = null;
     e.currentTarget.releasePointerCapture?.(e.pointerId);
     saveToLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT, overlayLayout);
+    if (e.type === 'pointerup' && e.pointerType !== 'mouse') detectOverlayDoubleTap(e, drag);
+}
+
+// Touch has no reliable dblclick (and touch-action: none turns off the browser's own
+// double-tap handling), so two quick taps in about the same place count as a double tap.
+// Times come from the events, so a busy main thread doesn't stretch the gap.
+function detectOverlayDoubleTap(e, drag) {
+    const now = e.timeStamp;
+    const isTap = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < OVERLAY_TAP_MAX_MOVE &&
+        now - drag.startTime < OVERLAY_TAP_MAX_MS;
+    if (!isTap) {
+        overlayLastTap = null;
+        return;
+    }
+    const last = overlayLastTap;
+    if (last && now - last.time < OVERLAY_DOUBLE_TAP_MS &&
+        Math.hypot(e.clientX - last.x, e.clientY - last.y) < OVERLAY_DOUBLE_TAP_DISTANCE) {
+        overlayLastTap = null;
+        toggleOverlayFullscreen();
+    } else {
+        overlayLastTap = { time: now, x: e.clientX, y: e.clientY };
+    }
 }
 
 
