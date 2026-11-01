@@ -166,7 +166,7 @@ const commonParams = {
     // Daydream model (see DAYDREAM_MODELS)
     MODEL_ID: 'stabilityai/sdxl-turbo',
     STREAM_OPACITY: 0.8,
-    STREAM_VISIBLE: false,   // AI overlay shown (restored on load)
+    STREAM_VISIBLE: true,    // AI overlay shown (always shown again on load)
     PANEL_COLLAPSED: null,   // null = device default (collapsed on mobile)
     PANEL_HIDDEN: false,
     FSR_ENABLED: true, // sharp FSR upscaling of the stream output
@@ -347,16 +347,21 @@ document.addEventListener('DOMContentLoaded', () => {
     startGUI();
     initializeCursorIndicator();
     
-    // Auto-start stream and hide overlay initially
+    // The AI overlay is always shown on load, with its loader while the stream connects
+    // (only when the stream can start: through the proxy or with the visitor's own key)
+    config.STREAM_VISIBLE = true;
+    if (hasDaydreamAccess()) {
+        document.getElementById('streamOverlay')?.classList.add('visible');
+        setStreamLoader('loading', 'Connecting');
+    }
+    
+    // Auto-start stream
     setTimeout(async () => {
         try {
             if (!streamState.isStreaming) {
                 console.log('🚀 Auto-starting stream on page load...');
-                await startStream(config.STREAM_VISIBLE); // Overlay as it was last time
-                const hideButton = document.getElementById('hideStreamToggle');
-                if (hideButton) {
-                    hideButton.textContent = config.STREAM_VISIBLE ? 'Hide Diffusion' : 'Show Diffusion';
-                }
+                await startStream(true);
+                updateStreamButton(streamState.isStreaming);
             }
         } catch (error) {
             console.error('❌ Failed to auto-start stream:', error);
@@ -6249,14 +6254,11 @@ function updateStreamButton(isStreaming) {
         opacityContainer.style.display = showControls ? 'block' : 'none';
     }
     
-    // Update hide button text based on overlay visibility
-    if (hideButton && hasValidStream) {
+    // Hide button text follows the overlay, which is also shown while the stream connects
+    if (hideButton) {
         const overlay = document.getElementById('streamOverlay');
         const isVisible = overlay && overlay.classList.contains('visible');
         hideButton.textContent = isVisible ? 'Hide Diffusion' : 'Show Diffusion';
-    } else if (hideButton) {
-        // When no valid stream, show default text
-        hideButton.textContent = 'Show Diffusion';
     }
 }
 
