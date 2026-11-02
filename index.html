@@ -1369,7 +1369,7 @@
                 height: 100%;
                 border: none;
                 pointer-events: none;
-                opacity: 0.8;
+                opacity: 1;
                 transition: opacity 0.3s ease;
             }
 
@@ -3572,10 +3572,10 @@
                     <div class="control-item" id="streamOpacityContainer" style="display: none;">
                         <div class="control-label">
                             <span>Stream Opacity</span>
-                            <input type="text" class="control-value number-input" id="streamOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            <input type="text" class="control-value number-input" id="streamOpacityValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                         </div>
                         <div class="slider-container" onclick="handleSliderClick(event, 'streamOpacity', 0, 1)" ontouchstart="handleSliderClick(event, 'streamOpacity', 0, 1); event.preventDefault();">
-                            <div class="slider-fill" id="streamOpacityFill" style="width: 80%">
+                            <div class="slider-fill" id="streamOpacityFill" style="width: 100%">
                                 <div class="slider-handle" id="streamOpacityHandle"></div>
                             </div>
                         </div>

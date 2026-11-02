@@ -165,7 +165,7 @@ const commonParams = {
     
     // Daydream model (see DAYDREAM_MODELS)
     MODEL_ID: 'stabilityai/sdxl-turbo',
-    STREAM_OPACITY: 0.8,
+    STREAM_OPACITY: 1,       // AI overlay opacity (not saved, so every visit starts fully opaque)
     STREAM_VISIBLE: true,    // AI overlay shown (always shown again on load)
     PANEL_COLLAPSED: null,   // null = device default (collapsed on mobile)
     PANEL_HIDDEN: false,
@@ -7517,8 +7517,9 @@ function initializeOverlayEditor() {
         overlay.appendChild(handle);
     });
 
-    // Phones always start with the frame filling the screen; elsewhere the saved layout is restored
-    overlayLayout = isPhoneScreen() ? { fullscreen: true } : loadFromLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT);
+    // The frame fills the screen by default. Phones always start that way; elsewhere a saved
+    // layout is restored
+    overlayLayout = (!isPhoneScreen() && loadFromLocalStorage(STORAGE_KEYS.OVERLAY_LAYOUT)) || { fullscreen: true };
     applyOverlayLayout();
 
     overlay.addEventListener('pointerdown', startOverlayDrag);
@@ -11222,7 +11223,7 @@ const CONFIG_NOT_SAVED = new Set([
     'BLOOM_ITERATIONS', 'BLOOM_RESOLUTION', 'BLOOM_SOFT_KNEE', 'BLOOM_THRESHOLD',
     'CAPTURE_RESOLUTION', 'COLOR_UPDATE_SPEED', 'DYE_RESOLUTION', 'PRESSURE_ITERATIONS',
     'SHADING', 'SIM_RESOLUTION', 'SPLAT_FORCE', 'SUNRAYS_RESOLUTION', 'TRANSPARENT',
-    'STYLE_IMAGE_URL', 'TELEGRAM_RECEIVE', 'TELEGRAM_WAITLIST_INTERVAL'
+    'STYLE_IMAGE_URL', 'TELEGRAM_RECEIVE', 'TELEGRAM_WAITLIST_INTERVAL', 'STREAM_OPACITY'
 ]);
 
 function saveConfig() {
@@ -11236,8 +11237,9 @@ function saveConfig() {
 function loadConfig() {
     const savedConfig = loadFromLocalStorage(STORAGE_KEYS.CONFIG);
     if (savedConfig) {
+        // Keys that aren't saved are skipped too, so values from older saves don't come back
         Object.keys(savedConfig).forEach(key => {
-            if (config.hasOwnProperty(key)) {
+            if (config.hasOwnProperty(key) && !CONFIG_NOT_SAVED.has(key)) {
                 config[key] = savedConfig[key];
             }
         });
