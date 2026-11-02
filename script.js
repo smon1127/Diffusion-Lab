@@ -122,8 +122,8 @@ const commonParams = {
     SEED: 42,
     CONTROLNET_POSE_SCALE: 0.65,  // Balanced preset default
     CONTROLNET_HED_SCALE: 0.41,   // Balanced preset default
-    CONTROLNET_CANNY_SCALE: 0.00, // Balanced preset default
-    CONTROLNET_DEPTH_SCALE: 0.21, // Balanced preset default
+    CONTROLNET_CANNY_SCALE: 0.17, // Balanced preset default
+    CONTROLNET_DEPTH_SCALE: 0.43, // Balanced preset default
     CONTROLNET_COLOR_SCALE: 0.26, // Balanced preset default
     GUIDANCE_SCALE: 1,  // SDXL uses lower guidance scale
     DELTA: 0.7,
@@ -1373,6 +1373,7 @@ function toggleStyleTransfer() {
     updateToggle('styleTransferToggle', config.STYLE_TRANSFER_ENABLED);
     updateStyleTransferVisibility();
     saveConfig();
+    if (streamState.streamId) debouncedParameterUpdate();
 }
 
 function updateStyleTransferVisibility() {
@@ -1505,14 +1506,16 @@ function handleStyleImageUpload(event) {
         // Show delete button
         showStyleImageDeleteButton();
         
+        if (streamState.streamId) debouncedParameterUpdate();
         console.log('✅ Style image uploaded:', file.name);
     };
     reader.readAsDataURL(file);
 }
 
 function deleteStyleImage() {
-    // Clear the image
+    // Clear the image (which also turns style transfer off in the stream)
     config.STYLE_IMAGE_URL = null;
+    if (streamState.streamId) debouncedParameterUpdate();
     
     // Clear from localStorage
     localStorage.removeItem(STORAGE_KEYS.STYLE_IMAGE);
@@ -2266,8 +2269,8 @@ function setControlNetPreset(presetName, event) {
             presetConfig = {
                 CONTROLNET_POSE_SCALE: 0.65,
                 CONTROLNET_HED_SCALE: 0.41,
-                CONTROLNET_CANNY_SCALE: 0.00,
-                CONTROLNET_DEPTH_SCALE: 0.21,
+                CONTROLNET_CANNY_SCALE: 0.17,
+                CONTROLNET_DEPTH_SCALE: 0.43,
                 CONTROLNET_COLOR_SCALE: 0.26,
                 DENOISE_X: 3,
                 DENOISE_Y: 6,
@@ -6414,7 +6417,9 @@ function buildStreamParams() {
     if (model.ipAdapter) {
         params.ip_adapter = {
             scale: config.STYLE_STRENGTH || 0.5,
-            enabled: config.STYLE_TRANSFER_ENABLED
+            // Off without a style image, even when toggled on: the fallback image below
+            // would otherwise restyle the output
+            enabled: config.STYLE_TRANSFER_ENABLED && !!config.STYLE_IMAGE_URL
         };
         params.ip_adapter_style_image_url = config.STYLE_IMAGE_URL || "https://storage.googleapis.com/thom-vod-testing/style-presets/default_preset.png";
     }
@@ -11762,7 +11767,9 @@ function initializeWelcomeOverlay() {
     const hasAccess = hasDaydreamAccess();
     const welcomeSkipped = getWelcomeSkipped();
     
-    if (!hasAccess && !welcomeSkipped) {
+    // Phones never get it automatically, even on the first start (it stays reachable
+    // from the settings)
+    if (!hasAccess && !welcomeSkipped && !isPhoneScreen()) {
         // No Daydream access and welcome not skipped, show welcome overlay
         showWelcomeOverlay();
     }
@@ -11832,8 +11839,8 @@ function resetValues() {
         config.SEED = 42;
         config.CONTROLNET_POSE_SCALE = 0.65;
         config.CONTROLNET_HED_SCALE = 0.41;
-        config.CONTROLNET_CANNY_SCALE = 0.00;
-        config.CONTROLNET_DEPTH_SCALE = 0.21;
+        config.CONTROLNET_CANNY_SCALE = 0.17;
+        config.CONTROLNET_DEPTH_SCALE = 0.43;
         config.CONTROLNET_COLOR_SCALE = 0.26;
         config.GUIDANCE_SCALE = 7.5;
         config.DELTA = 0.5;
@@ -12086,8 +12093,8 @@ function clearAllSettings() {
         config.SEED = 42;
         config.CONTROLNET_POSE_SCALE = 0.65;
         config.CONTROLNET_HED_SCALE = 0.41;
-        config.CONTROLNET_CANNY_SCALE = 0.00;
-        config.CONTROLNET_DEPTH_SCALE = 0.21;
+        config.CONTROLNET_CANNY_SCALE = 0.17;
+        config.CONTROLNET_DEPTH_SCALE = 0.43;
         config.CONTROLNET_COLOR_SCALE = 0.26;
         config.GUIDANCE_SCALE = 7.5;
         config.DELTA = 0.5;
