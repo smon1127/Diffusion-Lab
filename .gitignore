@@ -61,3 +61,6 @@ api/.secrets/*
 
 # Local Claude Code settings
 .claude/
+
+# Local working notes (plans, reviews, lessons)
+tasks/
