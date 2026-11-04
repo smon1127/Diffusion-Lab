@@ -220,7 +220,14 @@ let cameraState = {
 // Camera background removal (see drawCameraVideo)
 let cameraSegmentation = {
     enabled: true,             // on by default; the model loads once the camera starts
-    background: 'fluid',       // 'transparent', 'blur', 'color' or 'fluid'
+    // Layers, top to bottom; the camera is the cut-out person. With only the camera on,
+    // the background is transparent. Order and checks are saved (STORAGE_KEYS.CAMERA_LAYERS)
+    layers: [
+        { id: 'camera', on: true },
+        { id: 'audio', on: false },  // off by default: it asks for the microphone
+        { id: 'fluid', on: true },
+        { id: 'color', on: false }
+    ],
     color: '#06a3d7',
     fluidEffects: { BLOOM: false, SUNRAYS: false }, // as background: off by default, they're the heaviest passes
     segmenter: null,
@@ -235,10 +242,10 @@ let cameraSegmentation = {
     mask: null,                // confidence as alpha, same size as input
     maskImage: null,
     person: null,              // full-resolution frame with the mask applied
-    blur: null,                // tiny copy of the frame, upscaled as the blurred background
     fluidRunning: false,       // fluid simulation kept running as the background
     audioRunning: false,       // audio blob (and microphone) kept running as the background
-    backgroundFrame: null      // copy of the last fluid/audio frame (their WebGL buffers are cleared once shown)
+    fluidFrame: null,          // copies of the last fluid / audio frame (their WebGL buffers
+    audioFrame: null           // are cleared once shown)
 };
 
 // Media System
@@ -4953,7 +4960,7 @@ function update () {
     if (!config.PAUSED)
         step(dt);
     render(null);
-    if (cameraSegmentation.fluidRunning) copyCameraBackgroundFrame(canvas);
+    if (cameraSegmentation.fluidRunning) copyCameraBackgroundFrame(canvas, 'fluidFrame');
     if (streamInput.source === canvas && isStreamInputActive()) renderStreamInput();
     requestAnimationFrame(update);
 }
@@ -5158,7 +5165,8 @@ function render (target) {
         gl.disable(gl.BLEND);
     }
 
-    if (!config.TRANSPARENT)
+    // As a camera layer the fluid is see-through, so the layers below it show
+    if (!config.TRANSPARENT && !cameraSegmentation.fluidRunning)
         drawColor(target, config.BACK_COLOR);
     if (target == null && config.TRANSPARENT)
         drawCheckerboard(target);
@@ -8811,22 +8819,77 @@ function setCameraBackgroundRemoval(enabled) {
     syncCameraBackgrounds();
 }
 
-function setCameraBackgroundMode(mode) {
-    cameraSegmentation.background = mode;
-    updateCameraBackgroundControls();
-    syncCameraBackgrounds();
-}
-
 function setCameraBackgroundColor(color) {
     cameraSegmentation.color = color;
 }
 
 function updateCameraBackgroundControls() {
+    const row = document.getElementById('cameraLayersRow');
+    if (row) row.style.display = cameraSegmentation.enabled ? 'block' : 'none';
+}
+
+function cameraLayerOn(id) {
+    return cameraSegmentation.layers.some(layer => layer.id === id && layer.on);
+}
+
+function setCameraLayer(id, on) {
+    const layer = cameraSegmentation.layers.find(l => l.id === id);
+    if (!layer) return;
+    layer.on = on;
+    saveToLocalStorage(STORAGE_KEYS.CAMERA_LAYERS, cameraSegmentation.layers);
+    syncCameraBackgrounds();
+}
+
+// Restores the saved layers (if they're valid) and puts the list in that order
+function initCameraLayers() {
     const seg = cameraSegmentation;
-    const modeRow = document.getElementById('cameraBackgroundModeRow');
-    if (modeRow) modeRow.style.display = seg.enabled ? 'block' : 'none';
-    const colorRow = document.getElementById('cameraBackgroundColorRow');
-    if (colorRow) colorRow.style.display = seg.enabled && seg.background === 'color' ? 'block' : 'none';
+    const saved = loadFromLocalStorage(STORAGE_KEYS.CAMERA_LAYERS);
+    const ids = seg.layers.map(l => l.id).sort().join();
+    if (Array.isArray(saved) && saved.map(l => l && l.id).sort().join() === ids) {
+        seg.layers = saved.map(l => ({ id: l.id, on: !!l.on }));
+    }
+
+    const list = document.getElementById('cameraLayersList');
+    if (!list) return;
+    seg.layers.forEach(layer => {
+        const item = list.querySelector(`[data-layer="${layer.id}"]`);
+        item.querySelector('input[type="checkbox"]').checked = layer.on;
+        list.appendChild(item);
+    });
+    list.addEventListener('pointerdown', startCameraLayerDrag);
+}
+
+// Dragging a handle moves its row live; the rows are moved, never rebuilt, so the color
+// picker keeps its listeners. Document listeners, since moving a node drops pointer capture.
+function startCameraLayerDrag(e) {
+    const item = e.target.closest('.camera-layer-handle') && e.target.closest('.camera-layer');
+    if (!item) return;
+    e.preventDefault();
+    const list = item.parentElement;
+    item.classList.add('dragging');
+
+    const move = ev => {
+        const others = [...list.children].filter(el => el !== item);
+        const before = others.find(el => {
+            const rect = el.getBoundingClientRect();
+            return ev.clientY < rect.top + rect.height / 2;
+        });
+        if (before ? item.nextElementSibling !== before : list.lastElementChild !== item) {
+            list.insertBefore(item, before || null);
+        }
+    };
+    const end = () => {
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', end);
+        document.removeEventListener('pointercancel', end);
+        item.classList.remove('dragging');
+        const seg = cameraSegmentation;
+        seg.layers = [...list.children].map(el => seg.layers.find(l => l.id === el.dataset.layer));
+        saveToLocalStorage(STORAGE_KEYS.CAMERA_LAYERS, seg.layers);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', end);
+    document.addEventListener('pointercancel', end);
 }
 
 function syncCameraBackgrounds() {
@@ -8834,11 +8897,11 @@ function syncCameraBackgrounds() {
     syncCameraAudioBackground();
 }
 
-// With the audio blob as background, the microphone and blob run invisibly (like the
-// fluid below) and the audio controls show. Leaving the background stops the microphone.
+// With the audio layer on, the microphone and blob run invisibly (like the fluid below)
+// and the audio controls show. Turning the layer off stops the microphone.
 function syncCameraAudioBackground() {
     const seg = cameraSegmentation;
-    const wanted = cameraState.active && seg.enabled && seg.background === 'audio';
+    const wanted = cameraState.active && seg.enabled && cameraLayerOn('audio');
     if (wanted === seg.audioRunning) return;
     seg.audioRunning = wanted;
 
@@ -8851,12 +8914,12 @@ function syncCameraAudioBackground() {
     }
 }
 
-// With the fluid as background, the simulation keeps running and the fluid canvas stays
+// With the fluid layer on, the simulation keeps running and the fluid canvas stays
 // interactive (so you can draw behind yourself), but invisible: it shows through the
 // camera canvas, which is also what gets streamed.
 function syncCameraFluidBackground() {
     const seg = cameraSegmentation;
-    const wanted = cameraState.active && seg.enabled && seg.background === 'fluid';
+    const wanted = cameraState.active && seg.enabled && cameraLayerOn('fluid');
     if (wanted === seg.fluidRunning) return;
     seg.fluidRunning = wanted;
 
@@ -8880,16 +8943,16 @@ function syncCameraFluidBackground() {
 }
 
 // Called right after the fluid or audio blob renders, while its buffer is still readable
-function copyCameraBackgroundFrame(source) {
+function copyCameraBackgroundFrame(source, key) {
     const seg = cameraSegmentation;
-    if (!seg.backgroundFrame) seg.backgroundFrame = createSegmentationCanvas();
-    const frame = seg.backgroundFrame.canvas;
+    if (!seg[key]) seg[key] = createSegmentationCanvas();
+    const frame = seg[key].canvas;
     if (frame.width !== source.width || frame.height !== source.height) {
         frame.width = source.width;
         frame.height = source.height;
     }
-    seg.backgroundFrame.ctx.globalCompositeOperation = 'copy'; // replace, don't blend over the last frame
-    seg.backgroundFrame.ctx.drawImage(source, 0, 0);
+    seg[key].ctx.globalCompositeOperation = 'copy'; // replace, don't blend over the last frame
+    seg[key].ctx.drawImage(source, 0, 0);
 }
 
 function createSegmentationCanvas() {
@@ -8961,9 +9024,10 @@ function closeCameraSegmenter() {
     seg.skipUntil = 0;
 }
 
-// Draws the camera frame into the given rect, without its background when the toggle is on.
-// The background (color, fluid) is never mirrored, so drawing on the fluid stays aligned.
-// The plain frame is shown while the model loads.
+// Draws the camera frame into the given rect. With background removal on, the layers are
+// drawn bottom to top, the camera layer being the cut-out person. Only the camera is
+// mirrored, so drawing on the fluid stays aligned. The plain frame is shown while the
+// model loads.
 function drawCameraVideo(ctx, video, x, y, w, h) {
     const seg = cameraSegmentation;
     syncCameraBackgrounds();
@@ -8988,19 +9052,19 @@ function drawCameraVideo(ctx, video, x, y, w, h) {
     person.ctx.imageSmoothingEnabled = true;
     person.ctx.drawImage(seg.mask.canvas, 0, 0, person.canvas.width, person.canvas.height);
 
-    if (seg.background === 'color') {
-        ctx.fillStyle = seg.color;
-        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    } else if ((seg.background === 'fluid' || seg.background === 'audio') && seg.backgroundFrame) {
-        ctx.drawImage(seg.backgroundFrame.canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
-    } else if (seg.background === 'blur') {
-        // Scaling a tiny copy up blurs it in every browser (ctx.filter needs Safari 18)
-        seg.blur.ctx.drawImage(video, 0, 0, seg.blur.canvas.width, seg.blur.canvas.height);
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        drawCameraImage(ctx, seg.blur.canvas, x, y, w, h);
+    for (let i = seg.layers.length - 1; i >= 0; i--) {
+        const layer = seg.layers[i];
+        if (!layer.on) continue;
+        if (layer.id === 'camera') {
+            drawCameraImage(ctx, person.canvas, x, y, w, h);
+        } else if (layer.id === 'color') {
+            ctx.fillStyle = seg.color;
+            ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        } else {
+            const frame = seg[layer.id + 'Frame']; // fluidFrame, audioFrame
+            if (frame) ctx.drawImage(frame.canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+        }
     }
-    drawCameraImage(ctx, person.canvas, x, y, w, h);
 }
 
 function updateCameraMask(video) {
@@ -9014,7 +9078,6 @@ function updateCameraMask(video) {
         seg.input = createSegmentationCanvas();
         seg.mask = createSegmentationCanvas();
         seg.person = createSegmentationCanvas();
-        seg.blur = createSegmentationCanvas();
     }
     const scale = Math.min(1, SEGMENTATION_MAX_WIDTH / video.videoWidth);
     const width = Math.round(video.videoWidth * scale);
@@ -9022,8 +9085,6 @@ function updateCameraMask(video) {
     if (seg.input.canvas.width !== width || seg.input.canvas.height !== height) {
         seg.input.canvas.width = seg.mask.canvas.width = width;
         seg.input.canvas.height = seg.mask.canvas.height = height;
-        seg.blur.canvas.width = Math.max(1, Math.round(width / 12));
-        seg.blur.canvas.height = Math.max(1, Math.round(height / 12));
         seg.maskImage = seg.mask.ctx.createImageData(width, height);
     }
     seg.input.ctx.drawImage(video, 0, 0, width, height);
@@ -9621,9 +9682,9 @@ function initAudioBlobGL() {
     
     audioBlobState.gl = gl;
     
-    // Enable blending for transparency
+    // Enable blending for transparency (the shader outputs premultiplied alpha)
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     
     // Create shader program for audio blob
     const vertexShaderSource = `
@@ -9654,6 +9715,7 @@ function initAudioBlobGL() {
         uniform float u_bloomIntensity;
         uniform float u_sunraysWeight;
         uniform vec3 u_backgroundColor;
+        uniform bool u_transparent;
         
         // Enhanced noise functions for organic blob shape
         float hash(vec2 p) {
@@ -9813,9 +9875,13 @@ function initAudioBlobGL() {
             
             // Composite blob over background color
             float blobAlpha = edge * u_opacity;
-            vec3 compositeColor = mix(u_backgroundColor, color, blobAlpha);
-            
-            gl_FragColor = vec4(compositeColor, 1.0);
+            if (u_transparent) {
+                // As a camera layer: no background, premultiplied for the canvas
+                gl_FragColor = vec4(color * blobAlpha, blobAlpha);
+            } else {
+                vec3 compositeColor = mix(u_backgroundColor, color, blobAlpha);
+                gl_FragColor = vec4(compositeColor, 1.0);
+            }
         }
     `;
     
@@ -9840,6 +9906,7 @@ function initAudioBlobGL() {
         bloom: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloom'),
         sunrays: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunrays'),
         backgroundColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_backgroundColor'),
+        transparent: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_transparent'),
         bloomIntensity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloomIntensity'),
         sunraysWeight: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunraysWeight')
     };
@@ -10028,6 +10095,7 @@ function renderAudioBlob() {
     
     // Set background color from global config
     gl.uniform3f(audioBlobState.uniforms.backgroundColor, config.BACK_COLOR.r, config.BACK_COLOR.g, config.BACK_COLOR.b);
+    gl.uniform1i(audioBlobState.uniforms.transparent, audioBlobState.asBackground ? 1 : 0);
     
     // Set up vertex attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
@@ -10039,7 +10107,7 @@ function renderAudioBlob() {
 
     // Copy the frame now: the WebGL buffer is cleared once it's displayed
     if (audioBlobState.asBackground) {
-        copyCameraBackgroundFrame(audioBlobState.canvas);
+        copyCameraBackgroundFrame(audioBlobState.canvas, 'audioFrame');
     } else if (streamInput.source === audioBlobState.canvas && isStreamInputActive()) {
         renderStreamInput();
     }
@@ -11164,7 +11232,8 @@ const STORAGE_KEYS = {
     TELEGRAM_TOKEN_CONSENT: STORAGE_PREFIX + 'telegramTokenConsent',
     WELCOME_SKIPPED: STORAGE_PREFIX + 'welcomeSkipped',
     STYLE_IMAGE: STORAGE_PREFIX + 'styleImage',
-    OVERLAY_LAYOUT: STORAGE_PREFIX + 'overlayLayout'
+    OVERLAY_LAYOUT: STORAGE_PREFIX + 'overlayLayout',
+    CAMERA_LAYERS: STORAGE_PREFIX + 'cameraLayers'
 };
 
 function isLocalStorageAvailable() {
@@ -12457,6 +12526,8 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeMobileDebug();
         
         
+        initCameraLayers();
+
         // Start with fluid mode active, which sets up the simulation
         activateInputMode('fluid');
         // Ensure fluid simulation is running
