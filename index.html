@@ -1536,8 +1536,54 @@
                 max-width: 80%;
             }
 
-            .stream-overlay-loading.error .stream-loader-hint {
+            .stream-loader-error {
                 display: none;
+                flex-direction: column;
+                align-items: center;
+                gap: clamp(8px, 1.6vmin, 14px);
+                max-width: 80%;
+                pointer-events: auto; /* the overlay itself lets clicks through to the fluid */
+            }
+
+            .stream-loader-error .stream-loader-hint {
+                max-width: none;
+            }
+
+            .stream-loader-reload {
+                padding: 8px 20px;
+                border: none;
+                border-radius: 6px;
+                background: var(--accent-color);
+                color: #fff;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+
+            .stream-loader-technical {
+                font-size: 12px;
+                color: rgba(255, 255, 255, 0.55);
+                text-shadow: none;
+            }
+
+            .stream-loader-technical summary {
+                cursor: pointer;
+            }
+
+            .stream-loader-technical div {
+                margin-top: 6px;
+                color: #fca5a5;
+                word-break: break-word;
+                user-select: text;
+            }
+
+            .stream-overlay-loading.error > .stream-loader-hint,
+            .stream-overlay-loading.error .stream-loader-detail {
+                display: none;
+            }
+
+            .stream-overlay-loading.error .stream-loader-error {
+                display: flex;
             }
 
             .stream-overlay-loading.error .stream-loader-ring {
@@ -3509,6 +3555,14 @@
                     <div class="stream-loader-title" id="streamLoaderTitle">Connecting</div>
                     <div class="stream-loader-detail" id="streamLoaderDetail"></div>
                     <div class="stream-loader-hint" id="streamLoaderHint">The first start can take up to 2 minutes.<br>Open this page in your browser, not an in-app browser.</div>
+                    <div class="stream-loader-error">
+                        <div class="stream-loader-hint">Try reloading the page. If it keeps failing, turn off your VPN or connect to your phone's hotspot.</div>
+                        <button type="button" class="stream-loader-reload" onclick="location.reload()">Reload</button>
+                        <details class="stream-loader-technical" id="streamLoaderTechnical">
+                            <summary>Technical details</summary>
+                            <div id="streamLoaderTechnicalText"></div>
+                        </details>
+                    </div>
                 </div>
                 <iframe id="streamOverlayFrame" src="" style="display: none;"></iframe>
                 <video id="streamOverlayVideo" autoplay muted playsinline style="display: none;"></video>
