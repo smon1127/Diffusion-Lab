@@ -6659,7 +6659,7 @@ async function startStreamPlayback(attempt = 1) {
             setTimeout(() => startStreamPlayback(attempt + 1), 2000);
         } else {
             console.error('❌ Stream playback failed:', error);
-            setStreamLoader('error', 'Failed to load stream');
+            setStreamLoader('error', STREAM_ERROR_TITLE);
             showStreamGatewayError();
         }
     }
@@ -6963,6 +6963,7 @@ function renderUpscaledFrame() {
 const STREAM_WARMUP_POLL_MS = 1000;
 const STREAM_WARMUP_TIMEOUT_MS = 120000; // reveal anyway if the status never confirms
 const streamWarmup = { timer: null, startedAt: 0 };
+const STREAM_ERROR_TITLE = "The AI couldn't start";
 
 function setStreamLoader(state, title = '', detail = '') {
     const loader = document.getElementById('streamOverlayLoading');
@@ -6970,7 +6971,13 @@ function setStreamLoader(state, title = '', detail = '') {
     loader.classList.toggle('error', state === 'error');
     loader.style.display = state === 'hidden' ? 'none' : '';
     document.getElementById('streamLoaderTitle').textContent = title;
-    document.getElementById('streamLoaderDetail').textContent = detail;
+    // Errors show a friendly title and hint; Daydream's raw message goes into "Technical details"
+    const isError = state === 'error';
+    document.getElementById('streamLoaderDetail').textContent = isError ? '' : detail;
+    document.getElementById('streamLoaderTechnicalText').textContent = isError ? detail : '';
+    const technical = document.getElementById('streamLoaderTechnical');
+    technical.style.display = isError && detail ? '' : 'none';
+    if (!isError) technical.open = false;
     document.querySelector('.stream-overlay-content')?.classList.toggle('stream-warming', state !== 'hidden');
 }
 
@@ -7001,7 +7008,7 @@ function watchStreamWarmup() {
 
             if (gatewayError) {
                 stopStreamWarmup();
-                setStreamLoader('error', 'Stream failed', gatewayError);
+                setStreamLoader('error', STREAM_ERROR_TITLE, gatewayError);
                 return;
             }
             const producing = inference?.fps > 0 && Date.now() - inference.last_output_time < 5000;
@@ -7033,7 +7040,7 @@ async function showStreamGatewayError() {
         const message = data?.data?.gateway_status?.error?.error_message || data?.data?.inference_status?.last_error;
         if (!message) return;
 
-        setStreamLoader('error', 'Stream failed', message);
+        setStreamLoader('error', STREAM_ERROR_TITLE, message);
         updateStreamStatus('Error: ' + message, 'error');
         addDaydreamEventToDebug({ type: 'stream_error', error: message });
     } catch (error) {
@@ -7317,6 +7324,11 @@ async function startStream(showOverlay = true) {
             return;
         }
         
+        // stopStream() closed the overlay; reopen it to explain what went wrong
+        document.getElementById('streamOverlay')?.classList.add('visible');
+        setStreamLoader('error', STREAM_ERROR_TITLE, error.message);
+        updateStreamButton(false);
+
         // Log error for debugging
         console.log(`Stream failed: ${errorMessage}`);
     }
