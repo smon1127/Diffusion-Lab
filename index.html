@@ -1529,6 +1529,17 @@
                 max-width: 80%;
             }
 
+            .stream-loader-hint {
+                font-size: clamp(11px, 1.5vmin, 13px);
+                line-height: 1.5;
+                color: rgba(255, 255, 255, 0.55);
+                max-width: 80%;
+            }
+
+            .stream-overlay-loading.error .stream-loader-hint {
+                display: none;
+            }
+
             .stream-overlay-loading.error .stream-loader-ring {
                 animation: none;
                 background: #ef4444;
@@ -3497,6 +3508,7 @@
                     <div class="stream-loader-ring"><div class="stream-loader-core"></div></div>
                     <div class="stream-loader-title" id="streamLoaderTitle">Connecting</div>
                     <div class="stream-loader-detail" id="streamLoaderDetail"></div>
+                    <div class="stream-loader-hint" id="streamLoaderHint">The first start can take up to 2 minutes.<br>Open this page in your browser, not an in-app browser.</div>
                 </div>
                 <iframe id="streamOverlayFrame" src="" style="display: none;"></iframe>
                 <video id="streamOverlayVideo" autoplay muted playsinline style="display: none;"></video>
