@@ -3195,6 +3195,72 @@
             body.hide-cursor .cursor-indicator {
                 display: block;
             }
+            .camera-layers {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .camera-layer {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 6px 10px 6px 4px;
+                background: var(--control-bg);
+                border: 1px solid var(--border-color);
+                border-radius: 6px;
+                color: var(--text-primary);
+                font-size: 13px;
+            }
+
+            .camera-layer.dragging {
+                border-color: var(--accent-color);
+                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            }
+
+            .camera-layer-handle {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 28px;
+                height: 28px;
+                color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+                cursor: grab;
+                touch-action: none;
+            }
+
+            .camera-layer.dragging .camera-layer-handle {
+                cursor: grabbing;
+            }
+
+            .camera-layer label {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+            }
+
+            .camera-layer input[type="checkbox"] {
+                width: 16px;
+                height: 16px;
+                margin: 0;
+                accent-color: var(--accent-color);
+            }
+
+            .camera-layer .camera-layer-color {
+                width: 28px;
+                height: 22px;
+                flex: none;
+                padding: 0;
+                border-radius: 4px;
+                color: transparent;
+                cursor: pointer;
+            }
+
             .camera-notice {
                 position: fixed;
                 left: 50%;
@@ -3827,23 +3893,27 @@
                         </div>
                     </div>
                     
-                    <div class="control-item" id="cameraBackgroundModeRow">
-                        <select id="cameraBackgroundModeSelect" class="audio-select" onchange="setCameraBackgroundMode(this.value)" style="width: 100%; padding: 8px 12px; background: var(--control-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 13px;">
-                            <option value="transparent">Transparent</option>
-                            <option value="blur">Blur</option>
-                            <option value="color">Solid color</option>
-                            <option value="fluid" selected>Fluid</option>
-                            <option value="audio">Audio</option>
-                        </select>
-                    </div>
-                    
-                    <div class="control-item" id="cameraBackgroundColorRow" style="display: none;">
-                        <div class="color-row">
-                            <div class="color-container full">
-                                <span class="color-label">Background color</span>
-                                <input type="text" id="cameraBackgroundColorPicker" class="color-input" value="#06a3d7" data-coloris readonly inputmode="none" style="background-color: #06a3d7;">
-                            </div>
-                        </div>
+                    <!-- Layers, top to bottom; the order is changed by dragging the handles -->
+                    <div class="control-item" id="cameraLayersRow">
+                        <ul class="camera-layers" id="cameraLayersList">
+                            <li class="camera-layer" data-layer="camera">
+                                <span class="camera-layer-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
+                                <label><input type="checkbox" checked onchange="setCameraLayer('camera', this.checked)"> Camera</label>
+                            </li>
+                            <li class="camera-layer" data-layer="audio">
+                                <span class="camera-layer-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
+                                <label><input type="checkbox" onchange="setCameraLayer('audio', this.checked)"> Audio</label>
+                            </li>
+                            <li class="camera-layer" data-layer="fluid">
+                                <span class="camera-layer-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
+                                <label><input type="checkbox" checked onchange="setCameraLayer('fluid', this.checked)"> Fluid</label>
+                            </li>
+                            <li class="camera-layer" data-layer="color">
+                                <span class="camera-layer-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
+                                <label><input type="checkbox" onchange="setCameraLayer('color', this.checked)"> Solid color</label>
+                                <input type="text" id="cameraBackgroundColorPicker" class="color-input camera-layer-color" value="#06a3d7" data-coloris readonly inputmode="none" style="background-color: #06a3d7;">
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </div>
