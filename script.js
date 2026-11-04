@@ -237,7 +237,8 @@ let cameraSegmentation = {
     person: null,              // full-resolution frame with the mask applied
     blur: null,                // tiny copy of the frame, upscaled as the blurred background
     fluidRunning: false,       // fluid simulation kept running as the background
-    fluidFrame: null           // copy of the last fluid frame (its WebGL buffer is cleared once shown)
+    audioRunning: false,       // audio blob (and microphone) kept running as the background
+    backgroundFrame: null      // copy of the last fluid/audio frame (their WebGL buffers are cleared once shown)
 };
 
 // Media System
@@ -277,6 +278,8 @@ let fluidBackgroundCamera = {
 // Audio Blob System
 let audioBlobState = {
     active: false,
+    asBackground: false, // running as the camera background instead of as the input mode
+    pacing: { last: 0 },
     audioContext: null,
     analyser: null,
     microphone: null,
@@ -4950,7 +4953,7 @@ function update () {
     if (!config.PAUSED)
         step(dt);
     render(null);
-    if (cameraSegmentation.fluidRunning) copyCameraFluidFrame();
+    if (cameraSegmentation.fluidRunning) copyCameraBackgroundFrame(canvas);
     if (streamInput.source === canvas && isStreamInputActive()) renderStreamInput();
     requestAnimationFrame(update);
 }
@@ -8805,13 +8808,13 @@ function setCameraBackgroundRemoval(enabled) {
     updateToggle('removeBackgroundToggle', enabled);
     updateCameraBackgroundControls();
     if (!enabled) closeCameraSegmenter();
-    syncCameraFluidBackground();
+    syncCameraBackgrounds();
 }
 
 function setCameraBackgroundMode(mode) {
     cameraSegmentation.background = mode;
     updateCameraBackgroundControls();
-    syncCameraFluidBackground();
+    syncCameraBackgrounds();
 }
 
 function setCameraBackgroundColor(color) {
@@ -8824,6 +8827,28 @@ function updateCameraBackgroundControls() {
     if (modeRow) modeRow.style.display = seg.enabled ? 'block' : 'none';
     const colorRow = document.getElementById('cameraBackgroundColorRow');
     if (colorRow) colorRow.style.display = seg.enabled && seg.background === 'color' ? 'block' : 'none';
+}
+
+function syncCameraBackgrounds() {
+    syncCameraFluidBackground();
+    syncCameraAudioBackground();
+}
+
+// With the audio blob as background, the microphone and blob run invisibly (like the
+// fluid below) and the audio controls show. Leaving the background stops the microphone.
+function syncCameraAudioBackground() {
+    const seg = cameraSegmentation;
+    const wanted = cameraState.active && seg.enabled && seg.background === 'audio';
+    if (wanted === seg.audioRunning) return;
+    seg.audioRunning = wanted;
+
+    if (wanted) {
+        audioBlobState.asBackground = true;
+        startAudioBlob();
+    } else {
+        if (audioBlobState.active) stopAudioBlob();
+        audioBlobState.asBackground = false;
+    }
 }
 
 // With the fluid as background, the simulation keeps running and the fluid canvas stays
@@ -8854,16 +8879,17 @@ function syncCameraFluidBackground() {
     }
 }
 
-// Called from update() right after the fluid renders, while its buffer is still readable
-function copyCameraFluidFrame() {
+// Called right after the fluid or audio blob renders, while its buffer is still readable
+function copyCameraBackgroundFrame(source) {
     const seg = cameraSegmentation;
-    if (!seg.fluidFrame) seg.fluidFrame = createSegmentationCanvas();
-    const frame = seg.fluidFrame.canvas;
-    if (frame.width !== canvas.width || frame.height !== canvas.height) {
-        frame.width = canvas.width;
-        frame.height = canvas.height;
+    if (!seg.backgroundFrame) seg.backgroundFrame = createSegmentationCanvas();
+    const frame = seg.backgroundFrame.canvas;
+    if (frame.width !== source.width || frame.height !== source.height) {
+        frame.width = source.width;
+        frame.height = source.height;
     }
-    seg.fluidFrame.ctx.drawImage(canvas, 0, 0);
+    seg.backgroundFrame.ctx.globalCompositeOperation = 'copy'; // replace, don't blend over the last frame
+    seg.backgroundFrame.ctx.drawImage(source, 0, 0);
 }
 
 function createSegmentationCanvas() {
@@ -8940,7 +8966,7 @@ function closeCameraSegmenter() {
 // The plain frame is shown while the model loads.
 function drawCameraVideo(ctx, video, x, y, w, h) {
     const seg = cameraSegmentation;
-    syncCameraFluidBackground();
+    syncCameraBackgrounds();
     if (seg.enabled) {
         ensureCameraSegmenter();
         if (seg.segmenter) updateCameraMask(video);
@@ -8965,8 +8991,8 @@ function drawCameraVideo(ctx, video, x, y, w, h) {
     if (seg.background === 'color') {
         ctx.fillStyle = seg.color;
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    } else if (seg.background === 'fluid' && seg.fluidFrame) {
-        ctx.drawImage(seg.fluidFrame.canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+    } else if ((seg.background === 'fluid' || seg.background === 'audio') && seg.backgroundFrame) {
+        ctx.drawImage(seg.backgroundFrame.canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
     } else if (seg.background === 'blur') {
         // Scaling a tiny copy up blurs it in every browser (ctx.filter needs Safari 18)
         seg.blur.ctx.drawImage(video, 0, 0, seg.blur.canvas.width, seg.blur.canvas.height);
@@ -9090,7 +9116,7 @@ function stopCamera() {
     
     // Reset state
     cameraState.active = false;
-    syncCameraFluidBackground();
+    syncCameraBackgrounds();
     
     console.log('🔄 Simple camera stopped');
 }
@@ -9387,6 +9413,7 @@ function stopMedia() {
 }
 
 async function startAudioBlob() {
+    const asBackground = audioBlobState.asBackground;
     try {
         // Populate audio input devices only if not already done
         const select = document.getElementById('audioInputSelect');
@@ -9402,6 +9429,11 @@ async function startAudioBlob() {
         
         // Request microphone permission
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (asBackground && !cameraSegmentation.audioRunning) {
+            // The background changed while the microphone permission was pending
+            stream.getTracks().forEach(track => track.stop());
+            return;
+        }
         audioBlobState.audioStream = stream;
         
         // Store the stream for direct audio access
@@ -9452,10 +9484,14 @@ async function startAudioBlob() {
         
         audioBlobState.canvas = audioCanvas;
         audioCanvas.style.display = 'block';
+        // As camera background it's only shown through the camera canvas
+        audioCanvas.style.opacity = asBackground ? '0' : '';
         
         // Hide fluid canvas and controls if they exist
-        if (fluidCanvas) fluidCanvas.style.display = 'none';
-        if (fluidControls) fluidControls.style.display = 'none';
+        if (!asBackground) {
+            if (fluidCanvas) fluidCanvas.style.display = 'none';
+            if (fluidControls) fluidControls.style.display = 'none';
+        }
         resizeAudioCanvas();
         
         // Initialize WebGL for audio blob
@@ -9463,7 +9499,7 @@ async function startAudioBlob() {
         
         // Update button state and show controls
         const button = document.getElementById('audioBlobButton');
-        button.classList.add('active');
+        if (!asBackground) button.classList.add('active');
         
         // Show audio controls and preview button
         const audioControls = document.getElementById('audioControls');
@@ -9481,11 +9517,13 @@ async function startAudioBlob() {
         
         audioBlobState.active = true;
         
-        // Switch streaming canvas to audio blob canvas if streaming is active
-        switchStreamingCanvas(true);
-        
-        // Integrate with media stream if streaming is active
-        await integrateAudioWithStream();
+        if (!asBackground) {
+            // Switch streaming canvas to audio blob canvas if streaming is active
+            switchStreamingCanvas(true);
+            
+            // Integrate with media stream if streaming is active
+            await integrateAudioWithStream();
+        }
         
         // Start rendering loop
         renderAudioBlob();
@@ -9544,15 +9582,19 @@ function stopAudioBlob() {
         audioControls.style.display = 'none';
     }
     
-    // Update button state
-    const button = document.getElementById('audioBlobButton');
-    button.classList.remove('active');
-    
-    // Switch streaming canvas back to fluid canvas if streaming is active
-    switchStreamingCanvas(false);
-    
-    // Remove audio from media stream if streaming
-    removeAudioFromStream();
+    if (audioBlobState.asBackground) {
+        audioBlobState.canvas.style.opacity = '';
+    } else {
+        // Update button state
+        const button = document.getElementById('audioBlobButton');
+        button.classList.remove('active');
+        
+        // Switch streaming canvas back to fluid canvas if streaming is active
+        switchStreamingCanvas(false);
+        
+        // Remove audio from media stream if streaming
+        removeAudioFromStream();
+    }
     
     console.log('Audio blob stopped');
 }
@@ -9944,6 +9986,11 @@ function updateColorPickerDisplay() {
 
 function renderAudioBlob() {
     if (!audioBlobState.active || !audioBlobState.gl) return;
+    // Behind the camera the blob only needs the camera's 30 fps
+    if (!frameDue(audioBlobState.pacing, audioBlobState.asBackground ? CAMERA_FPS : FLUID_MAX_FPS)) {
+        audioBlobState.animationId = requestAnimationFrame(renderAudioBlob);
+        return;
+    }
     
     const gl = audioBlobState.gl;
     
@@ -9989,6 +10036,13 @@ function renderAudioBlob() {
     
     // Draw
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Copy the frame now: the WebGL buffer is cleared once it's displayed
+    if (audioBlobState.asBackground) {
+        copyCameraBackgroundFrame(audioBlobState.canvas);
+    } else if (streamInput.source === audioBlobState.canvas && isStreamInputActive()) {
+        renderStreamInput();
+    }
     
     // Continue animation
     audioBlobState.animationId = requestAnimationFrame(renderAudioBlob);
@@ -10357,14 +10411,16 @@ function startStreamInputLoop() {
     if (!streamInput.loopId) streamInput.loopId = requestAnimationFrame(streamInputLoop);
 }
 
-// 2D sources (media, camera, audio) are copied here. The WebGL fluid canvas is copied
-// from update() right after it renders, since its buffer is cleared once displayed.
+// 2D sources (media, camera) are copied here. The WebGL fluid and audio blob canvases are
+// copied right after they render (update(), renderAudioBlob()), since their buffers are
+// cleared once displayed.
 function streamInputLoop() {
     if (!isStreamInputActive()) {
         streamInput.loopId = null;
         return;
     }
-    if (streamInput.source !== canvas && frameDue(streamInput.pacing, CAMERA_FPS)) renderStreamInput();
+    const isWebGLSource = streamInput.source === canvas || streamInput.source === audioBlobState.canvas;
+    if (!isWebGLSource && frameDue(streamInput.pacing, CAMERA_FPS)) renderStreamInput();
     streamInput.loopId = requestAnimationFrame(streamInputLoop);
 }
 
