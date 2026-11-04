@@ -8780,6 +8780,15 @@ function syncCameraFluidBackground() {
     }
     isFluidVisible = wanted;
     config.PAUSED = !wanted;
+
+    const fluidControls = document.getElementById('fluidControlsContent');
+    if (fluidControls) fluidControls.style.display = wanted ? 'block' : 'none';
+
+    // Pausing ended the auto-animation loop, so restart it with the fluid
+    if (wanted && config.ANIMATE) {
+        clearTimeout(idleAnimationTimer);
+        startIdleAnimation();
+    }
 }
 
 // Called from update() right after the fluid renders, while its buffer is still readable
