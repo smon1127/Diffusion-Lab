@@ -6227,7 +6227,7 @@ function daydreamFetch(path, options = {}) {
 const DAYDREAM_PIPELINE = 'streamdiffusion';
 const DEFAULT_MODEL_ID = 'stabilityai/sdxl-turbo';
 
-// Tile ControlNet with the feedback preprocessor, shared by SDXL and SD1.5
+// Tile ControlNet with the feedback preprocessor
 const feedbackControlnet = (modelId) => ({
     model_id: modelId, preprocessor: 'feedback', fixedScale: 0.1,
     preprocessor_params: { feedback_strength: 0.5 }
@@ -6236,15 +6236,6 @@ const CANNY_PARAMS = { low_threshold: 100, high_threshold: 200 };
 
 // ControlNets per model, from Daydream's docs. `scaleProp` ties a ControlNet to its
 // slider; a model without a slider's ControlNet hides that slider.
-const SD15_MODEL = {
-    ipAdapter: true,
-    lcmLoraId: 'latent-consistency/lcm-lora-sdv1-5',
-    controlnets: [
-        { model_id: 'lllyasviel/control_v11f1p_sd15_depth', preprocessor: 'depth_tensorrt', scaleProp: 'CONTROLNET_DEPTH_SCALE' },
-        { model_id: 'lllyasviel/control_v11p_sd15_canny', preprocessor: 'canny', scaleProp: 'CONTROLNET_CANNY_SCALE', preprocessor_params: CANNY_PARAMS },
-        feedbackControlnet('lllyasviel/control_v11f1e_sd15_tile')
-    ]
-};
 const DAYDREAM_MODELS = {
     'stabilityai/sdxl-turbo': {
         ipAdapter: true,
@@ -6264,9 +6255,7 @@ const DAYDREAM_MODELS = {
             { model_id: 'thibaud/controlnet-sd21-depth-diffusers', preprocessor: 'depth_tensorrt', scaleProp: 'CONTROLNET_DEPTH_SCALE' },
             { model_id: 'thibaud/controlnet-sd21-color-diffusers', preprocessor: 'passthrough', scaleProp: 'CONTROLNET_COLOR_SCALE' }
         ]
-    },
-    'Lykon/dreamshaper-8': SD15_MODEL,
-    'prompthero/openjourney-v4': SD15_MODEL
+    }
 };
 
 function getCurrentModelId() {
