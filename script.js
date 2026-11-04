@@ -189,7 +189,7 @@ let config = {
 // update() reads it and first runs while the script is still loading.
 // Square resolutions Daydream generates at (multiples of 64, 384-1024)
 const STREAM_RESOLUTIONS = [512, 768, 1024];
-const streamInput = { canvas: null, ctx: null, source: null, loopId: null };
+const streamInput = { canvas: null, ctx: null, source: null, loopId: null, pacing: { last: 0 } };
 
 let streamState = {
     isStreaming: false,
@@ -4887,7 +4887,21 @@ multipleSplats(parseInt(Math.random() * 20) + 5);
 let lastUpdateTime = Date.now();
 let colorUpdateTimer = 0.0;
 let previousColorfulState = config.COLORFUL;
+// requestAnimationFrame follows the display (up to 120 Hz on ProMotion screens), so
+// loops skip frames to hold their own rate: the fluid at 60 fps, the camera and the
+// stream input at 30 fps, which is all the camera delivers and the stream sends.
+const FLUID_MAX_FPS = 60;
+const CAMERA_FPS = 30;
+
+function frameDue(pacing, fps) {
+    const now = performance.now();
+    if (now - pacing.last < 1000 / fps - 2) return false; // 2 ms slack for frame jitter
+    pacing.last = now;
+    return true;
+}
+
 let isFluidVisible = true; // Track fluid visibility for performance optimization
+const fluidPacing = { last: 0 };
 let performanceStats = { skippedFrames: 0, renderedFrames: 0 }; // Performance monitoring
 update();
 
@@ -4899,20 +4913,20 @@ function update () {
         return;
     }
     
+    // Behind the camera the fluid only needs the camera's 30 fps
+    const fps = cameraSegmentation.fluidRunning ? CAMERA_FPS : FLUID_MAX_FPS;
+    if (!frameDue(fluidPacing, fps)) {
+        requestAnimationFrame(update);
+        return;
+    }
+
     performanceStats.renderedFrames++;
     
-    const dt = calcDeltaTime();
+    const dt = calcDeltaTime(1 / fps);
     
-    // Mobile performance optimization
-    if (isMobile()) {
-        // Throttle updates on mobile for better performance
-        if (dt < 0.016) { // Cap at 60fps
-            requestAnimationFrame(update);
-            return;
-        }
-    }
-    
-    if (resizeCanvas())
+    // As the camera background the fluid is drawn into the camera canvas, so more
+    // pixels than that canvas has (e.g. Retina's 2x) are wasted
+    if (resizeCanvas(cameraSegmentation.fluidRunning ? cameraState.canvas : null))
         initFramebuffers();
     updateColors(dt);
     applyInputs();
@@ -4924,15 +4938,15 @@ function update () {
     requestAnimationFrame(update);
 }
 
-function calcDeltaTime () {
+function calcDeltaTime (maxDt = 0.016666) {
     let now = Date.now();
     let dt = (now - lastUpdateTime) / 1000;
-    dt = Math.min(dt, 0.016666);
+    dt = Math.min(dt, maxDt);
     lastUpdateTime = now;
     return dt;
 }
 
-function resizeCanvas () {
+function resizeCanvas (maxSize = null) {
     // Get actual viewport dimensions
     let width, height;
     
@@ -4967,6 +4981,13 @@ function resizeCanvas () {
         // Desktop - use client dimensions
         width = scaleByPixelRatio(canvas.clientWidth);
         height = scaleByPixelRatio(canvas.clientHeight);
+    }
+
+    // Optional size limit, e.g. the camera canvas the fluid is drawn into as background
+    if (maxSize) {
+        const scale = Math.min(1, maxSize.width / width, maxSize.height / height);
+        width = Math.floor(width * scale);
+        height = Math.floor(height * scale);
     }
     
     if (canvas.width != width || canvas.height != height) {
@@ -8488,9 +8509,14 @@ async function startCamera() {
         }
         
         // Start simple rendering loop
+        const pacing = { last: 0 };
         function renderCamera() {
             if (!cameraState.active) {
                 console.log('🛑 Camera rendering stopped');
+                return;
+            }
+            if (!frameDue(pacing, CAMERA_FPS)) {
+                cameraState.animationId = requestAnimationFrame(renderCamera);
                 return;
             }
             
@@ -8683,8 +8709,13 @@ async function startCameraFallback() {
         
         canvas.style.display = 'block';
         
+        const pacing = { last: 0 };
         function renderCamera() {
             if (!cameraState.active) return;
+            if (!frameDue(pacing, CAMERA_FPS)) {
+                cameraState.animationId = requestAnimationFrame(renderCamera);
+                return;
+            }
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
@@ -10313,7 +10344,7 @@ function streamInputLoop() {
         streamInput.loopId = null;
         return;
     }
-    if (streamInput.source !== canvas) renderStreamInput();
+    if (streamInput.source !== canvas && frameDue(streamInput.pacing, CAMERA_FPS)) renderStreamInput();
     streamInput.loopId = requestAnimationFrame(streamInputLoop);
 }
 
