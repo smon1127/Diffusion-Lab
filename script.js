@@ -222,6 +222,7 @@ let cameraSegmentation = {
     enabled: true,             // on by default; the model loads once the camera starts
     background: 'fluid',       // 'transparent', 'blur', 'color' or 'fluid'
     color: '#06a3d7',
+    fluidEffects: { BLOOM: false, SUNRAYS: false }, // as background: off by default, they're the heaviest passes
     segmenter: null,
     loading: false,
     generation: 0,             // bumped on close, so a load that finishes later is discarded
@@ -803,12 +804,12 @@ function updateToggleStates() {
     updateToggle('pausedToggle', config.PAUSED);
     updateToggle('animateToggle', config.ANIMATE);
     updateToggle('hideCursorToggle', config.HIDE_CURSOR);
-    updateToggle('bloomToggle', config.BLOOM);
+    updateToggle('bloomToggle', fluidEffect('BLOOM'));
     updateToggle('styleTransferToggle', config.STYLE_TRANSFER_ENABLED);
     updateStyleTransferVisibility();
     updateModelControls();
     updateToggle('fsrToggle', config.FSR_ENABLED);
-    updateToggle('sunraysToggle', config.SUNRAYS);
+    updateToggle('sunraysToggle', fluidEffect('SUNRAYS'));
     updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
     updateToggle('forceClickToggle', config.FORCE_CLICK);
     updateToggle('debugToggle', config.DEBUG_MODE);
@@ -1252,18 +1253,34 @@ function initializeCursorIndicator() {
     });
 }
 
-function toggleBloom() {
-    config.BLOOM = !config.BLOOM;
-    updateToggle('bloomToggle', config.BLOOM);
+// Behind the camera, bloom and sunrays have their own settings, so turning them on there
+// doesn't change the saved fluid-mode ones
+function fluidEffect(name) {
+    return cameraSegmentation.fluidRunning ? cameraSegmentation.fluidEffects[name] : config[name];
+}
+
+function toggleFluidEffect(name) {
+    if (cameraSegmentation.fluidRunning) {
+        cameraSegmentation.fluidEffects[name] = !cameraSegmentation.fluidEffects[name];
+    } else {
+        config[name] = !config[name];
+        saveConfig();
+    }
+    updateFluidEffectControls();
+}
+
+function updateFluidEffectControls() {
+    updateToggle('bloomToggle', fluidEffect('BLOOM'));
+    updateToggle('sunraysToggle', fluidEffect('SUNRAYS'));
     updateKeywords();
-    saveConfig();
+}
+
+function toggleBloom() {
+    toggleFluidEffect('BLOOM');
 }
 
 function toggleSunrays() {
-    config.SUNRAYS = !config.SUNRAYS;
-    updateToggle('sunraysToggle', config.SUNRAYS);
-    updateKeywords();
-    saveConfig();
+    toggleFluidEffect('SUNRAYS');
 }
 
 function toggleVelocityDrawing() {
@@ -4875,8 +4892,8 @@ function createNoiseTexture() {
 function updateKeywords () {
     let displayKeywords = [];
     if (config.SHADING) displayKeywords.push("SHADING");
-    if (config.BLOOM) displayKeywords.push("BLOOM");
-    if (config.SUNRAYS) displayKeywords.push("SUNRAYS");
+    if (fluidEffect('BLOOM')) displayKeywords.push("BLOOM");
+    if (fluidEffect('SUNRAYS')) displayKeywords.push("SUNRAYS");
     displayMaterial.setKeywords(displayKeywords);
 }
 
@@ -5121,9 +5138,11 @@ function step (dt) {
 }
 
 function render (target) {
-    if (config.BLOOM)
+    const useBloom = fluidEffect('BLOOM');
+    const useSunrays = fluidEffect('SUNRAYS');
+    if (useBloom)
         applyBloom(dye.read, bloom);
-    if (config.SUNRAYS) {
+    if (useSunrays) {
         applySunrays(dye.read, dye.write, sunrays);
         blur(sunrays, sunraysTemp, 1);
     }
@@ -5334,13 +5353,13 @@ function drawDisplay (target) {
     if (config.SHADING)
         gl.uniform2f(displayMaterial.uniforms.texelSize, 1.0 / width, 1.0 / height);
     gl.uniform1i(displayMaterial.uniforms.uTexture, dye.read.attach(0));
-    if (config.BLOOM) {
+    if (fluidEffect('BLOOM')) {
         gl.uniform1i(displayMaterial.uniforms.uBloom, bloom.attach(1));
         gl.uniform1i(displayMaterial.uniforms.uDithering, ditheringTexture.attach(2));
         let scale = getTextureScale(ditheringTexture, width, height);
         gl.uniform2f(displayMaterial.uniforms.ditherScale, scale.x, scale.y);
     }
-    if (config.SUNRAYS)
+    if (fluidEffect('SUNRAYS'))
         gl.uniform1i(displayMaterial.uniforms.uSunrays, sunrays.attach(3));
     blit(target);
 }
@@ -8826,6 +8845,7 @@ function syncCameraFluidBackground() {
 
     const fluidControls = document.getElementById('fluidControlsContent');
     if (fluidControls) fluidControls.style.display = wanted ? 'block' : 'none';
+    updateFluidEffectControls(); // switch between the background and fluid-mode effects
 
     // Pausing ended the auto-animation loop, so restart it with the fluid
     if (wanted && config.ANIMATE) {
