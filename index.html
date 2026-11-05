@@ -2190,26 +2190,66 @@
             /* Welcome Overlay Styles */
             /* One-time camera question on the first start */
             .welcome-content.camera-intro-content {
-                max-width: 460px;
+                max-width: 380px;
+                padding: 32px 28px 22px;
+            }
+
+            .camera-intro-icon {
+                width: 64px;
+                height: 64px;
+                margin: 0 auto 16px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 26px;
+                color: var(--accent-color);
+                background: rgb(6 163 215 / 15%);
+                border: 1px solid rgb(6 163 215 / 35%);
+            }
+
+            .camera-intro-title {
+                font-size: 1.5rem;
+                font-weight: 700;
+                margin: 0 0 22px;
+                color: var(--text-primary);
             }
 
             .camera-intro-list {
+                list-style: none;
+                margin: 0 0 24px;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
                 text-align: left;
                 color: var(--text-secondary);
-                margin: 0 0 1.5rem;
-                padding-left: 1.2rem;
-                line-height: 1.5;
+                font-size: 0.95rem;
+            }
+
+            .camera-intro-list li {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .camera-intro-list i {
+                width: 18px;
+                text-align: center;
+                color: var(--accent-color);
             }
 
             .camera-intro-actions {
                 display: flex;
                 flex-direction: column;
-                align-items: center;
+                align-items: stretch;
                 gap: 4px;
             }
 
             .camera-intro-actions .welcome-start-btn {
                 margin-bottom: 0;
+                min-width: 0;
+                gap: 10px;
             }
 
             .camera-intro-skip {
@@ -2217,7 +2257,7 @@
                 border: none;
                 color: var(--text-secondary);
                 font-size: 0.95rem;
-                padding: 10px;
+                padding: 12px;
                 cursor: pointer;
             }
 
@@ -3333,16 +3373,16 @@
         <!-- Welcome Overlay -->
         <div id="cameraIntroOverlay" class="welcome-overlay" style="display: none; z-index: 10001;">
             <div class="welcome-content camera-intro-content">
-                <h1 class="welcome-title">📷 Use your camera?</h1>
-                <p class="welcome-subtitle">With your camera, the AI turns you into the artwork, live. You appear in front of the fluid and every move you make changes the picture.</p>
+                <div class="camera-intro-icon"><i class="fa-solid fa-camera"></i></div>
+                <h2 class="camera-intro-title">Use your camera?</h2>
                 <ul class="camera-intro-list">
-                    <li>The camera is optional. Without it you play with the fluid using your mouse or finger.</li>
-                    <li>Your picture stays in your browser until you start the AI stream. Only then is it sent to the AI to be transformed.</li>
-                    <li>You can switch the camera on or off at any time.</li>
+                    <li><i class="fa-solid fa-wand-magic-sparkles"></i>The AI turns you into art, live</li>
+                    <li><i class="fa-solid fa-lock"></i>Nothing is sent until you start the AI</li>
+                    <li><i class="fa-solid fa-toggle-on"></i>Optional, switch it off any time</li>
                 </ul>
                 <div class="camera-intro-actions">
-                    <button class="welcome-start-btn" onclick="answerCameraIntro(true)">Yes, use my camera</button>
-                    <button class="camera-intro-skip" onclick="answerCameraIntro(false)">No thanks, fluid only</button>
+                    <button class="welcome-start-btn" onclick="answerCameraIntro(true)"><i class="fa-solid fa-video"></i>Use camera</button>
+                    <button class="camera-intro-skip" onclick="answerCameraIntro(false)">Fluid only</button>
                 </div>
             </div>
         </div>
