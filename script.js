@@ -2214,15 +2214,6 @@ function sendToServer(message) {
     }
 }
 
-// Prompt presets for keyboard shortcuts
-const PROMPT_PRESETS = [
-    'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere',
-    'giant glowing jellyfish, slow graceful movement, neon blue and pink bioluminescence, flowing tendrils like silk, underwater ballet, dreamlike ocean atmosphere',
-    'evolving fractal jellyfish, recursive growth, rainbow light trails, kaleidoscopic motion',
-    'northern lights over snow-capped mountains, aurora borealis, starry night sky, ethereal green and purple lights, pristine wilderness',
-    'floating islands with waterfalls, magical gardens, ethereal mist, fantasy landscape, soft pastel colors, Studio Ghibli style',
-    'bioluminescent mushrooms, glowing forest at night, magical blue and green lights, fairy tale atmosphere, mystical fog'
-];
 
 function setPrompt(promptText) {
     const promptInput = document.getElementById('promptInput');
@@ -2237,16 +2228,7 @@ function setPrompt(promptText) {
         // Save the new prompt
         savePrompts();
         
-        // Update active state for preset buttons
-        const presetButtons = document.querySelectorAll('.preset-btn');
-        presetButtons.forEach(button => {
-            button.classList.remove('active');
-            // Check if this button's prompt matches the current prompt
-            const buttonPrompt = button.getAttribute('onclick').match(/setPrompt\('([^']+)'\)/);
-            if (buttonPrompt && buttonPrompt[1] === promptText) {
-                button.classList.add('active');
-            }
-        });
+        updatePromptPresetButtons();
         
         // Trigger parameter update if stream is active
         if (streamState.streamId) {
@@ -2266,8 +2248,31 @@ function setPrompt(promptText) {
 
 function setPromptPreset(presetIndex) {
     if (presetIndex >= 0 && presetIndex < PROMPT_PRESETS.length) {
-        setPrompt(PROMPT_PRESETS[presetIndex]);
+        setPrompt(PROMPT_PRESETS[presetIndex].prompt);
     }
+}
+
+// One button per preset in prompt-presets.js (the list the Telegram bot uses too)
+function initPromptPresetButtons() {
+    const grid = document.getElementById('promptPresetGrid');
+    if (!grid) return;
+    PROMPT_PRESETS.forEach(preset => {
+        const button = document.createElement('button');
+        button.className = 'preset-btn';
+        button.textContent = preset.name;
+        button.dataset.prompt = preset.prompt;
+        button.addEventListener('click', () => setPrompt(preset.prompt));
+        grid.appendChild(button);
+    });
+    updatePromptPresetButtons();
+}
+
+// Highlight the preset that matches the current prompt
+function updatePromptPresetButtons() {
+    const promptText = document.getElementById('promptInput')?.value;
+    document.querySelectorAll('#promptPresetGrid .preset-btn').forEach(button => {
+        button.classList.toggle('active', button.dataset.prompt === promptText);
+    });
 }
 
 // ControlNet Presets based on Stable Diffusion Art best practices
@@ -11483,6 +11488,7 @@ function loadPrompts() {
             console.log('✅ Set default negative prompt');
         }
     }
+    updatePromptPresetButtons();
 }
 
 function saveTelegramSettings() {
@@ -12337,6 +12343,7 @@ function clearAllSettings() {
         
         if (promptInput) promptInput.value = 'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere';
         if (negativePromptInput) negativePromptInput.value = 'blurry, low quality, flat, 2d';
+        updatePromptPresetButtons();
         if (apiKeyInput) apiKeyInput.value = '';
         if (consentCheckbox) consentCheckbox.checked = false;
         if (telegramTokenInput) telegramTokenInput.value = '';
@@ -12531,6 +12538,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         initializeStreamParameterListeners();
+        initPromptPresetButtons();
         initializeLocalStorage();
         initializeColoris();
         initializeMobilePanelGestures();
