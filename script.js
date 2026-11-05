@@ -11235,7 +11235,8 @@ const STORAGE_KEYS = {
     STYLE_IMAGE: STORAGE_PREFIX + 'styleImage',
     OVERLAY_LAYOUT: STORAGE_PREFIX + 'overlayLayout',
     CAMERA_LAYERS: STORAGE_PREFIX + 'cameraLayers',
-    CAMERA_CHOICE: STORAGE_PREFIX + 'cameraChoice'   // 'yes' / 'no', asked once on the first start
+    CAMERA_CHOICE: STORAGE_PREFIX + 'cameraChoice',  // 'yes' / 'no', asked once on the first start
+    REMOTE_CHOICE: STORAGE_PREFIX + 'remoteChoice'   // 'yes' / 'no', asked once before connecting
 };
 
 function isLocalStorageAvailable() {
@@ -11881,6 +11882,7 @@ function answerCameraIntro(useCamera) {
         const panel = document.getElementById('controlPanel');
         if (panel && !panel.classList.contains('collapsed')) togglePanel();
     }, 1000);
+    setTimeout(offerRemoteControl, 2000);
 }
 
 // Welcome overlay functions
@@ -13231,10 +13233,27 @@ function updateOSCStatus(status, ip) {
     // The debug overlay will show OSC status when debug mode is enabled
 }
 
-// Initialize OSC connection when page loads
+// Remote control (Telegram bot, TouchOSC) goes through local-osc-server.js on the
+// visitor's computer. Reaching it makes Chrome ask for access to apps on this device,
+// so the public page asks once first; a copy opened from localhost connects directly.
+function offerRemoteControl() {
+    const isLocalPage = ['localhost', '127.0.0.1'].includes(location.hostname);
+    const choice = loadFromLocalStorage(STORAGE_KEYS.REMOTE_CHOICE, null);
+    if (isLocalPage || choice === 'yes') initOSCConnection();
+    // Not on top of the camera question; answering it offers this again
+    else if (choice !== 'no' && document.getElementById('cameraIntroOverlay').style.display !== 'flex')
+        document.getElementById('remoteIntro').classList.add('visible');
+}
+
+function answerRemoteIntro(connect) {
+    saveToLocalStorage(STORAGE_KEYS.REMOTE_CHOICE, connect ? 'yes' : 'no');
+    document.getElementById('remoteIntro').classList.remove('visible');
+    if (connect) initOSCConnection();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Wait a bit for the main app to initialize
-    setTimeout(initOSCConnection, 2000);
+    setTimeout(offerRemoteControl, 2000);
 });
 
 // Cleanup video recording and camera when page is closed

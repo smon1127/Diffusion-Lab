@@ -3338,6 +3338,71 @@
                 cursor: pointer;
             }
 
+            /* One-time question before connecting to the local remote-control helper */
+            .remote-intro {
+                position: fixed;
+                left: 50%;
+                bottom: 24px;
+                transform: translate(-50%, 12px);
+                width: min(400px, calc(100vw - 32px));
+                padding: 14px 16px;
+                display: flex;
+                gap: 12px;
+                background: var(--control-bg);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border: 1px solid var(--border-color);
+                border-radius: 10px;
+                color: var(--text-secondary);
+                font-size: 13px;
+                line-height: 1.4;
+                z-index: 10002; /* above the welcome overlay */
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease, transform 0.3s ease;
+            }
+
+            .remote-intro.visible {
+                opacity: 1;
+                pointer-events: auto;
+                transform: translate(-50%, 0);
+            }
+
+            .remote-intro > i {
+                color: var(--accent-color);
+                font-size: 18px;
+                margin-top: 2px;
+            }
+
+            .remote-intro strong {
+                display: block;
+                color: var(--text-primary);
+                font-size: 14px;
+                margin-bottom: 2px;
+            }
+
+            .remote-intro-actions {
+                display: flex;
+                gap: 8px;
+                margin-top: 10px;
+            }
+
+            .remote-intro-actions button {
+                padding: 6px 14px;
+                border-radius: 6px;
+                border: 1px solid var(--border-color);
+                background: none;
+                color: var(--text-secondary);
+                font-size: 13px;
+                cursor: pointer;
+            }
+
+            .remote-intro-actions .remote-intro-connect {
+                background: var(--accent-color);
+                border-color: var(--accent-color);
+                color: white;
+            }
+
             .camera-notice {
                 position: fixed;
                 left: 50%;
@@ -3370,6 +3435,18 @@
         <script async src="https://www.google-analytics.com/analytics.js"></script>
     </head>
     <body>
+        <div id="remoteIntro" class="remote-intro" role="dialog" aria-label="Remote control">
+            <i class="fa-solid fa-tower-broadcast"></i>
+            <div>
+                <strong>Remote control</strong>
+                Using Telegram or TouchOSC with the helper app on your computer? Chrome will ask to let this page reach it.
+                <div class="remote-intro-actions">
+                    <button class="remote-intro-connect" onclick="answerRemoteIntro(true)">Connect</button>
+                    <button onclick="answerRemoteIntro(false)">Not now</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Welcome Overlay -->
         <div id="cameraIntroOverlay" class="welcome-overlay" style="display: none; z-index: 10001;">
             <div class="welcome-content camera-intro-content">
