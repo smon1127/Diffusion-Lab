@@ -11870,6 +11870,11 @@ function answerCameraIntro(useCamera) {
     document.getElementById('cameraIntroOverlay').style.display = 'none';
     // Started from the click, so the browser's permission prompt follows right away
     if (useCamera) toggleCamera();
+    // Then get the AI controls out of the way, so the artwork fills the view
+    setTimeout(() => {
+        const panel = document.getElementById('controlPanel');
+        if (panel && !panel.classList.contains('collapsed')) togglePanel();
+    }, 1000);
 }
 
 // Welcome overlay functions
