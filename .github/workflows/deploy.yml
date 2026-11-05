@@ -44,7 +44,7 @@ jobs:
           set -euo pipefail
 
           # The static site and the Daydream proxy; the OSC server and start scripts are for local use
-          files=(index.html script.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4 models/selfie_segmenter.tflite api/daydream.php api/.secrets/.htaccess)
+          files=(index.html script.js prompt-presets.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4 models/selfie_segmenter.tflite api/daydream.php api/.secrets/.htaccess)
           site_url="https://diffusionlab.de"
           secrets_dir="api/.secrets" # inside the web folder, blocked by its .htaccess
 

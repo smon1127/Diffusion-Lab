@@ -3823,14 +3823,7 @@
                         <div class="control-label">
                             <span>Prompt Presets</span>
                         </div>
-                        <div class="prompt-preset-grid">
-                            <button class="preset-btn active" onclick="setPrompt('blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere')" ontouchstart="setPrompt('blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere'); event.preventDefault();">Blooming flower</button>
-                            <button class="preset-btn" onclick="setPrompt('giant glowing jellyfish, slow graceful movement, neon blue and pink bioluminescence, flowing tendrils like silk, underwater ballet, dreamlike ocean atmosphere')" ontouchstart="setPrompt('giant glowing jellyfish, slow graceful movement, neon blue and pink bioluminescence, flowing tendrils like silk, underwater ballet, dreamlike ocean atmosphere'); event.preventDefault();">Jellyfish Ballet</button>
-                            <button class="preset-btn" onclick="setPrompt('evolving fractal jellyfish, recursive growth, rainbow light trails, kaleidoscopic motion')" ontouchstart="setPrompt('evolving fractal jellyfish, recursive growth, rainbow light trails, kaleidoscopic motion'); event.preventDefault();">Fractal Jellyfish</button>
-                            <button class="preset-btn" onclick="setPrompt('northern lights over snow-capped mountains, aurora borealis, starry night sky, ethereal green and purple lights, pristine wilderness')" ontouchstart="setPrompt('northern lights over snow-capped mountains, aurora borealis, starry night sky, ethereal green and purple lights, pristine wilderness'); event.preventDefault();">Aurora Mountains</button>
-                            <button class="preset-btn" onclick="setPrompt('floating islands with waterfalls, magical gardens, ethereal mist, fantasy landscape, soft pastel colors, Studio Ghibli style')" ontouchstart="setPrompt('floating islands with waterfalls, magical gardens, ethereal mist, fantasy landscape, soft pastel colors, Studio Ghibli style'); event.preventDefault();">Floating Islands</button>
-                            <button class="preset-btn" onclick="setPrompt('bioluminescent mushrooms, glowing forest at night, magical blue and green lights, fairy tale atmosphere, mystical fog')" ontouchstart="setPrompt('bioluminescent mushrooms, glowing forest at night, magical blue and green lights, fairy tale atmosphere, mystical fog'); event.preventDefault();">Magic Forest</button>
-                        </div>
+                        <div class="prompt-preset-grid" id="promptPresetGrid"></div>
                     </div>
                     
                     <!-- Negative Prompt Section -->
@@ -4896,6 +4889,7 @@
         </div>
 
         <script src="coloris.min.js"></script>
+        <script src="prompt-presets.js"></script>
         <script src="./script.js"></script>
         
         <script>
