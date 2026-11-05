@@ -2188,6 +2188,43 @@
             }
 
             /* Welcome Overlay Styles */
+            /* One-time camera question on the first start */
+            .welcome-content.camera-intro-content {
+                max-width: 460px;
+            }
+
+            .camera-intro-list {
+                text-align: left;
+                color: var(--text-secondary);
+                margin: 0 0 1.5rem;
+                padding-left: 1.2rem;
+                line-height: 1.5;
+            }
+
+            .camera-intro-actions {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .camera-intro-actions .welcome-start-btn {
+                margin-bottom: 0;
+            }
+
+            .camera-intro-skip {
+                background: none;
+                border: none;
+                color: var(--text-secondary);
+                font-size: 0.95rem;
+                padding: 10px;
+                cursor: pointer;
+            }
+
+            .camera-intro-skip:hover {
+                color: var(--text-primary);
+            }
+
             .welcome-overlay {
                 position: fixed;
                 top: 0;
@@ -3294,6 +3331,22 @@
     </head>
     <body>
         <!-- Welcome Overlay -->
+        <div id="cameraIntroOverlay" class="welcome-overlay" style="display: none; z-index: 10001;">
+            <div class="welcome-content camera-intro-content">
+                <h1 class="welcome-title">📷 Use your camera?</h1>
+                <p class="welcome-subtitle">With your camera, the AI turns you into the artwork, live. You appear in front of the fluid and every move you make changes the picture.</p>
+                <ul class="camera-intro-list">
+                    <li>The camera is optional. Without it you play with the fluid using your mouse or finger.</li>
+                    <li>Your picture stays in your browser until you start the AI stream. Only then is it sent to the AI to be transformed.</li>
+                    <li>You can switch the camera on or off at any time.</li>
+                </ul>
+                <div class="camera-intro-actions">
+                    <button class="welcome-start-btn" onclick="answerCameraIntro(true)">Yes, use my camera</button>
+                    <button class="camera-intro-skip" onclick="answerCameraIntro(false)">No thanks, fluid only</button>
+                </div>
+            </div>
+        </div>
+
         <div id="welcomeOverlay" class="welcome-overlay" style="display: none;">
             <div class="welcome-content">
                 <div class="welcome-header">
