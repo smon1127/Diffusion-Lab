@@ -11229,7 +11229,8 @@ const STORAGE_KEYS = {
     WELCOME_SKIPPED: STORAGE_PREFIX + 'welcomeSkipped',
     STYLE_IMAGE: STORAGE_PREFIX + 'styleImage',
     OVERLAY_LAYOUT: STORAGE_PREFIX + 'overlayLayout',
-    CAMERA_LAYERS: STORAGE_PREFIX + 'cameraLayers'
+    CAMERA_LAYERS: STORAGE_PREFIX + 'cameraLayers',
+    CAMERA_CHOICE: STORAGE_PREFIX + 'cameraChoice'   // 'yes' / 'no', asked once on the first start
 };
 
 function isLocalStorageAvailable() {
@@ -11856,6 +11857,19 @@ function updateFeatureStatuses() {
             cameraStatusText.textContent = 'Start Camera';
         }
     }
+}
+
+// One-time camera question: explains why the camera is used and that it's optional.
+// The answer is saved, so it's asked only once.
+function showCameraIntro() {
+    document.getElementById('cameraIntroOverlay').style.display = 'flex';
+}
+
+function answerCameraIntro(useCamera) {
+    saveToLocalStorage(STORAGE_KEYS.CAMERA_CHOICE, useCamera ? 'yes' : 'no');
+    document.getElementById('cameraIntroOverlay').style.display = 'none';
+    // Started from the click, so the browser's permission prompt follows right away
+    if (useCamera) toggleCamera();
 }
 
 // Welcome overlay functions
@@ -12531,9 +12545,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!window.fluidAnimationFrame) {
             window.fluidAnimationFrame = requestAnimationFrame(update);
         }
-        // Then switch to the default input: the camera, cut out in front of the fluid
-        // (back to fluid drawing if the camera can't start)
-        toggleCamera();
+        // Then switch to the camera, cut out in front of the fluid (back to fluid
+        // drawing if it can't start). The first start asks before using it.
+        const cameraChoice = loadFromLocalStorage(STORAGE_KEYS.CAMERA_CHOICE, null);
+        if (cameraChoice === 'yes') toggleCamera();
+        else if (cameraChoice !== 'no') showCameraIntro();
     } catch (err) {
         console.error('Initialization error:', err);
     }
