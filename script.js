@@ -5165,8 +5165,15 @@ function render (target) {
         gl.disable(gl.BLEND);
     }
 
-    // As a camera layer the fluid is see-through, so the layers below it show
-    if (!config.TRANSPARENT && !cameraSegmentation.fluidRunning)
+    // As a camera layer the fluid is see-through, so the layers below it show.
+    // Clear explicitly: the hidden canvas is never presented, so the browser
+    // never clears it and the frames would pile up (fluid never fades).
+    if (cameraSegmentation.fluidRunning) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target == null ? null : target.fbo);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    else if (!config.TRANSPARENT)
         drawColor(target, config.BACK_COLOR);
     if (target == null && config.TRANSPARENT)
         drawCheckerboard(target);
