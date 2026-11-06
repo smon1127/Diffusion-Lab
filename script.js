@@ -145,7 +145,12 @@ const commonParams = {
     // Media Parameters
     FLUID_CAMERA_SCALE: 1.0,      // Fluid background camera scale
     FLUID_MEDIA_SCALE: 1.0,       // Fluid background media scale
-    MEDIA_SCALE: 1.0,             // Media overlay scale
+    MEDIA_SCALE: 1.0,             // Media layer scale
+    MEDIA_FIT: false,             // Media layer fits inside the screen instead of filling it
+    // Layer settings
+    CAMERA_REMOVE_BG: true,       // camera layer: Remove background
+    CAMERA_BLOOM: false,          // with the camera on, the fluid has its own Bloom / Sunrays
+    CAMERA_SUNRAYS: false,        // (off by default: they're the heaviest passes)
     BACKGROUND_IMAGE_SCALE: 1.0,  // Background image scale
     // Audio Parameters
     AUDIO_REACTIVITY: 2.0,
@@ -153,6 +158,8 @@ const commonParams = {
     AUDIO_OPACITY: 0.8,
     AUDIO_COLORFUL: 0.3,
     AUDIO_EDGE_SOFTNESS: 0.25,
+    AUDIO_DEVICE_ID: null,        // chosen microphone (null = default)
+    AUDIO_BLOB_COLOR: null,       // hex, null = default
     // Debug Parameters
     DEBUG_MODE: false,
     
@@ -207,30 +214,33 @@ let streamState = {
     isUpdatingParameters: false
 };
 
-// Simple Camera System
+// The camera layer's video (drawn by renderLayers)
 let cameraState = {
     active: false,
+    wanted: null,     // the camera layer is on (null until the first syncLayers)
+    generation: 0,    // bumped on stop, so a start that finishes later is discarded
     stream: null,
-    video: null,
-    canvas: null,
-    ctx: null,
-    animationId: null
+    video: null
 };
 
-// Camera background removal (see drawCameraVideo)
+// The checked layers are composited bottom to top into the output canvas (#cameraCanvas),
+// which is also what gets streamed. Fluid on its own (optionally over the solid color) is
+// shown straight from the fluid canvas instead, at its full resolution and frame rate.
+// Declared up here because update() reads it and first runs while the script loads.
+const layerOutput = { canvas: null, ctx: null, pacing: { last: 0 }, direct: false };
+
+// The page's layers (the only inputs) and the camera's background removal
 let cameraSegmentation = {
-    enabled: true,             // on by default; the model loads once the camera starts
+    enabled: true,             // Remove background (config.CAMERA_REMOVE_BG); the model loads with the camera
     // Layers, top to bottom; the camera is the cut-out person. With only the camera on,
     // the background is transparent. Order and checks are saved (STORAGE_KEYS.CAMERA_LAYERS)
     layers: [
         { id: 'camera', on: true },
-        { id: 'media', on: false },  // the image / video chosen for it (not saved, so off after a reload)
+        { id: 'media', on: false },  // the image / video chosen for it (kept in IndexedDB)
         { id: 'audio', on: false },  // off by default: it asks for the microphone
         { id: 'fluid', on: true },
-        { id: 'color', on: false }
+        { id: 'color', on: false }   // config.BACK_COLOR
     ],
-    color: '#06a3d7',
-    fluidEffects: { BLOOM: false, SUNRAYS: false }, // as background: off by default, they're the heaviest passes
     segmenter: null,
     loading: false,
     generation: 0,             // bumped on close, so a load that finishes later is discarded
@@ -243,23 +253,19 @@ let cameraSegmentation = {
     mask: null,                // confidence as alpha, same size as input
     maskImage: null,
     person: null,              // full-resolution frame with the mask applied
-    fluidRunning: false,       // fluid simulation kept running as the background
-    audioRunning: false,       // audio blob (and microphone) kept running as the background
-    mediaShown: false,         // media layer on, so its controls show
+    // Layer states as last synced (null until the first syncLayers)
+    fluidRunning: null,        // fluid simulation running
+    audioRunning: null,        // audio blob and microphone running
+    mediaShown: null,          // media layer on, so its controls show
     fluidFrame: null,          // copies of the last fluid / audio frame (their WebGL buffers
     audioFrame: null           // are cleared once shown)
 };
 
-// Media System
+// The Media layer's file
 let mediaState = {
-    active: false,
-    canvas: null,
-    ctx: null,
-    animationId: null,
-    mediaElement: null, // Could be image, video, etc.
+    mediaElement: null, // image or video element
     mediaType: null,    // 'image' or 'video'
-    mediaName: null,    // filename
-    scale: 1.0          // media scale factor (will be synced with config.MEDIA_SCALE)
+    mediaName: null     // filename
 };
 
 // Fluid Background Media System
@@ -273,7 +279,7 @@ let fluidBackgroundMedia = {
     scale: 1.0
 };
 
-// Fluid Background Camera System (separate from main camera input mode)
+// Fluid Background Camera System (drawn inside the fluid; separate from the camera layer)
 let fluidBackgroundCamera = {
     active: false,
     stream: null,
@@ -287,7 +293,6 @@ let fluidBackgroundCamera = {
 // Audio Blob System
 let audioBlobState = {
     active: false,
-    asBackground: false, // running as the camera background instead of as the input mode
     pacing: { last: 0 },
     audioContext: null,
     analyser: null,
@@ -825,6 +830,8 @@ function updateToggleStates() {
     updateToggle('velocityDrawingToggle', config.VELOCITY_DRAWING);
     updateToggle('forceClickToggle', config.FORCE_CLICK);
     updateToggle('debugToggle', config.DEBUG_MODE);
+    updateToggle('removeBackgroundToggle', config.CAMERA_REMOVE_BG);
+    updateToggle('mediaFitToggle', config.MEDIA_FIT);
     
     // Apply cursor hiding CSS class if needed
     if (config.HIDE_CURSOR) {
@@ -1027,43 +1034,11 @@ function safeToggleNegativePrompt(event) {
     }
 }
 
-function safeToggleFluidDrawing(event) {
-    try {
-        if (event) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-        if (isMobile()) {
-            console.log('🔍 MOBILE DEBUG: Fluid drawing toggle called');
-        }
-        toggleFluidDrawing();
-    } catch (error) {
-        console.error('Error in safeToggleFluidDrawing:', error);
-    }
-}
-
-function safeToggleAudioBlob(event) {
-    try {
-        if (event) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-        if (isMobile()) {
-            console.log('🔍 MOBILE DEBUG: Audio blob toggle called');
-        }
-        toggleAudioBlob();
-    } catch (error) {
-        console.error('Error in safeToggleAudioBlob:', error);
-    }
-}
-
 // Ensure global availability of safe functions for mobile
 window.safeTogglePanel = safeTogglePanel;
 window.safeToggleStream = safeToggleStream;
 window.safeRestartStream = safeRestartStream;
 window.safeToggleNegativePrompt = safeToggleNegativePrompt;
-window.safeToggleFluidDrawing = safeToggleFluidDrawing;
-window.safeToggleAudioBlob = safeToggleAudioBlob;
 
 // Also ensure toggle functions are globally available
 window.toggleDebug = toggleDebug;
@@ -1073,8 +1048,6 @@ function ensureGlobalFunctions() {
     if (typeof toggleStream !== 'undefined') window.toggleStream = toggleStream;
     if (typeof restartStream !== 'undefined') window.restartStream = restartStream;
     if (typeof toggleNegativePrompt !== 'undefined') window.toggleNegativePrompt = toggleNegativePrompt;
-    if (typeof toggleFluidDrawing !== 'undefined') window.toggleFluidDrawing = toggleFluidDrawing;
-    if (typeof toggleAudioBlob !== 'undefined') window.toggleAudioBlob = toggleAudioBlob;
 }
 
 // Make togglePanel available immediately since it's defined above
@@ -1085,8 +1058,6 @@ if (isMobile()) {
     console.log('🔍 MOBILE DEBUG: Function availability check:');
     console.log('🔍 safeTogglePanel:', typeof window.safeTogglePanel);
     console.log('🔍 safeToggleStream:', typeof window.safeToggleStream);
-    console.log('🔍 safeToggleFluidDrawing:', typeof window.safeToggleFluidDrawing);
-    console.log('🔍 safeToggleAudioBlob:', typeof window.safeToggleAudioBlob);
 }
 
 // Mobile pull-down gesture to close control panel
@@ -1265,19 +1236,16 @@ function initializeCursorIndicator() {
     });
 }
 
-// Behind the camera, bloom and sunrays have their own settings, so turning them on there
-// doesn't change the saved fluid-mode ones
+// With the camera on, bloom and sunrays have their own settings (CAMERA_BLOOM /
+// CAMERA_SUNRAYS, off by default), so turning them on there doesn't change the others
 function fluidEffect(name) {
-    return cameraSegmentation.fluidRunning ? cameraSegmentation.fluidEffects[name] : config[name];
+    return config[(cameraLayerOn('camera') ? 'CAMERA_' : '') + name];
 }
 
 function toggleFluidEffect(name) {
-    if (cameraSegmentation.fluidRunning) {
-        cameraSegmentation.fluidEffects[name] = !cameraSegmentation.fluidEffects[name];
-    } else {
-        config[name] = !config[name];
-        saveConfig();
-    }
+    const key = (cameraLayerOn('camera') ? 'CAMERA_' : '') + name;
+    config[key] = !config[key];
+    saveConfig();
     updateFluidEffectControls();
 }
 
@@ -2371,19 +2339,6 @@ function setControlNetPreset(presetName, event) {
     console.log(`Applied ControlNet preset: ${presetName}`);
 }
 
-function toggleFluidControls() {
-    const content = document.getElementById('fluidControlsContent');
-    const toggle = document.getElementById('fluidControlsIcon');
-    
-    if (content.classList.contains('expanded')) {
-        content.classList.remove('expanded');
-        toggle.textContent = '▶';
-    } else {
-        content.classList.add('expanded');
-        toggle.textContent = '▼';
-    }
-}
-
 function isMobile () {
     const mobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
            ('ontouchstart' in window) || 
@@ -3086,21 +3041,8 @@ let backgroundMedia = {
     originalDataURL: null // for images only
 };
 
-// Camera feed functionality (moved to line 3416 for WebGL integration)
 
 function initializeMediaUpload() {
-    // Initialize media file input
-    const fileInput = document.getElementById('mediaFileInput');
-    const chooseMediaButton = document.getElementById('chooseMediaButton');
-    
-    if (!fileInput) {
-        console.error('Media file input not found');
-        return;
-    }
-    
-    // Set up file change handler
-    fileInput.onchange = handleMediaFileSelection;
-    
     // Initialize fluid background media upload
     const fluidMediaUpload = document.getElementById('mediaUpload');
     if (fluidMediaUpload) {
@@ -3119,52 +3061,7 @@ function initializeMediaUpload() {
         console.warn('⚠️ Style image upload input not found');
     }
     
-    // Set up Choose Media button handler
-    if (chooseMediaButton) {
-        const handleMediaSelection = () => {
-            // Only allow media selection when media mode is active
-            if (mediaState.active) {
-                selectMediaFile();
-            } else {
-                console.warn('🎬 Please activate media mode first');
-            }
-        };
-        
-        // Tablet-optimized touch handling for input media button
-        if (chooseMediaButton) {
-            // Handle touch events to eliminate delays
-            chooseMediaButton.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                // Trigger the file input immediately
-                const fileInput = document.getElementById('mediaFileInput');
-                if (fileInput) {
-                    fileInput.click();
-                }
-            }, { passive: false });
-            
-            // Handle click events as fallback
-            chooseMediaButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const fileInput = document.getElementById('mediaFileInput');
-                if (fileInput) {
-                    fileInput.click();
-                }
-            });
-            
-            // Handle keyboard events for accessibility
-            chooseMediaButton.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    const fileInput = document.getElementById('mediaFileInput');
-                    if (fileInput) {
-                        fileInput.click();
-                    }
-                }
-            });
-        }
-        
+    {
         // Tablet-optimized touch handling for background media button
         const backgroundMediaButton = document.querySelector('label[for="mediaUpload"]');
         if (backgroundMediaButton) {
@@ -3204,8 +3101,7 @@ function initializeMediaUpload() {
     
     // Initialize full-window drag and drop
     initializeFullWindowDragDrop();
-    
-    // Initialize camera functionality (now handled by input mode system)
+
     updateBackgroundControls();
 }
 
@@ -3306,10 +3202,10 @@ function createDragOverlay() {
     }
 }
 
+// A file dropped anywhere goes into the Media layer
 function handleDragEvent(e) {
-    // Only handle drag events when media mode is active
-    if (!mediaState.active) return;
-    
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
+        
     // Prevent default browser behavior
     e.preventDefault();
     e.stopPropagation();
@@ -3365,18 +3261,11 @@ function handleDrop(e) {
         return;
     }
     
-    // Handle the first file (media mode supports single file)
+    // The Media layer takes one file
     const file = files[0];
     console.log('🎬 File dropped:', file.name, file.type);
     
-    // Create a fake event object to reuse existing file handling logic
-    const fakeEvent = {
-        target: {
-            files: [file]
-        }
-    };
-    
-    handleMediaFileSelection(fakeEvent);
+    loadLayerMediaFile(file);
 }
 
 function showDragOverlay() {
@@ -3393,12 +3282,6 @@ function hideDragOverlay() {
         dragDropState.overlay.style.display = 'none';
         console.log('🎬 Drag overlay hidden');
     }
-}
-
-// Clean up drag and drop when media mode is deactivated
-function cleanupFullWindowDragDrop() {
-    dragDropState.dragCounter = 0;
-    hideDragOverlay();
 }
 
 function handleMediaUpload(event) {
@@ -3724,17 +3607,8 @@ function clearBackgroundMedia() {
     updateBackgroundControls();
 }
 
-// Camera feed functionality (old implementation removed - using new input mode system)
-
-// Old startCamera function removed - using new camera system with input modes
-
-// Old stopCamera function removed - using new camera system with input modes
-
-// Simple Camera Implementation - No WebGL complexity!
-
 function clearAllBackground() {
     clearBackgroundMedia();
-    // Camera stopping is now handled by input mode system
 }
 
 function clearFluidBackgroundMedia() {
@@ -3902,7 +3776,7 @@ function updateBackgroundControls() {
     const clearButton = document.getElementById('clearBackgroundButton');
     const scaleControl = document.getElementById('backgroundScaleControl');
     
-    const hasBackground = backgroundMedia.loaded || cameraState.active;
+    const hasBackground = backgroundMedia.loaded;
     
     if (clearButton) {
         clearButton.style.display = hasBackground ? 'inline-block' : 'none';
@@ -3910,7 +3784,7 @@ function updateBackgroundControls() {
     
     // Show scale control for both images and videos, not camera
     if (scaleControl) {
-        const showScale = backgroundMedia.loaded && (backgroundMedia.type === 'image' || backgroundMedia.type === 'video') && !cameraState.active;
+        const showScale = backgroundMedia.loaded && (backgroundMedia.type === 'image' || backgroundMedia.type === 'video');
         scaleControl.style.display = showScale ? 'block' : 'none';
     }
 }
@@ -4947,8 +4821,8 @@ function update () {
         return;
     }
     
-    // Behind the camera the fluid only needs the camera's 30 fps
-    const fps = cameraSegmentation.fluidRunning ? CAMERA_FPS : FLUID_MAX_FPS;
+    // Composited, the fluid only needs the output canvas's rate (30 fps with the camera)
+    const fps = fluidComposited() ? layerFps() : FLUID_MAX_FPS;
     if (!frameDue(fluidPacing, fps)) {
         requestAnimationFrame(update);
         return;
@@ -4958,16 +4832,16 @@ function update () {
     
     const dt = calcDeltaTime(1 / fps);
     
-    // As the camera background the fluid is drawn into the camera canvas, so more
-    // pixels than that canvas has (e.g. Retina's 2x) are wasted
-    if (resizeCanvas(cameraSegmentation.fluidRunning ? cameraState.canvas : null))
+    // Composited, the fluid is drawn into the output canvas, so more pixels than that
+    // canvas has (e.g. Retina's 2x) are wasted
+    if (resizeCanvas(fluidComposited() ? layerOutput.canvas : null))
         initFramebuffers();
     updateColors(dt);
     applyInputs();
     if (!config.PAUSED)
         step(dt);
     render(null);
-    if (cameraSegmentation.fluidRunning) copyCameraBackgroundFrame(canvas, 'fluidFrame');
+    if (fluidComposited()) copyCameraBackgroundFrame(canvas, 'fluidFrame');
     if (streamInput.source === canvas && isStreamInputActive()) renderStreamInput();
     requestAnimationFrame(update);
 }
@@ -5172,16 +5046,17 @@ function render (target) {
         gl.disable(gl.BLEND);
     }
 
-    // As a camera layer the fluid is see-through, so the layers below it show.
-    // Clear explicitly: the hidden canvas is never presented, so the browser
-    // never clears it and the frames would pile up (fluid never fades).
-    if (cameraSegmentation.fluidRunning) {
+    // The fluid is see-through, so the layers below it show. Shown directly over the solid
+    // color layer, it draws that color itself. Clear explicitly otherwise: a composited
+    // fluid canvas is never presented, so the browser never clears it and the frames
+    // would pile up (fluid never fades).
+    if (!fluidComposited() && cameraLayerOn('color') && !config.TRANSPARENT)
+        drawColor(target, config.BACK_COLOR);
+    else {
         gl.bindFramebuffer(gl.FRAMEBUFFER, target == null ? null : target.fbo);
         gl.clearColor(0.0, 0.0, 0.0, 0.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
     }
-    else if (!config.TRANSPARENT)
-        drawColor(target, config.BACK_COLOR);
     if (target == null && config.TRANSPARENT)
         drawCheckerboard(target);
     
@@ -7812,265 +7687,7 @@ function detectOverlayDoubleTap(e, drag) {
 
 // Audio Blob System
 
-async function toggleAudioBlob() {
-    const button = document.getElementById('audioBlobButton');
-    if (!button) return;
-
-    const isActive = button.classList.contains('active');
-    
-    if (isActive) {
-        stopAudioBlob();
-        deactivateAllInputModes();
-    } else {
-        activateInputMode('audio');
-        await startAudioBlob();
-    }
-}
-
 // Input mode toggle group
-const inputModes = {
-    audio: {
-        buttonId: 'audioBlobButton',
-        canvasId: 'audioBlobCanvas',
-        controlIds: ['audioControls'],
-        text: '🎵 Audio'
-    },
-    fluid: {
-        buttonId: 'fluidDrawingButton',
-        canvasId: 'fluidCanvas',
-        controlIds: ['fluidControlsContent'],
-        text: '🎨 Fluid Drawing'
-    },
-    camera: {
-        buttonId: 'cameraButton',
-        canvasId: 'cameraCanvas',
-        controlIds: ['cameraControls'],
-        text: '📹 Camera'
-    },
-    media: {
-        buttonId: 'mediaButton',
-        canvasId: 'mediaCanvas',
-        controlIds: ['mediaControls'],
-        text: '🎬 Media'
-    }
-};
-
-function deactivateAllInputModes() {
-    console.log('🛑 Deactivating modes, current states:', {
-        media: mediaState.active,
-        camera: cameraState.active,
-        audio: audioBlobState.active
-    });
-    
-    // Stop all active modes before deactivating UI
-    if (cameraState.active) {
-        console.log('🛑 Stopping camera...');
-        stopCamera();
-    }
-    if (mediaState.active) {
-        console.log('🛑 Stopping media...');
-        stopMedia();
-    }
-    if (audioBlobState.active) {
-        console.log('🛑 Stopping audio blob...');
-        stopAudioBlob();
-    }
-    
-    console.log('✅ All modes stopped, final states:', {
-        media: mediaState.active,
-        camera: cameraState.active,
-        audio: audioBlobState.active
-    });
-    
-    Object.values(inputModes).forEach(mode => {
-        const button = document.getElementById(mode.buttonId);
-        if (button) {
-            button.classList.remove('active');
-        }
-        
-        const canvas = document.getElementById(mode.canvasId);
-        if (canvas) {
-            canvas.style.display = 'none';
-        }
-        
-        mode.controlIds.forEach(controlId => {
-            const control = document.getElementById(controlId);
-            if (control) {
-                control.style.display = 'none';
-            }
-        });
-    });
-    
-    // Hide fluid canvas and simulation for performance optimization
-    const fluidCanvas = document.getElementById('fluidCanvas');
-    if (fluidCanvas) {
-        fluidCanvas.style.display = 'none';
-    }
-    
-    isFluidVisible = false;
-    console.log('🎨 Fluid rendering paused for performance');
-    console.log(`📊 Performance stats - Rendered: ${performanceStats.renderedFrames}, Skipped: ${performanceStats.skippedFrames}`);
-}
-
-function activateInputMode(modeName) {
-    console.log(`🔄 Activating input mode: ${modeName}`);
-    const mode = inputModes[modeName];
-    if (!mode) return;
-
-    // Deactivate all other modes first
-    console.log('🛑 Deactivating all input modes...');
-    deactivateAllInputModes();
-    
-    console.log('✅ All modes deactivated, states:', {
-        media: mediaState.active,
-        camera: cameraState.active,
-        audio: audioBlobState.active
-    });
-    
-    // Activate this mode
-    const button = document.getElementById(mode.buttonId);
-    if (button) {
-        button.classList.add('active');
-    }
-    
-    const canvas = document.getElementById(mode.canvasId);
-    if (canvas) {
-        canvas.style.display = 'block';
-        
-        // Special handling for different input modes
-        if (modeName === 'fluid') {
-            // Show fluid canvas for fluid mode
-            const fluidCanvas = document.getElementById('fluidCanvas');
-            if (fluidCanvas) {
-                fluidCanvas.style.display = 'block';
-            }
-            
-            // Enable fluid rendering for performance optimization
-            isFluidVisible = true;
-            
-            // Fully reinitialize WebGL context and fluid simulation
-            try {
-                // Ensure canvas is properly sized first
-                if (resizeCanvas()) {
-                    console.log('🎨 Canvas resized for fluid mode');
-                }
-                
-                // Reinitialize framebuffers and WebGL state
-                initFramebuffers();
-                initBloomFramebuffers();
-                initSunraysFramebuffers();
-                
-                // Clear and reset canvas
-                gl.clearColor(0.0, 0.0, 0.0, 1.0);
-                gl.clear(gl.COLOR_BUFFER_BIT);
-                
-                // Add initial splats for visual feedback
-                multipleSplats(parseInt(Math.random() * 20) + 5);
-                
-                // Start animation loop
-                config.PAUSED = false;
-                if (window.fluidAnimationFrame) {
-                    cancelAnimationFrame(window.fluidAnimationFrame);
-                }
-                window.fluidAnimationFrame = requestAnimationFrame(update);
-                
-                // Simulate animation toggle to ensure proper state refresh
-                // Force animation OFF first to reset state
-                if (config.ANIMATE) {
-                    config.ANIMATE = false;
-                    updateToggle('animateToggle', config.ANIMATE);
-                }
-                
-                // Then trigger animation ON (this calls the full toggle system)
-                toggleAnimate(); // This will turn animation ON and trigger proper initialization
-                
-                // Update pause toggle state
-                updateToggle('pauseToggle', config.PAUSED);
-                
-                // Switch streaming canvas to fluid canvas if streaming is active
-                switchStreamingCanvas(false);
-                
-                console.log('🎨 Fluid simulation reinitialized and rendering enabled');
-                console.log(`📊 Performance stats reset - Starting fresh render cycle`);
-            } catch (error) {
-                console.error('Failed to reinitialize fluid simulation:', error);
-            }
-        } else if (modeName === 'camera' || modeName === 'media') {
-            // Disable fluid simulation for camera and media modes
-            isFluidVisible = false;
-            config.PAUSED = true;
-            if (window.fluidAnimationFrame) {
-                cancelAnimationFrame(window.fluidAnimationFrame);
-                window.fluidAnimationFrame = null;
-            }
-            
-            // Hide fluid canvas for separate view
-            const fluidCanvas = document.getElementById('fluidCanvas');
-            if (fluidCanvas) {
-                fluidCanvas.style.display = 'none';
-            }
-            
-            // Start the appropriate mode
-            if (modeName === 'camera') {
-                startCamera();
-                // Camera will switch streaming canvas after it's fully initialized
-            } else if (modeName === 'media') {
-                startMedia();
-                // Media will switch streaming canvas after it's fully initialized
-            }
-            
-            console.log(`🎨 Fluid simulation disabled and hidden for ${modeName} mode`);
-        }
-    }
-    
-    mode.controlIds.forEach(controlId => {
-        const control = document.getElementById(controlId);
-        if (control) {
-            control.style.display = 'block';
-        }
-    });
-}
-
-function toggleFluidDrawing() {
-    const button = document.getElementById('fluidDrawingButton');
-    if (!button) return;
-
-    const isActive = button.classList.contains('active');
-    
-    if (isActive) {
-        deactivateAllInputModes();
-        // Note: isFluidVisible is set to false in deactivateAllInputModes()
-        config.PAUSED = true;
-        if (window.fluidAnimationFrame) {
-            cancelAnimationFrame(window.fluidAnimationFrame);
-            window.fluidAnimationFrame = null;
-        }
-    } else {
-        activateInputMode('fluid');
-        // Note: isFluidVisible is set to true in activateInputMode('fluid')
-    }
-}
-
-function toggleCamera() {
-    const button = document.getElementById('cameraButton');
-    if (!button) return;
-
-    const isActive = button.classList.contains('active');
-    
-    if (isActive) {
-        deactivateAllInputModes();
-        stopCamera();
-    } else {
-        // Ensure fluid background camera is stopped before starting regular camera
-        if (fluidBackgroundCamera.active) {
-            console.log('🛑 Stopping fluid background camera before starting regular camera');
-            stopFluidBackgroundCamera();
-        }
-        activateInputMode('camera');
-        startCamera();
-    }
-}
-
 function toggleFluidBackgroundCamera() {
     const button = document.getElementById('fluidCameraButton');
     if (!button) return;
@@ -8230,62 +7847,6 @@ function stopFluidBackgroundCamera() {
     }
 }
 
-function toggleMedia() {
-    const button = document.getElementById('mediaButton');
-    if (!button) return;
-
-    const isActive = button.classList.contains('active');
-    
-    if (isActive) {
-        deactivateAllInputModes();
-        stopMedia();
-    } else {
-        // Just activate media mode without file selection
-        activateInputMode('media');
-    }
-}
-
-function selectMediaFile() {
-    const fileInput = document.getElementById('mediaFileInput');
-    if (!fileInput) {
-        console.error('Media file input not found');
-        return;
-    }
-    
-    // Set up file change handler
-    fileInput.onchange = handleMediaFileSelection;
-    
-    // Trigger file dialog
-    fileInput.click();
-}
-
-function handleMediaFileSelection(event) {
-    // Chosen from the controls of the camera's media layer: load it there, keep the camera
-    if (cameraSegmentation.mediaShown) {
-        loadCameraLayerMedia(event.target);
-        return;
-    }
-    const file = event.target.files[0];
-    if (!file) {
-        console.log('No file selected');
-        return;
-    }
-    
-    console.log('🎬 Media file selected:', file.name, file.type);
-    
-    releaseMediaElement();
-    
-    // Validate file type
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-        alert('Please select an image or video file.');
-        return;
-    }
-    
-    // Activate media mode and load the file
-    activateInputMode('media');
-    loadMediaFile(file);
-}
-
 function handleFluidBackgroundUpload(event) {
     const file = event.target.files[0];
     if (!file) {
@@ -8312,7 +7873,7 @@ function handleFluidBackgroundUpload(event) {
     loadFluidBackgroundFile(file);
 }
 
-// Frees the current media file (used by media mode and the camera's Media layer)
+// Frees the Media layer's current file
 function releaseMediaElement() {
     const el = mediaState.mediaElement;
     if (!el) return;
@@ -8320,26 +7881,6 @@ function releaseMediaElement() {
     if (mediaState.mediaType === 'video') {
         el.pause();
         el.src = '';
-    }
-}
-
-async function loadMediaFile(file) {
-    try {
-        // Start media mode first
-        await startMedia();
-        
-        const url = URL.createObjectURL(file);
-        
-        if (file.type.startsWith('image/')) {
-            await loadImageMedia(url, file.name);
-        } else if (file.type.startsWith('video/')) {
-            await loadVideoMedia(url, file.name);
-        }
-        
-    } catch (error) {
-        console.error('Failed to load media file:', error);
-        alert('Failed to load media file: ' + error.message);
-        stopMedia();
     }
 }
 
@@ -8352,9 +7893,6 @@ async function loadImageMedia(url, filename) {
             mediaState.mediaName = filename;
             
             console.log(`🖼️ Image loaded: ${filename} (${img.width}x${img.height})`);
-            
-            // Start rendering the image
-            renderMediaContent();
             resolve();
         };
         img.onerror = () => {
@@ -8377,9 +7915,6 @@ async function loadVideoMedia(url, filename) {
             video.play();
             
             console.log(`🎥 Video loaded: ${filename} (${video.videoWidth}x${video.videoHeight})`);
-            
-            // Start rendering the video
-            renderMediaContent();
             resolve();
         };
         video.onerror = () => {
@@ -8388,12 +7923,6 @@ async function loadVideoMedia(url, filename) {
         };
         video.src = url;
     });
-}
-
-// The camera couldn't start: go back to fluid drawing instead of leaving a blank screen
-function fallBackFromCamera() {
-    stopCamera();
-    activateInputMode('fluid');
 }
 
 // The video element is never added to the page, and iOS Safari only autoplays videos that
@@ -8408,392 +7937,67 @@ async function playCameraVideo(video) {
     }
 }
 
+// Opens the camera for the camera layer (renderLayers draws it)
 async function startCamera() {
+    const generation = ++cameraState.generation;
+    let stream = null;
     try {
-        console.log('📹 Starting simple camera...');
-        console.log('🌐 Browser:', navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Safari') ? 'Safari' : 'Other');
-        console.log('🔒 Protocol:', window.location.protocol);
-        console.log('🏠 Host:', window.location.host);
-        
-        // Check HTTPS requirement for Chrome
-        const isChrome = navigator.userAgent.includes('Chrome');
-        const isHTTPS = window.location.protocol === 'https:';
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        
-        if (isChrome && !isHTTPS && !isLocalhost) {
-            throw new Error('Chrome requires HTTPS for camera access (except localhost). Please use https:// or localhost');
-        }
-        
-        // Get the camera canvas
-        const canvas = document.getElementById('cameraCanvas');
-        if (!canvas) {
-            throw new Error('Camera canvas not found');
-        }
-        
-        // Check if getUserMedia is supported
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('getUserMedia not supported in this browser');
-        }
-        
-        // Check permissions first
+        if (!window.isSecureContext) throw new Error('The camera needs https:// (or localhost).');
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('This browser has no camera access.');
         try {
-            const permissions = await navigator.permissions.query({ name: 'camera' });
-            console.log('📷 Camera permission state:', permissions.state);
-            if (permissions.state === 'denied') {
-                throw new Error('Camera permission denied. Please allow camera access in browser settings.');
-            }
-        } catch (permError) {
-            console.warn('⚠️ Could not check camera permissions:', permError);
+            stream = await navigator.mediaDevices.getUserMedia(cameraConstraints());
+        } catch (error) {
+            if (error.name !== 'OverconstrainedError') throw error;
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
         }
-        
-        console.log('📷 Requesting camera access...');
-        
-        // Browser-specific constraints for better Chrome compatibility
-        let constraints = {
-            video: {
-                width: { ideal: 1920, min: 640 },
-                height: { ideal: 1080, min: 480 },
-                facingMode: 'user',
-                frameRate: { ideal: 30, min: 15 }
-            }
-        };
-        
-        // Mobile-specific optimizations for better camera access
-        if (isMobile()) {
-            console.log('📱 Applying mobile-specific camera settings');
-            constraints.video = {
-                width: { ideal: 1280, max: 1920 },
-                height: { ideal: 720, max: 1080 },
-                facingMode: 'user',
-                frameRate: { ideal: 24, max: 30 }
-            };
-        }
-        // For Chrome, be more lenient with constraints
-        else if (navigator.userAgent.includes('Chrome')) {
-            console.log('🔧 Applying Chrome-specific camera settings');
-            constraints.video = {
-                facingMode: 'user'
-            };
-        }
-        
-        // Request camera access
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        console.log('✅ Camera stream acquired');
-        
-        // Create video element
+        if (generation !== cameraState.generation) throw new Error('stopped');
+
+        // Never added to the page; renderLayers draws it
         const video = document.createElement('video');
         video.srcObject = stream;
         video.autoplay = true;
         video.playsInline = true;
         video.muted = true;
-        
-        console.log('📺 Video element created, waiting for metadata...');
-        
-        // Wait for video to load with timeout
         await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                reject(new Error('Video metadata load timeout'));
-            }, 10000); // 10 second timeout
-            
+            const timeout = setTimeout(() => reject(new Error('The camera did not start in time.')), 10000);
             video.addEventListener('loadedmetadata', () => {
                 clearTimeout(timeout);
-                console.log('✅ Video metadata loaded');
                 resolve();
             }, { once: true });
-            
-            video.addEventListener('error', (e) => {
-                clearTimeout(timeout);
-                reject(new Error(`Video error: ${e.message}`));
-            }, { once: true });
         });
-        
         await playCameraVideo(video);
-        
-        // Set up canvas
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        const ctx = canvas.getContext('2d');
-        
-        console.log(`📐 Canvas size: ${canvas.width}x${canvas.height}`);
-        console.log(`📹 Video size: ${video.videoWidth}x${video.videoHeight}`);
-        
-        // Mobile debugging - confirm we're in camera mode, not fluid background
-        if (isMobile()) {
-            console.log('📱 MOBILE CAMERA DEBUG: Raw camera mode activated');
-            console.log('📱 Camera canvas ID:', canvas.id);
-            console.log('📱 Fluid background camera active:', fluidBackgroundCamera.active);
-            console.log('📱 Camera state active:', cameraState.active);
-        }
-        
-        // Store state
-        cameraState.active = true;
+        if (generation !== cameraState.generation) throw new Error('stopped');
+
         cameraState.stream = stream;
         cameraState.video = video;
-        cameraState.canvas = canvas;
-        cameraState.ctx = ctx;
-        
-        // Show canvas
-        canvas.style.display = 'block';
-        console.log('👁️ Camera canvas visible');
-        
-        // Test canvas streaming capability
-        try {
-            const testStream = canvas.captureStream(1);
-            console.log('✅ Camera canvas supports streaming:', !!testStream);
-            if (testStream) {
-                testStream.getTracks().forEach(track => track.stop()); // Clean up test stream
-            }
-        } catch (streamError) {
-            console.error('❌ Camera canvas streaming error:', streamError);
-        }
-        
-        // Start simple rendering loop
-        const pacing = { last: 0 };
-        function renderCamera() {
-            if (!cameraState.active) {
-                console.log('🛑 Camera rendering stopped');
-                return;
-            }
-            if (!frameDue(pacing, CAMERA_FPS)) {
-                cameraState.animationId = requestAnimationFrame(renderCamera);
-                return;
-            }
-            
-            const isChrome = navigator.userAgent.includes('Chrome');
-            
-            // Verify video is ready
-            if (video.videoWidth === 0 || video.videoHeight === 0) {
-                if (isMobile()) {
-                    console.warn('📱 Mobile camera: Video not ready, skipping frame');
-                } else {
-                    console.warn('⚠️ Video not ready, skipping frame');
-                }
-                cameraState.animationId = requestAnimationFrame(renderCamera);
-                return;
-            }
-            
-            // Mobile debugging for first few frames
-            if (isMobile() && cameraState.frameCount < 5) {
-                cameraState.frameCount = (cameraState.frameCount || 0) + 1;
-                console.log(`📱 Mobile camera frame ${cameraState.frameCount}: ${video.videoWidth}x${video.videoHeight} -> ${canvas.width}x${canvas.height}`);
-            }
-            
-            // Clear canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Calculate aspect ratio scaling
-            const canvasAspect = canvas.width / canvas.height;
-            const videoAspect = video.videoWidth / video.videoHeight;
-            
-            let drawWidth, drawHeight, drawX, drawY;
-            
-            if (videoAspect > canvasAspect) {
-                // Video is wider - fit to height
-                drawHeight = canvas.height;
-                drawWidth = drawHeight * videoAspect;
-                drawX = (canvas.width - drawWidth) / 2;
-                drawY = 0;
-            } else {
-                // Video is taller - fit to width
-                drawWidth = canvas.width;
-                drawHeight = drawWidth / videoAspect;
-                drawX = 0;
-                drawY = (canvas.height - drawHeight) / 2;
-            }
-            
-            try {
-                // Chrome-specific: Check if video is actually playing
-                if (isChrome && (video.paused || video.ended)) {
-                    console.warn('⚠️ Video not playing in Chrome, attempting to play...');
-                    video.play().catch(playError => {
-                        console.warn('⚠️ Could not play video:', playError);
-                    });
-                }
-                
-                // Draw video to canvas
-                drawCameraVideo(ctx, video, drawX, drawY, drawWidth, drawHeight);
-                
-                // Debug: Log first few successful draws
-                if (!cameraState.debugDrawCount) cameraState.debugDrawCount = 0;
-                if (cameraState.debugDrawCount < 5) {
-                    cameraState.debugDrawCount++;
-                    console.log(`🎨 Camera frame drawn ${cameraState.debugDrawCount}/5:`, {
-                        videoSize: `${video.videoWidth}x${video.videoHeight}`,
-                        drawRect: `${drawX},${drawY} ${drawWidth}x${drawHeight}`,
-                        canvasSize: `${canvas.width}x${canvas.height}`
-                    });
-                }
-            } catch (drawError) {
-                console.warn('⚠️ Failed to draw video frame:', drawError);
-                
-                // Chrome fallback: try different rendering approach
-                if (isChrome) {
-                    try {
-                        // Alternative: draw without scaling first
-                        ctx.drawImage(video, 0, 0);
-                        console.log('✅ Chrome fallback draw successful');
-                    } catch (altError) {
-                        console.warn('⚠️ Alternative draw also failed:', altError);
-                    }
-                }
-            }
-            
-            // Continue loop
-            cameraState.animationId = requestAnimationFrame(renderCamera);
-        }
-        
-        // Start rendering
-        renderCamera();
-        console.log('🎬 Camera rendering started');
-        
-        // Switch streaming canvas to camera now that it's fully set up
-        console.log('🔄 Switching streaming to camera canvas...');
-        switchStreamingCanvas();
-        
-        console.log('✅ Simple camera started successfully');
-        console.log(`📹 Final camera resolution: ${video.videoWidth}x${video.videoHeight}`);
-        
+        cameraState.active = true;
+        console.log(`📹 Camera started: ${video.videoWidth}x${video.videoHeight}`);
     } catch (error) {
+        if (stream) stream.getTracks().forEach(track => track.stop());
+        if (generation !== cameraState.generation) return; // turned off meanwhile
         console.error('❌ Failed to start camera:', error);
-        console.error('📊 Error details:', {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-        });
-        
-        let errorMessage = 'Failed to access camera';
-        if (error.name === 'NotAllowedError') {
-            errorMessage = 'Camera permission denied. Please allow camera access and refresh the page.';
-        } else if (error.name === 'NotFoundError') {
-            errorMessage = 'No camera found on this device.';
-        } else if (error.name === 'NotReadableError') {
-            errorMessage = 'Camera is already in use by another application.';
-        } else if (error.name === 'OverconstrainedError') {
-            errorMessage = 'Camera constraints not supported. Trying with basic settings...';
-            // Try again with minimal constraints
-            console.log('🔄 Retrying with minimal constraints...');
-            setTimeout(() => startCameraFallback(), 1000);
-            return;
-        } else if (error.message.includes('HTTPS') || error.message.includes('secure context')) {
-            errorMessage = 'Chrome requires HTTPS for camera access. Try:\n1. Use https://localhost:8080 instead of http://\n2. Or access via https://your-domain.com';
-        } else {
-            errorMessage += `: ${error.message}`;
-            
-            // Add Chrome-specific troubleshooting tips
-            if (navigator.userAgent.includes('Chrome')) {
-                errorMessage += '\n\n🔧 Chrome Troubleshooting:\n';
-                errorMessage += '1. Check chrome://settings/content/camera\n';
-                errorMessage += '2. Disable hardware acceleration: chrome://settings/system\n';
-                errorMessage += '3. Try Incognito mode\n';
-                errorMessage += '4. Restart Chrome completely';
-            }
-        }
-        
-        showCameraNotice(errorMessage);
-        fallBackFromCamera();
+        showCameraNotice(cameraErrorMessage(error));
+        // Nothing to show: uncheck the layer
+        setCameraLayerChecked('camera', false);
+        setCameraLayer('camera', false);
     }
 }
 
-// Fallback function for Chrome compatibility
-async function startCameraFallback() {
-    try {
-        console.log('🔄 Starting camera with fallback constraints...');
-        
-        const canvas = document.getElementById('cameraCanvas');
-        if (!canvas) return;
-        
-        // Minimal constraints for maximum compatibility
-        let fallbackConstraints = { video: true };
-        
-        // Even in fallback, try mobile-optimized constraints first
-        if (isMobile()) {
-            console.log('📱 Mobile fallback: trying optimized constraints first');
-            try {
-                fallbackConstraints = {
-                    video: {
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
-                        facingMode: 'user'
-                    }
-                };
-            } catch (e) {
-                console.log('📱 Mobile fallback: using basic constraints');
-                fallbackConstraints = { video: true };
-            }
-        }
-        
-        const stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-        
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.autoplay = true;
-        video.playsInline = true;
-        video.muted = true;
-        
-        await new Promise((resolve) => {
-            video.addEventListener('loadedmetadata', resolve, { once: true });
-        });
-        
-        await playCameraVideo(video);
-        
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        const ctx = canvas.getContext('2d');
-        
-        cameraState.active = true;
-        cameraState.stream = stream;
-        cameraState.video = video;
-        cameraState.canvas = canvas;
-        cameraState.ctx = ctx;
-        
-        canvas.style.display = 'block';
-        
-        const pacing = { last: 0 };
-        function renderCamera() {
-            if (!cameraState.active) return;
-            if (!frameDue(pacing, CAMERA_FPS)) {
-                cameraState.animationId = requestAnimationFrame(renderCamera);
-                return;
-            }
-            
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            if (video.videoWidth > 0 && video.videoHeight > 0) {
-                const canvasAspect = canvas.width / canvas.height;
-                const videoAspect = video.videoWidth / video.videoHeight;
-                
-                let drawWidth, drawHeight, drawX, drawY;
-                
-                if (videoAspect > canvasAspect) {
-                    drawHeight = canvas.height;
-                    drawWidth = drawHeight * videoAspect;
-                    drawX = (canvas.width - drawWidth) / 2;
-                    drawY = 0;
-                } else {
-                    drawWidth = canvas.width;
-                    drawHeight = drawWidth / videoAspect;
-                    drawX = 0;
-                    drawY = (canvas.height - drawHeight) / 2;
-                }
+function cameraConstraints() {
+    if (isMobile()) {
+        return { video: { width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 }, facingMode: 'user', frameRate: { ideal: 24, max: 30 } } };
+    }
+    // Chrome is more reliable with lenient constraints
+    if (navigator.userAgent.includes('Chrome')) return { video: { facingMode: 'user' } };
+    return { video: { width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 }, facingMode: 'user', frameRate: { ideal: 30, min: 15 } } };
+}
 
-                drawCameraVideo(ctx, video, drawX, drawY, drawWidth, drawHeight);
-            }
-            
-            cameraState.animationId = requestAnimationFrame(renderCamera);
-        }
-        
-        renderCamera();
-        
-        // Switch streaming canvas to camera now that it's set up
-        console.log('🔄 Switching streaming to camera canvas (fallback)...');
-        switchStreamingCanvas();
-        
-        console.log('✅ Camera fallback successful');
-        
-    } catch (fallbackError) {
-        console.error('❌ Camera fallback also failed:', fallbackError);
-        showCameraNotice('Camera access failed completely. Please check your browser settings.');
-        fallBackFromCamera();
+function cameraErrorMessage(error) {
+    switch (error.name) {
+        case 'NotAllowedError': return 'Camera permission denied. Please allow camera access and refresh the page.';
+        case 'NotFoundError': return 'No camera found on this device.';
+        case 'NotReadableError': return 'Camera is already in use by another application.';
+        default: return `Failed to access camera: ${error.message}`;
     }
 }
 
@@ -8820,21 +8024,15 @@ function toggleCameraBackgroundRemoval() {
     setCameraBackgroundRemoval(!cameraSegmentation.enabled);
 }
 
-function setCameraBackgroundRemoval(enabled) {
+// save = false when it's turned off because the model failed (it may work next time)
+function setCameraBackgroundRemoval(enabled, save = true) {
     cameraSegmentation.enabled = enabled;
     updateToggle('removeBackgroundToggle', enabled);
-    updateCameraBackgroundControls();
     if (!enabled) closeCameraSegmenter();
-    syncCameraBackgrounds();
-}
-
-function setCameraBackgroundColor(color) {
-    cameraSegmentation.color = color;
-}
-
-function updateCameraBackgroundControls() {
-    const row = document.getElementById('cameraLayersRow');
-    if (row) row.style.display = cameraSegmentation.enabled ? 'block' : 'none';
+    if (save) {
+        config.CAMERA_REMOVE_BG = enabled;
+        saveConfig();
+    }
 }
 
 function cameraLayerOn(id) {
@@ -8850,12 +8048,16 @@ function setCameraLayer(id, on) {
         document.getElementById('cameraMediaInput').click();
         return;
     }
-    if (id === 'media' && !on && mediaState.mediaType === 'video' && !mediaState.active) {
-        mediaState.mediaElement.pause();
-    }
     layer.on = on;
     saveToLocalStorage(STORAGE_KEYS.CAMERA_LAYERS, cameraSegmentation.layers);
-    syncCameraBackgrounds();
+    syncLayers();
+}
+
+// For OSC buttons
+function toggleLayer(id) {
+    const on = !cameraLayerOn(id);
+    setCameraLayerChecked(id, on);
+    setCameraLayer(id, on);
 }
 
 function setCameraLayerChecked(id, on) {
@@ -8863,10 +8065,16 @@ function setCameraLayerChecked(id, on) {
     if (box) box.checked = on;
 }
 
-// The Media layer's own file: loaded like media mode's, but without switching to it
-async function loadCameraLayerMedia(input) {
+// The Media layer's file input (the folder button in its row)
+function loadCameraLayerMedia(input) {
     const file = input.files[0];
     input.value = ''; // choosing the same file again still fires change
+    loadLayerMediaFile(file);
+}
+
+// Loads an image or video into the Media layer and turns it on. A chosen file is kept in
+// IndexedDB, so it's back after a reload (restore: the saved one, with its saved check).
+async function loadLayerMediaFile(file, { restore = false, turnOn = true } = {}) {
     if (!file || !(file.type.startsWith('image/') || file.type.startsWith('video/'))) return;
     releaseMediaElement();
     const url = URL.createObjectURL(file);
@@ -8875,15 +8083,51 @@ async function loadCameraLayerMedia(input) {
         else await loadVideoMedia(url, file.name);
     } catch (error) {
         console.error('Failed to load the media layer file:', error);
-        showCameraNotice('That file could not be opened. Try another image or video.');
+        if (!restore) showCameraNotice('That file could not be opened. Try another image or video.');
         return;
     }
     document.getElementById('cameraMediaName').textContent = file.name;
-    setCameraLayerChecked('media', true);
-    setCameraLayer('media', true);
+    if (!restore) saveLayerMediaFile(file);
+    if (turnOn) {
+        setCameraLayerChecked('media', true);
+        setCameraLayer('media', true);
+    }
 }
 
-// Fills the frame (cover), like the other background layers
+const MEDIA_FILE_MAX_SAVED = 50 * 1024 * 1024;
+
+function mediaDbRequest(mode, run) {
+    return new Promise((resolve, reject) => {
+        const open = indexedDB.open(STORAGE_PREFIX + 'media', 1);
+        open.onupgradeneeded = () => open.result.createObjectStore('files');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+            const request = run(open.result.transaction('files', mode).objectStore('files'));
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        };
+    });
+}
+
+// Larger files aren't kept (the previous one is dropped, so it doesn't come back instead)
+function saveLayerMediaFile(file) {
+    mediaDbRequest('readwrite', store => file.size <= MEDIA_FILE_MAX_SAVED ? store.put(file, 'layer') : store.delete('layer'))
+        .catch(error => console.warn('⚠️ Could not keep the media file:', error));
+}
+
+function restoreLayerMediaFile(turnOn) {
+    mediaDbRequest('readonly', store => store.get('layer'))
+        .then(file => loadLayerMediaFile(file, { restore: true, turnOn }))
+        .catch(error => console.warn('⚠️ Could not restore the media file:', error));
+}
+
+function toggleMediaFit() {
+    config.MEDIA_FIT = !config.MEDIA_FIT;
+    updateToggle('mediaFitToggle', config.MEDIA_FIT);
+    saveConfig();
+}
+
+// Fills the screen, or fits inside it with Fit; Scale 1.0 is that size
 function drawCameraLayerMedia(ctx) {
     const el = mediaState.mediaElement;
     if (!el) return;
@@ -8893,7 +8137,7 @@ function drawCameraLayerMedia(ctx) {
     const mh = isVideo ? el.videoHeight : el.naturalHeight;
     if (!mw || !mh) return;
     const cw = ctx.canvas.width, ch = ctx.canvas.height;
-    const scale = Math.max(cw / mw, ch / mh) * (config.MEDIA_SCALE || 1); // Scale 1.0 fills the frame
+    const scale = (config.MEDIA_FIT ? Math.min : Math.max)(cw / mw, ch / mh) * (config.MEDIA_SCALE || 1);
     ctx.drawImage(el, (cw - mw * scale) / 2, (ch - mh * scale) / 2, mw * scale, mh * scale);
 }
 
@@ -8915,8 +8159,11 @@ function initCameraLayers() {
         });
         seg.layers = layers;
     }
-    // The media file isn't saved, so that layer starts off
-    seg.layers.find(l => l.id === 'media').on = false;
+    // The media layer turns on again once its saved file is restored
+    const media = seg.layers.find(l => l.id === 'media');
+    const mediaWasOn = media.on;
+    media.on = false;
+    restoreLayerMediaFile(mediaWasOn);
 
     const list = document.getElementById('cameraLayersList');
     if (!list) return;
@@ -8961,65 +8208,188 @@ function startCameraLayerDrag(e) {
     document.addEventListener('pointercancel', end);
 }
 
-function syncCameraBackgrounds() {
-    syncCameraFluidBackground();
-    syncCameraAudioBackground();
-    syncCameraMediaBackground();
+// Applies the layer list: starts and stops each layer's source, shows its controls, and
+// picks what's shown and streamed (the output canvas, or the fluid canvas directly)
+function syncLayers() {
+    syncCameraLayer();
+    syncMediaLayer();
+    syncAudioLayer();
+    syncFluidLayer();
+    layerOutput.direct = isFluidDirect();
+    layerOutput.canvas.style.display = layerOutput.direct ? 'none' : 'block';
+    // Composited, the fluid canvas stays on top, invisible, for the drawing input
+    canvas.style.opacity = layerOutput.direct ? '' : '0';
+    switchStreamingCanvas();
 }
 
-// With the media layer on, the media controls show (Choose Media and Scale act on the layer)
-function syncCameraMediaBackground() {
+// Fluid alone, or over the solid color (which the fluid then draws itself)
+function isFluidDirect() {
+    const on = cameraSegmentation.layers.filter(l => l.on).map(l => l.id);
+    return on[0] === 'fluid' && (on.length === 1 || (on.length === 2 && on[1] === 'color'));
+}
+
+// The fluid is drawn into the output canvas rather than shown itself
+function fluidComposited() {
+    return !!cameraSegmentation.fluidRunning && !layerOutput.direct;
+}
+
+// The output canvas only needs the camera's rate while the camera is on
+function layerFps() {
+    return cameraState.active ? CAMERA_FPS : FLUID_MAX_FPS;
+}
+
+// Camera layer: opens the camera and shows its controls (Remove background)
+function syncCameraLayer() {
+    const wanted = cameraLayerOn('camera');
+    if (wanted === cameraState.wanted) return;
+    cameraState.wanted = wanted;
+    showLayerControls('cameraControls', wanted);
+    if (wanted) {
+        // One camera stream at a time
+        if (fluidBackgroundCamera.active) stopFluidBackgroundCamera();
+        startCamera();
+    } else {
+        stopCamera();
+    }
+    updateFluidEffectControls(); // the fluid has its own Bloom / Sunrays with the camera
+}
+
+// Media layer: shows its controls (Fit, Scale); the file is loaded by loadLayerMediaFile
+function syncMediaLayer() {
     const seg = cameraSegmentation;
-    const wanted = cameraState.active && seg.enabled && cameraLayerOn('media');
+    const wanted = cameraLayerOn('media');
     if (wanted === seg.mediaShown) return;
     seg.mediaShown = wanted;
-    const controls = document.getElementById('mediaControls');
-    if (controls && !mediaState.active) controls.style.display = wanted ? 'block' : 'none';
+    showLayerControls('mediaControls', wanted);
+    // drawCameraLayerMedia plays it again
+    if (!wanted && mediaState.mediaType === 'video') mediaState.mediaElement.pause();
 }
 
-// With the audio layer on, the microphone and blob run invisibly (like the fluid below)
-// and the audio controls show. Turning the layer off stops the microphone.
-function syncCameraAudioBackground() {
+// Audio layer: the microphone and blob run (drawn into the output canvas), the microphone
+// sound goes into the stream, and the audio controls show. Off stops the microphone.
+function syncAudioLayer() {
     const seg = cameraSegmentation;
-    const wanted = cameraState.active && seg.enabled && cameraLayerOn('audio');
+    const wanted = cameraLayerOn('audio');
     if (wanted === seg.audioRunning) return;
     seg.audioRunning = wanted;
+    if (wanted) startAudioBlob();
+    else if (audioBlobState.active) stopAudioBlob();
+}
 
+// Fluid layer: the simulation runs and the fluid canvas takes the drawing input (on top
+// of the output canvas, invisible while composited). Its controls show.
+function syncFluidLayer() {
+    const seg = cameraSegmentation;
+    const wanted = cameraLayerOn('fluid');
+    if (wanted === seg.fluidRunning) return;
+    seg.fluidRunning = wanted;
+    canvas.style.display = wanted ? 'block' : 'none';
+    isFluidVisible = wanted;
+    showLayerControls('fluidControlsContent', wanted);
+    updateFluidEffectControls();
     if (wanted) {
-        audioBlobState.asBackground = true;
-        startAudioBlob();
-    } else {
-        if (audioBlobState.active) stopAudioBlob();
-        audioBlobState.asBackground = false;
+        multipleSplats(parseInt(Math.random() * 20) + 5); // something to see right away
+        if (config.ANIMATE) {
+            clearTimeout(idleAnimationTimer);
+            startIdleAnimation();
+        }
     }
 }
 
-// With the fluid layer on, the simulation keeps running and the fluid canvas stays
-// interactive (so you can draw behind yourself), but invisible: it shows through the
-// camera canvas, which is also what gets streamed.
-function syncCameraFluidBackground() {
+// Shows or hides a layer's controls. They're below the layer list, but the list is kept
+// at its place on screen anyway (e.g. when the audio controls appear after the
+// microphone permission), so it never jumps while you work with it.
+function showLayerControls(id, show) {
+    const controls = document.getElementById(id);
+    if (!controls) return;
+    const list = document.getElementById('cameraLayersList');
+    const scroller = document.getElementById('panelContent');
+    const before = list.getBoundingClientRect().top;
+    controls.style.display = show ? 'block' : 'none';
+    const moved = list.getBoundingClientRect().top - before;
+    if (moved && scroller) scroller.scrollTop += moved;
+}
+
+function initLayerOutput() {
+    layerOutput.canvas = document.getElementById('cameraCanvas');
+    layerOutput.ctx = layerOutput.canvas.getContext('2d');
+    resizeLayerOutput();
+    window.addEventListener('resize', resizeLayerOutput);
+    renderLayers();
+}
+
+function resizeLayerOutput() {
+    layerOutput.canvas.width = window.innerWidth;
+    layerOutput.canvas.height = window.innerHeight;
+}
+
+// Draws the checked layers bottom to top. Nothing below an opaque layer (the solid color,
+// or the camera without a cut-out) shows, so drawing starts there.
+function renderLayers() {
+    requestAnimationFrame(renderLayers);
+    const out = layerOutput;
+    if (out.direct || !frameDue(out.pacing, layerFps())) return;
+    const ctx = out.ctx;
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const layers = cameraSegmentation.layers.filter(l => l.on);
+    let bottom = layers.findIndex(l => isOpaqueLayer(l.id));
+    if (bottom === -1) bottom = layers.length - 1;
+    for (let i = bottom; i >= 0; i--) drawLayer(ctx, layers[i].id);
+}
+
+function isOpaqueLayer(id) {
     const seg = cameraSegmentation;
-    const wanted = cameraState.active && seg.enabled && cameraLayerOn('fluid');
-    if (wanted === seg.fluidRunning) return;
-    seg.fluidRunning = wanted;
+    return id === 'color' || (id === 'camera' && cameraState.active && !(seg.enabled && seg.hasMask));
+}
 
-    const fluidCanvas = document.getElementById('fluidCanvas');
-    if (fluidCanvas) {
-        fluidCanvas.style.display = wanted ? 'block' : 'none';
-        fluidCanvas.style.opacity = wanted ? '0' : '';
+function drawLayer(ctx, id) {
+    if (id === 'camera') {
+        drawCameraLayer(ctx);
+    } else if (id === 'media') {
+        drawCameraLayerMedia(ctx);
+    } else if (id === 'color') {
+        ctx.fillStyle = rgbToHex(config.BACK_COLOR.r, config.BACK_COLOR.g, config.BACK_COLOR.b);
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    } else {
+        const frame = cameraSegmentation[id + 'Frame']; // fluidFrame, audioFrame
+        if (frame) ctx.drawImage(frame.canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
     }
-    isFluidVisible = wanted;
-    config.PAUSED = !wanted;
+}
 
-    const fluidControls = document.getElementById('fluidControlsContent');
-    if (fluidControls) fluidControls.style.display = wanted ? 'block' : 'none';
-    updateFluidEffectControls(); // switch between the background and fluid-mode effects
+// The camera, mirrored and filling the screen. With Remove background on it's the cut-out
+// person; the plain frame shows while the model loads. Only the camera is mirrored, so
+// drawing on the fluid stays aligned.
+function drawCameraLayer(ctx) {
+    const video = cameraState.video;
+    if (!cameraState.active || !video.videoWidth) return;
+    if (video.paused) video.play().catch(() => {});
+    const cw = ctx.canvas.width, ch = ctx.canvas.height;
+    const scale = Math.max(cw / video.videoWidth, ch / video.videoHeight);
+    const w = video.videoWidth * scale, h = video.videoHeight * scale;
+    const x = (cw - w) / 2, y = (ch - h) / 2;
 
-    // Pausing ended the auto-animation loop, so restart it with the fluid
-    if (wanted && config.ANIMATE) {
-        clearTimeout(idleAnimationTimer);
-        startIdleAnimation();
+    const seg = cameraSegmentation;
+    if (seg.enabled) {
+        ensureCameraSegmenter();
+        if (seg.segmenter) updateCameraMask(video);
     }
+    if (!seg.enabled || !seg.hasMask) {
+        drawCameraImage(ctx, video, x, y, w, h);
+        return;
+    }
+
+    // Person: the full-resolution frame, cut out by the upscaled (and so softened) mask
+    const person = seg.person;
+    if (person.canvas.width !== video.videoWidth || person.canvas.height !== video.videoHeight) {
+        person.canvas.width = video.videoWidth;
+        person.canvas.height = video.videoHeight;
+    }
+    person.ctx.globalCompositeOperation = 'copy';
+    person.ctx.drawImage(video, 0, 0);
+    person.ctx.globalCompositeOperation = 'destination-in';
+    person.ctx.imageSmoothingEnabled = true;
+    person.ctx.drawImage(seg.mask.canvas, 0, 0, person.canvas.width, person.canvas.height);
+    drawCameraImage(ctx, person.canvas, x, y, w, h);
 }
 
 // Called right after the fluid or audio blob renders, while its buffer is still readable
@@ -9085,7 +8455,7 @@ function ensureCameraSegmenter() {
 
 // Turns the toggle off and keeps showing the plain camera
 function failCameraSegmentation() {
-    setCameraBackgroundRemoval(false);
+    setCameraBackgroundRemoval(false, false);
     showCameraNotice('Background removal is not available on this device. Showing the normal camera.');
 }
 
@@ -9102,51 +8472,6 @@ function closeCameraSegmenter() {
     seg.inferenceMs = 0;
     seg.inferenceRuns = 0;
     seg.skipUntil = 0;
-}
-
-// Draws the camera frame into the given rect. With background removal on, the layers are
-// drawn bottom to top, the camera layer being the cut-out person. Only the camera is
-// mirrored, so drawing on the fluid stays aligned. The plain frame is shown while the
-// model loads.
-function drawCameraVideo(ctx, video, x, y, w, h) {
-    const seg = cameraSegmentation;
-    syncCameraBackgrounds();
-    if (seg.enabled) {
-        ensureCameraSegmenter();
-        if (seg.segmenter) updateCameraMask(video);
-    }
-    if (!seg.enabled || !seg.hasMask) {
-        drawCameraImage(ctx, video, x, y, w, h);
-        return;
-    }
-
-    // Person: the full-resolution frame, cut out by the upscaled (and so softened) mask
-    const person = seg.person;
-    if (person.canvas.width !== video.videoWidth || person.canvas.height !== video.videoHeight) {
-        person.canvas.width = video.videoWidth;
-        person.canvas.height = video.videoHeight;
-    }
-    person.ctx.globalCompositeOperation = 'copy';
-    person.ctx.drawImage(video, 0, 0);
-    person.ctx.globalCompositeOperation = 'destination-in';
-    person.ctx.imageSmoothingEnabled = true;
-    person.ctx.drawImage(seg.mask.canvas, 0, 0, person.canvas.width, person.canvas.height);
-
-    for (let i = seg.layers.length - 1; i >= 0; i--) {
-        const layer = seg.layers[i];
-        if (!layer.on) continue;
-        if (layer.id === 'camera') {
-            drawCameraImage(ctx, person.canvas, x, y, w, h);
-        } else if (layer.id === 'color') {
-            ctx.fillStyle = seg.color;
-            ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        } else if (layer.id === 'media') {
-            drawCameraLayerMedia(ctx);
-        } else {
-            const frame = seg[layer.id + 'Frame']; // fluidFrame, audioFrame
-            if (frame) ctx.drawImage(frame.canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
-        }
-    }
 }
 
 function updateCameraMask(video) {
@@ -9224,339 +8549,21 @@ function showCameraNotice(message) {
 // renderCameraFeed function removed - now using WebGL texture integration
 
 function stopCamera() {
-    console.log('📹 Stopping simple camera...');
-    
-    // Stop animation loop
-    if (cameraState.animationId) {
-        cancelAnimationFrame(cameraState.animationId);
-        cameraState.animationId = null;
-    }
-
+    cameraState.generation++; // discards a start that's still in progress
+    cameraState.active = false;
     // Free the segmenter; it loads again on the next start if the toggle is still on
     closeCameraSegmenter();
-
-    // Stop camera stream
     if (cameraState.stream) {
         cameraState.stream.getTracks().forEach(track => track.stop());
         cameraState.stream = null;
     }
-    
-    // Clear video element
     if (cameraState.video) {
         cameraState.video.srcObject = null;
         cameraState.video = null;
     }
-    
-    // Hide and clear canvas
-    if (cameraState.canvas) {
-        cameraState.canvas.style.display = 'none';
-        if (cameraState.ctx) {
-            cameraState.ctx.clearRect(0, 0, cameraState.canvas.width, cameraState.canvas.height);
-        }
-        cameraState.canvas = null;
-        cameraState.ctx = null;
-    }
-    
-    // Reset state
-    cameraState.active = false;
-    syncCameraBackgrounds();
-    
-    console.log('🔄 Simple camera stopped');
-}
-
-async function startMedia() {
-    try {
-        console.log('🎬 Starting media...');
-        
-        // Get the media canvas
-        const canvas = document.getElementById('mediaCanvas');
-        if (!canvas) {
-            throw new Error('Media canvas element not found');
-        }
-        
-        mediaState.canvas = canvas;
-        mediaState.ctx = canvas.getContext('2d');
-        
-        // Ensure canvas is properly sized
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        
-        // Sync scale with config
-        mediaState.scale = config.MEDIA_SCALE || 1.0;
-        
-        mediaState.active = true;
-        
-        // If we have saved media, restore it
-        if (mediaState.mediaElement) {
-            console.log(`🎬 Restoring saved ${mediaState.mediaType}: ${mediaState.mediaName}`);
-            
-            // For videos, need to restart playback
-            if (mediaState.mediaType === 'video') {
-                mediaState.mediaElement.currentTime = 0;
-                mediaState.mediaElement.play();
-            }
-            
-            // Start rendering the saved media
-            renderMediaContent();
-        } else {
-            // Start with a placeholder if no media loaded
-            renderMediaPlaceholder();
-            console.log('🎬 Media started successfully - showing placeholder');
-        }
-        
-        // Switch streaming canvas to media if streaming is active
-        switchStreamingCanvas();
-        
-    } catch (error) {
-        console.error('Failed to start media:', error);
-        
-        // Clean up on error
-        stopMedia();
-    }
-}
-
-function renderMediaContent() {
-    if (!mediaState.active || !mediaState.canvas || !mediaState.ctx) {
-        return;
-    }
-    
-    const canvas = mediaState.canvas;
-    const ctx = mediaState.ctx;
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    if (mediaState.mediaElement && mediaState.mediaType) {
-        // Render the loaded media
-        if (mediaState.mediaType === 'image') {
-            renderImageMedia(canvas, ctx);
-        } else if (mediaState.mediaType === 'video') {
-            renderVideoMedia(canvas, ctx);
-        }
-    } else {
-        // Show placeholder
-        renderMediaPlaceholderContent(canvas, ctx);
-    }
-    
-    // Continue animation loop
-    if (mediaState.active) {
-        mediaState.animationId = requestAnimationFrame(renderMediaContent);
-    }
-}
-
-function renderImageMedia(canvas, ctx) {
-    const img = mediaState.mediaElement;
-    const scale = mediaState.scale;
-    
-    // Calculate aspect ratios for proper scaling
-    const canvasAspect = canvas.width / canvas.height;
-    const imageAspect = img.width / img.height;
-    
-    let baseWidth, baseHeight, drawX, drawY;
-    
-    if (imageAspect > canvasAspect) {
-        // Image is wider than canvas - fit to width
-        baseWidth = canvas.width;
-        baseHeight = baseWidth / imageAspect;
-    } else {
-        // Image is taller than canvas - fit to height
-        baseHeight = canvas.height;
-        baseWidth = baseHeight * imageAspect;
-    }
-    
-    // Apply scale factor (inverted - higher scale = larger media)
-    const drawWidth = baseWidth * scale;
-    const drawHeight = baseHeight * scale;
-    
-    // Center the scaled image
-    drawX = (canvas.width - drawWidth) / 2;
-    drawY = (canvas.height - drawHeight) / 2;
-    
-    // Draw image to canvas
-    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
-}
-
-function renderVideoMedia(canvas, ctx) {
-    const video = mediaState.mediaElement;
-    const scale = mediaState.scale;
-    
-    // Calculate aspect ratios for proper scaling
-    const canvasAspect = canvas.width / canvas.height;
-    const videoAspect = video.videoWidth / video.videoHeight;
-    
-    let baseWidth, baseHeight, drawX, drawY;
-    
-    if (videoAspect > canvasAspect) {
-        // Video is wider than canvas - fit to width
-        baseWidth = canvas.width;
-        baseHeight = baseWidth / videoAspect;
-    } else {
-        // Video is taller than canvas - fit to height
-        baseHeight = canvas.height;
-        baseWidth = baseHeight * videoAspect;
-    }
-    
-    // Apply scale factor (inverted - higher scale = larger media)
-    const drawWidth = baseWidth * scale;
-    const drawHeight = baseHeight * scale;
-    
-    // Center the scaled video
-    drawX = (canvas.width - drawWidth) / 2;
-    drawY = (canvas.height - drawHeight) / 2;
-    
-    // Draw video frame to canvas
-    ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
-}
-
-function renderMediaPlaceholderContent(canvas, ctx) {
-    // Calculate dimensions for a modern card-like appearance
-    const cardWidth = Math.min(canvas.width * 0.6, 400);
-    const cardHeight = Math.min(canvas.height * 0.4, 200);
-    const x = (canvas.width - cardWidth) / 2;
-    const y = (canvas.height - cardHeight) / 2;
-    const cornerRadius = 16;
-    
-    // Create animated gradient background
-    const time = Date.now() * 0.001;
-    const gradient = ctx.createLinearGradient(x, y, x + cardWidth, y + cardHeight);
-    
-    // Modern gradient with subtle animation
-    const hue1 = (200 + Math.sin(time * 0.5) * 20) % 360;
-    const hue2 = (240 + Math.cos(time * 0.3) * 15) % 360;
-    
-    gradient.addColorStop(0, `hsla(${hue1}, 15%, 20%, 0.95)`);
-    gradient.addColorStop(0.5, `hsla(${hue2}, 20%, 18%, 0.9)`);
-    gradient.addColorStop(1, `hsla(${hue1 + 20}, 18%, 22%, 0.95)`);
-    
-    // Helper function for rounded rectangle (with fallback)
-    const drawRoundedRect = (x, y, width, height, radius) => {
-        ctx.beginPath();
-        if (ctx.roundRect) {
-            // Modern browsers with roundRect support
-            ctx.roundRect(x, y, width, height, radius);
-        } else {
-            // Fallback for older browsers
-            ctx.moveTo(x + radius, y);
-            ctx.lineTo(x + width - radius, y);
-            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-            ctx.lineTo(x + width, y + height - radius);
-            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-            ctx.lineTo(x + radius, y + height);
-            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-            ctx.lineTo(x, y + radius);
-            ctx.quadraticCurveTo(x, y, x + radius, y);
-        }
-    };
-    
-    // Draw rounded rectangle with gradient
-    ctx.fillStyle = gradient;
-    drawRoundedRect(x, y, cardWidth, cardHeight, cornerRadius);
-    ctx.fill();
-    
-    // Add subtle border with glow effect
-    ctx.strokeStyle = `hsla(${180 + Math.sin(time) * 30}, 50%, 60%, 0.6)`;
-    ctx.lineWidth = 2;
-    drawRoundedRect(x + 1, y + 1, cardWidth - 2, cardHeight - 2, cornerRadius - 1);
-    ctx.stroke();
-    
-    // Add inner border for depth
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.lineWidth = 1;
-    drawRoundedRect(x + 3, y + 3, cardWidth - 6, cardHeight - 6, cornerRadius - 3);
-    ctx.stroke();
-    
-    // Create dashed border effect for drop zone feel
-    ctx.setLineDash([8, 8]);
-    ctx.strokeStyle = 'rgba(0, 212, 255, 0.4)';
-    ctx.lineWidth = 2;
-    drawRoundedRect(x + 8, y + 8, cardWidth - 16, cardHeight - 16, cornerRadius - 8);
-    ctx.stroke();
-    ctx.setLineDash([]); // Reset line dash
-    
-    // Modern typography setup
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    
-    // Upload icon (using Unicode)
-    ctx.fillStyle = 'rgba(0, 212, 255, 0.8)';
-    ctx.font = 'bold 48px system-ui, -apple-system, sans-serif';
-    ctx.fillText('📁', canvas.width / 2, canvas.height / 2 - 35);
-    
-    // Primary text with better typography
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('Choose Media', canvas.width / 2, canvas.height / 2 + 5);
-    
-    // Secondary text with subtle color
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.font = '16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('Select an image or video file', canvas.width / 2, canvas.height / 2 + 30);
-    
-    // Add subtle hint text
-    ctx.fillStyle = 'rgba(0, 212, 255, 0.6)';
-    ctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('PNG, JPG, MP4, WebM supported', canvas.width / 2, canvas.height / 2 + 50);
-}
-
-function drawMediaInfo(ctx, canvas, filename, resolution, scale = 1.0) {
-    // Draw semi-transparent overlay for text
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(10, 10, 320, 100);
-    
-    // Draw filename, resolution, and scale
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '16px Arial';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    
-    ctx.fillText(`📁 ${filename}`, 20, 25);
-    ctx.fillText(`📐 ${resolution}`, 20, 50);
-    ctx.fillText(`🔍 Scale: ${scale.toFixed(2)}x`, 20, 75);
-}
-
-function renderMediaPlaceholder() {
-    // Legacy function - redirect to new implementation
-    renderMediaContent();
-}
-
-function resizeMediaCanvas() {
-    if (!mediaState.canvas) return;
-    
-    mediaState.canvas.width = window.innerWidth;
-    mediaState.canvas.height = window.innerHeight;
-}
-
-function stopMedia() {
-    console.log('🎬 Media stopped');
-    
-    mediaState.active = false;
-    
-    // Stop animation loop
-    if (mediaState.animationId) {
-        cancelAnimationFrame(mediaState.animationId);
-        mediaState.animationId = null;
-    }
-    
-    // Clear canvas
-    if (mediaState.canvas && mediaState.ctx) {
-        mediaState.ctx.clearRect(0, 0, mediaState.canvas.width, mediaState.canvas.height);
-    }
-    
-    // Pause video if active but don't clear media element
-    if (mediaState.mediaElement && mediaState.mediaType === 'video') {
-        mediaState.mediaElement.pause();
-    }
-    
-    // Clean up full-window drag and drop
-    cleanupFullWindowDragDrop();
-    
-    // Reset canvas state only
-    mediaState.canvas = null;
-    mediaState.ctx = null;
 }
 
 async function startAudioBlob() {
-    const asBackground = audioBlobState.asBackground;
     try {
         // Populate audio input devices only if not already done
         const select = document.getElementById('audioInputSelect');
@@ -9564,22 +8571,21 @@ async function startAudioBlob() {
             await populateAudioInputs();
         }
         
-        // Get selected device or use default
+        // The saved microphone, or the default one if it's gone
         const deviceId = audioBlobState.selectedDeviceId;
-        const constraints = {
-            audio: deviceId ? { deviceId: { exact: deviceId } } : true
-        };
-        
-        // Request microphone permission
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (asBackground && !cameraSegmentation.audioRunning) {
-            // The background changed while the microphone permission was pending
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true });
+        } catch (error) {
+            if (!deviceId || error.name !== 'OverconstrainedError') throw error;
+            audioBlobState.selectedDeviceId = null;
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        if (!cameraSegmentation.audioRunning) {
+            // The layer was turned off while the microphone permission was pending
             stream.getTracks().forEach(track => track.stop());
             return;
         }
-        audioBlobState.audioStream = stream;
-        
-        // Store the stream for direct audio access
         audioBlobState.audioStream = stream;
         
         // Initialize Web Audio API
@@ -9616,58 +8622,27 @@ async function startAudioBlob() {
             analyzerConnected: audioBlobState.analyser !== null
         });
         
-        // Get canvas and WebGL context
+        // Only shown through the output canvas (renderAudioBlob copies each frame)
         const audioCanvas = document.getElementById('audioBlobCanvas');
-        const fluidCanvas = document.getElementById('fluidCanvas');
-        const fluidControls = document.getElementById('fluidControlsContent');
-        
-        if (!audioCanvas) {
-            throw new Error('Audio canvas element not found');
-        }
-        
         audioBlobState.canvas = audioCanvas;
         audioCanvas.style.display = 'block';
-        // As camera background it's only shown through the camera canvas
-        audioCanvas.style.opacity = asBackground ? '0' : '';
-        
-        // Hide fluid canvas and controls if they exist
-        if (!asBackground) {
-            if (fluidCanvas) fluidCanvas.style.display = 'none';
-            if (fluidControls) fluidControls.style.display = 'none';
-        }
+        audioCanvas.style.opacity = '0';
         resizeAudioCanvas();
-        
-        // Initialize WebGL for audio blob
         initAudioBlobGL();
-        
-        // Update button state and show controls
-        const button = document.getElementById('audioBlobButton');
-        if (!asBackground) button.classList.add('active');
-        
-        // Show audio controls and preview button
-        const audioControls = document.getElementById('audioControls');
+
+        showLayerControls('audioControls', true);
         const previewButton = document.getElementById('previewAudioButton');
-        if (audioControls) {
-            audioControls.style.display = 'block';
-        }
-        if (previewButton) {
-            previewButton.style.display = 'block';
-        }
+        if (previewButton) previewButton.style.display = 'block';
         
         // Initialize delay buffer
         audioBlobState.delayBuffer = [];
         audioBlobState.delayIndex = 0;
         
         audioBlobState.active = true;
-        
-        if (!asBackground) {
-            // Switch streaming canvas to audio blob canvas if streaming is active
-            switchStreamingCanvas(true);
-            
-            // Integrate with media stream if streaming is active
-            await integrateAudioWithStream();
-        }
-        
+
+        // The microphone sound goes into the stream too
+        await integrateAudioWithStream();
+                
         // Start rendering loop
         renderAudioBlob();
         
@@ -9675,7 +8650,10 @@ async function startAudioBlob() {
         
     } catch (error) {
         console.error('Failed to start audio blob:', error);
-        alert('Failed to access microphone. Please check permissions.');
+        if (!cameraSegmentation.audioRunning) return; // turned off meanwhile
+        showCameraNotice('Could not access the microphone. Please check the permission.');
+        setCameraLayerChecked('audio', false);
+        setCameraLayer('audio', false);
     }
 }
 
@@ -9716,28 +8694,9 @@ function stopAudioBlob() {
     // Clean up frequency data array
     audioBlobState.frequencyData = null;
     
-    // Hide canvas and controls
-    if (audioBlobState.canvas) {
-        audioBlobState.canvas.style.display = 'none';
-    }
-    const audioControls = document.getElementById('audioControls');
-    if (audioControls) {
-        audioControls.style.display = 'none';
-    }
-    
-    if (audioBlobState.asBackground) {
-        audioBlobState.canvas.style.opacity = '';
-    } else {
-        // Update button state
-        const button = document.getElementById('audioBlobButton');
-        button.classList.remove('active');
-        
-        // Switch streaming canvas back to fluid canvas if streaming is active
-        switchStreamingCanvas(false);
-        
-        // Remove audio from media stream if streaming
-        removeAudioFromStream();
-    }
+    if (audioBlobState.canvas) audioBlobState.canvas.style.display = 'none';
+    showLayerControls('audioControls', false);
+    removeAudioFromStream();
     
     console.log('Audio blob stopped');
 }
@@ -9796,8 +8755,6 @@ function initAudioBlobGL() {
         uniform bool u_sunrays;
         uniform float u_bloomIntensity;
         uniform float u_sunraysWeight;
-        uniform vec3 u_backgroundColor;
-        uniform bool u_transparent;
         
         // Enhanced noise functions for organic blob shape
         float hash(vec2 p) {
@@ -9955,15 +8912,9 @@ function initAudioBlobGL() {
                 color = applySunrays(color, pos, u_sunraysWeight);
             }
             
-            // Composite blob over background color
+            // No background (the layers below show), premultiplied for the canvas
             float blobAlpha = edge * u_opacity;
-            if (u_transparent) {
-                // As a camera layer: no background, premultiplied for the canvas
-                gl_FragColor = vec4(color * blobAlpha, blobAlpha);
-            } else {
-                vec3 compositeColor = mix(u_backgroundColor, color, blobAlpha);
-                gl_FragColor = vec4(compositeColor, 1.0);
-            }
+            gl_FragColor = vec4(color * blobAlpha, blobAlpha);
         }
     `;
     
@@ -9987,8 +8938,6 @@ function initAudioBlobGL() {
         edgeSoftness: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_edgeSoftness'),
         bloom: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloom'),
         sunrays: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunrays'),
-        backgroundColor: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_backgroundColor'),
-        transparent: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_transparent'),
         bloomIntensity: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_bloomIntensity'),
         sunraysWeight: gl.getUniformLocation(audioBlobState.shaderProgram, 'u_sunraysWeight')
     };
@@ -10135,8 +9084,8 @@ function updateColorPickerDisplay() {
 
 function renderAudioBlob() {
     if (!audioBlobState.active || !audioBlobState.gl) return;
-    // Behind the camera the blob only needs the camera's 30 fps
-    if (!frameDue(audioBlobState.pacing, audioBlobState.asBackground ? CAMERA_FPS : FLUID_MAX_FPS)) {
+    // It only needs the output canvas's rate (30 fps with the camera)
+    if (!frameDue(audioBlobState.pacing, layerFps())) {
         audioBlobState.animationId = requestAnimationFrame(renderAudioBlob);
         return;
     }
@@ -10174,10 +9123,7 @@ function renderAudioBlob() {
     gl.uniform1i(audioBlobState.uniforms.sunrays, config.SUNRAYS ? 1 : 0);
     gl.uniform1f(audioBlobState.uniforms.bloomIntensity, config.BLOOM_INTENSITY);
     gl.uniform1f(audioBlobState.uniforms.sunraysWeight, config.SUNRAYS_WEIGHT);
-    
-    // Set background color from global config
-    gl.uniform3f(audioBlobState.uniforms.backgroundColor, config.BACK_COLOR.r, config.BACK_COLOR.g, config.BACK_COLOR.b);
-    gl.uniform1i(audioBlobState.uniforms.transparent, audioBlobState.asBackground ? 1 : 0);
+
     
     // Set up vertex attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, audioBlobState.positionBuffer);
@@ -10188,35 +9134,16 @@ function renderAudioBlob() {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     // Copy the frame now: the WebGL buffer is cleared once it's displayed
-    if (audioBlobState.asBackground) {
-        copyCameraBackgroundFrame(audioBlobState.canvas, 'audioFrame');
-    } else if (streamInput.source === audioBlobState.canvas && isStreamInputActive()) {
-        renderStreamInput();
-    }
+    copyCameraBackgroundFrame(audioBlobState.canvas, 'audioFrame');
     
     // Continue animation
     audioBlobState.animationId = requestAnimationFrame(renderAudioBlob);
 }
 
-// Handle window resize for audio blob, camera, and media
+// The output canvas resizes itself (initLayerOutput)
 window.addEventListener('resize', () => {
-    if (audioBlobState.active) {
-        resizeAudioCanvas();
-    }
-    if (cameraState.active) {
-        resizeCameraCanvas();
-    }
-    if (mediaState.active) {
-        resizeMediaCanvas();
-    }
+    if (audioBlobState.active) resizeAudioCanvas();
 });
-
-function resizeCameraCanvas() {
-    if (!cameraState.canvas) return;
-    
-    cameraState.canvas.width = window.innerWidth;
-    cameraState.canvas.height = window.innerHeight;
-}
 
 // Audio input device management
 async function populateAudioInputs() {
@@ -10324,6 +9251,8 @@ async function populateAudioInputs() {
 // Separate function to handle device switching without full restart
 async function switchAudioDevice(e) {
     const newDeviceId = e.target.value || null;
+    config.AUDIO_DEVICE_ID = newDeviceId; // remembered for the next visit
+    saveConfig();
     
     if (!audioBlobState.active) {
         // Just store the selection if not active
@@ -10569,8 +9498,8 @@ function streamInputLoop() {
         streamInput.loopId = null;
         return;
     }
-    const isWebGLSource = streamInput.source === canvas || streamInput.source === audioBlobState.canvas;
-    if (!isWebGLSource && frameDue(streamInput.pacing, CAMERA_FPS)) renderStreamInput();
+    // The fluid canvas pushes its frames itself (update), right after drawing them
+    if (streamInput.source !== canvas && frameDue(streamInput.pacing, CAMERA_FPS)) renderStreamInput();
     streamInput.loopId = requestAnimationFrame(streamInputLoop);
 }
 
@@ -10665,72 +9594,17 @@ function drawEdgeExtended(ctx, src, sx, sy, sw, sh, size) {
     }));
 }
 
+// What's streamed: the output canvas, or the fluid canvas while it's shown directly
 function getStreamingCanvas() {
-    // Return active input canvas based on current input mode
-    // Priority: media > camera > audio > fluid (media gets highest priority when active)
-    const states = {
-        media: mediaState.active,
-        camera: cameraState.active,
-        audio: audioBlobState.active,
-        mediaCanvas: !!mediaState.canvas,
-        cameraCanvas: !!cameraState.canvas,
-        audioCanvas: !!audioBlobState.canvas
-    };
-    
-    console.log('🔍 Checking streaming canvas states:', states);
-    
-    // Mobile debugging for camera canvas selection
-    if (isMobile() && cameraState.active) {
-        console.log('📱 Mobile camera canvas check:', {
-            cameraActive: cameraState.active,
-            cameraCanvas: !!cameraState.canvas,
-            cameraCanvasId: cameraState.canvas ? cameraState.canvas.id : 'none',
-            fluidBackgroundActive: fluidBackgroundCamera.active
-        });
-    }
-    
-    if (mediaState.active && mediaState.canvas) {
-        console.log('📺 Streaming media canvas');
-        return mediaState.canvas;
-    }
-    if (cameraState.active && cameraState.canvas) {
-        console.log('📹 Streaming camera canvas');
-        return cameraState.canvas;
-    }
-    if (audioBlobState.active && audioBlobState.canvas) {
-        console.log('🎵 Streaming audio canvas');
-        return audioBlobState.canvas;
-    }
-    console.log('🌊 Streaming fluid canvas (default)');
-    return canvas; // Default to fluid canvas
+    return layerOutput.direct ? canvas : layerOutput.canvas;
 }
 
-function switchStreamingCanvas(useAudioBlob = null) {
+function switchStreamingCanvas() {
     // Switch whenever the stream input is in use: while streaming, also while the stream is
     // still connecting (it captures from the start), and in debug mode for the preview
     if (!isStreamInputActive()) return;
-    
-    try {
-        // Get the target canvas - use active canvas or specified canvas
-        const targetCanvas = useAudioBlob !== null ? 
-            (useAudioBlob ? audioBlobState.canvas : canvas) : 
-            getStreamingCanvas();
-        
-        if (!targetCanvas) {
-            console.warn('Target canvas not available for streaming switch');
-            return;
-        }
-        
-        // The stream always sends the square input canvas; only its source changes
-        streamInput.source = targetCanvas;
-        const canvasType = targetCanvas === audioBlobState.canvas ? 'audio blob' :
-                         targetCanvas === cameraState.canvas ? 'camera' :
-                         targetCanvas === mediaState.canvas ? 'media' : 'fluid';
-        console.log(`✅ Switched streaming canvas to ${canvasType}`);
-        
-    } catch (error) {
-        console.error('Error switching streaming canvas:', error);
-    }
+    // The stream always sends the square input canvas; only its source changes
+    streamInput.source = getStreamingCanvas();
 }
 
 // Audio control handlers
@@ -11062,7 +9936,6 @@ function updateAudioEdgeSoftness(value, updateInput = true) {
 }
 
 function updateMediaScale(value, updateInput = true) {
-    mediaState.scale = value;
     config.MEDIA_SCALE = value;
     if (updateInput) {
         const inputElement = document.getElementById('mediaScaleValue');
@@ -11097,7 +9970,7 @@ function updateFluidCameraScale(value, updateInput = true) {
     console.log(`📷 Fluid camera scale updated: ${value.toFixed(2)}`);
 }
 
-function updateAudioBlobColor(color) {
+function updateAudioBlobColor(color, save = true) {
     // Parse hex color to RGB
     const hex = color.replace('#', '');
     const r = parseInt(hex.substr(0, 2), 16) / 255;
@@ -11108,6 +9981,10 @@ function updateAudioBlobColor(color) {
     const newColor = { r, g, b };
     audioBlobState.color = newColor;
     audioBlobState.baseColor = { ...newColor }; // Store as new base color
+    if (save) {
+        config.AUDIO_BLOB_COLOR = color;
+        saveConfig();
+    }
 }
 
 // Add parameter change listeners with debouncing
@@ -11932,19 +10809,31 @@ function updateFeatureStatuses() {
             mediaStatusText.textContent = 'Upload Media';
         }
     }
+}
 
-    // Camera status
-    const cameraStatus = document.getElementById('camera-status');
-    const cameraStatusText = document.getElementById('camera-status-text');
-    if (cameraStatus && cameraStatusText) {
-        if (cameraState.isActive) {
-            cameraStatus.className = 'status-indicator active';
-            cameraStatusText.textContent = 'Live';
-        } else {
-            cameraStatus.className = 'status-indicator';
-            cameraStatusText.textContent = 'Start Camera';
-        }
+// Restores the layer settings and starts the layers. The camera is only used once the
+// camera question has been answered (STORAGE_KEYS.CAMERA_CHOICE: 'asked'); answers saved
+// before the layers ('yes' / 'no') are turned into the camera layer's check.
+function initLayers() {
+    const seg = cameraSegmentation;
+    seg.enabled = config.CAMERA_REMOVE_BG;
+    audioBlobState.selectedDeviceId = config.AUDIO_DEVICE_ID;
+    config.PAUSED = false; // a pause doesn't outlast the visit
+
+    const choice = loadFromLocalStorage(STORAGE_KEYS.CAMERA_CHOICE, null);
+    if (choice === 'no') setCameraLayerChecked('camera', false);
+    if (choice === 'no' || choice === 'yes') {
+        seg.layers.find(l => l.id === 'camera').on = choice === 'yes' && cameraLayerOn('camera');
+        saveToLocalStorage(STORAGE_KEYS.CAMERA_LAYERS, seg.layers);
+        saveToLocalStorage(STORAGE_KEYS.CAMERA_CHOICE, 'asked');
+    } else if (choice !== 'asked') {
+        // Not asked yet: no camera until the answer (not saved, the answer sets it)
+        seg.layers.find(l => l.id === 'camera').on = false;
+        setCameraLayerChecked('camera', false);
+        showCameraIntro();
     }
+    initLayerOutput();
+    syncLayers();
 }
 
 // One-time camera question: explains why the camera is used and that it's optional.
@@ -11954,10 +10843,11 @@ function showCameraIntro() {
 }
 
 function answerCameraIntro(useCamera) {
-    saveToLocalStorage(STORAGE_KEYS.CAMERA_CHOICE, useCamera ? 'yes' : 'no');
+    saveToLocalStorage(STORAGE_KEYS.CAMERA_CHOICE, 'asked');
     document.getElementById('cameraIntroOverlay').style.display = 'none';
     // Started from the click, so the browser's permission prompt follows right away
-    if (useCamera) toggleCamera();
+    setCameraLayerChecked('camera', useCamera);
+    setCameraLayer('camera', useCamera);
     // Then get the AI controls out of the way, so the artwork fills the view
     setTimeout(() => {
         const panel = document.getElementById('controlPanel');
@@ -12525,19 +11415,20 @@ function initializeColorPickers() {
         }
     }
     
-    // Set background color picker value
-    const backgroundColorPicker = document.getElementById('backgroundColorPicker');
-    if (backgroundColorPicker) {
+    // The solid color layer (config.BACK_COLOR)
+    const colorLayerPicker = document.getElementById('cameraBackgroundColorPicker');
+    if (colorLayerPicker) {
         const backgroundColorHex = rgbToHex(config.BACK_COLOR.r, config.BACK_COLOR.g, config.BACK_COLOR.b);
-        backgroundColorPicker.value = backgroundColorHex;
-        backgroundColorPicker.style.backgroundColor = backgroundColorHex;
+        colorLayerPicker.value = backgroundColorHex;
+        colorLayerPicker.style.backgroundColor = backgroundColorHex;
         // Update Coloris if it's already initialized
         if (window.Coloris) {
-            backgroundColorPicker.dispatchEvent(new Event('input', { bubbles: true }));
+            colorLayerPicker.dispatchEvent(new Event('input', { bubbles: true }));
         }
     }
     
-    // Set audio blob color picker value
+    // Set audio blob color picker value (the saved one first)
+    if (config.AUDIO_BLOB_COLOR) updateAudioBlobColor(config.AUDIO_BLOB_COLOR, false);
     const audioBlobColorPicker = document.getElementById('audioBlobColorPicker');
     if (audioBlobColorPicker) {
         const audioBlobColorHex = rgbToHex(audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
@@ -12633,19 +11524,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         
         initCameraLayers();
-
-        // Start with fluid mode active, which sets up the simulation
-        activateInputMode('fluid');
-        // Ensure fluid simulation is running
-        config.PAUSED = false;
-        if (!window.fluidAnimationFrame) {
-            window.fluidAnimationFrame = requestAnimationFrame(update);
-        }
-        // Then switch to the camera, cut out in front of the fluid (back to fluid
-        // drawing if it can't start). The first start asks before using it.
-        const cameraChoice = loadFromLocalStorage(STORAGE_KEYS.CAMERA_CHOICE, null);
-        if (cameraChoice === 'yes') toggleCamera();
-        else if (cameraChoice !== 'no') showCameraIntro();
+        initLayers();
     } catch (err) {
         console.error('Initialization error:', err);
     }
@@ -12695,19 +11574,16 @@ function initializeColoris() {
             // Determine which color picker was changed and update accordingly
             if (input.id === 'staticColorPicker') {
                 updateStaticColor(color);
-            } else if (input.id === 'backgroundColorPicker') {
+            } else if (input.id === 'cameraBackgroundColorPicker') {
                 updateBackgroundColor(color);
             } else if (input.id === 'audioBlobColorPicker') {
                 updateAudioBlobColor(color);
-            } else if (input.id === 'cameraBackgroundColorPicker') {
-                setCameraBackgroundColor(color);
             }
         }
     });
 
     // Set up color picker click handling
     const staticColorPicker = document.getElementById('staticColorPicker');
-    const backgroundColorPicker = document.getElementById('backgroundColorPicker');
 
     function setupColorPickerEvents(picker) {
         if (!picker) return;
@@ -12742,7 +11618,6 @@ function initializeColoris() {
     }
 
     setupColorPickerEvents(staticColorPicker);
-    setupColorPickerEvents(backgroundColorPicker);
     
     // Set up audio blob color picker
     const audioBlobColorPicker = document.getElementById('audioBlobColorPicker');
@@ -13170,16 +12045,16 @@ function executeOSCAction(action, value) {
     
     switch (action) {
         case 'toggleFluidDrawing':
-            toggleFluidDrawing();
+            toggleLayer('fluid');
             break;
         case 'toggleAudioBlob':
-            toggleAudioBlob();
+            toggleLayer('audio');
             break;
         case 'toggleCamera':
-            toggleCamera();
+            toggleLayer('camera');
             break;
         case 'toggleMedia':
-            toggleMedia();
+            toggleLayer('media');
             break;
         case 'resetValues':
             resetValues();

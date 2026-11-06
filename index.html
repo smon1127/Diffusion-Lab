@@ -3797,14 +3797,10 @@
         <canvas id="fluidCanvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;"></canvas>
         <canvas id="audioBlobCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; display: none;"></canvas>
         <canvas id="cameraCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; display: none;"></canvas>
-        <canvas id="mediaCanvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none;"></canvas>
         
         <!-- Cursor indicator for when cursor is hidden -->
         <div id="cursorIndicator" class="cursor-indicator"></div>
         
-        <!-- Hidden file input for media selection -->
-        <input type="file" id="mediaFileInput" accept="image/*,video/*" style="display: none;" />
-
         <!-- Stream Overlay -->
         <div id="streamOverlay" class="stream-overlay">
             <div class="stream-overlay-content">
@@ -3939,146 +3935,9 @@
                     </div>
                 </div>
                 
-                <!-- Input Section -->
+                <!-- Layers: the inputs, top to bottom. Reorder by dragging the handles. -->
                 <div class="control-group">
-                    <div class="group-title">Select Input</div>
-                    
-                    <div class="control-item">
-                        <button class="modern-button secondary" id="fluidDrawingButton" onclick="safeToggleFluidDrawing()" ontouchstart="safeToggleFluidDrawing()">
-                            <i class="fas fa-paint-brush"></i> Fluid Drawing
-                        </button>
-                    </div>
-                    
-                    <div class="control-item">
-                        <button class="modern-button secondary" id="audioBlobButton" onclick="safeToggleAudioBlob()" ontouchstart="safeToggleAudioBlob()">
-                            <i class="fas fa-music"></i> Audio
-                        </button>
-                    </div>
-                    
-                    <div class="control-item">
-                        <button class="modern-button secondary" id="cameraButton" onclick="toggleCamera()" ontouchstart="toggleCamera(); event.preventDefault();">
-                            <i class="fas fa-video"></i> Camera
-                        </button>
-                    </div>
-                    
-                    <div class="control-item">
-                        <button class="modern-button secondary" id="mediaButton" onclick="toggleMedia()" ontouchstart="toggleMedia(); event.preventDefault();">
-                            <i class="fas fa-video"></i> Media
-                        </button>
-                    </div>
-                    
-                    <div class="audio-controls" id="audioControls" style="display: none; margin-top: 12px;">
-                                                    <div class="control-item">
-                                <div class="group-title">
-                                    Audio Input
-                                </div>
-                                <select id="audioInputSelect" class="audio-select" style="width: 100%; padding: 8px 12px; background: var(--control-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 13px;">
-                                    <option value="">Default Microphone</option>
-                                </select>
-                            </div>
-
-                            <div class="control-item">
-                                <button class="modern-button secondary" id="previewAudioButton" onclick="toggleAudioPreview()" ontouchstart="toggleAudioPreview(); event.preventDefault();" style="display: none;">
-                                    <i class="fas fa-volume-up"></i> Preview Audio
-                                </button>
-                            </div>
-                            
-                            <div class="control-item">
-                            <div class="control-label">
-                                <span>Reactivity <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Audio sensitivity: higher values make blob more responsive to quiet sounds</span>
-                                </div></span>
-                                <input type="text" class="control-value number-input" id="audioReactivityValue" value="1.0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioReactivity', 0.1, 3.0)" ontouchstart="handleSliderClick(event, 'audioReactivity', 0.1, 3.0); event.preventDefault();">
-                                <div class="slider-fill" id="audioReactivityFill" style="width: 30%">
-                                    <div class="slider-handle" id="audioReactivityHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Delay <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Audio processing delay in milliseconds (0-500ms)</span>
-                                </div></span>
-                                <input type="text" class="control-value number-input" id="audioDelayValue" value="0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioDelay', 0, 500)" ontouchstart="handleSliderClick(event, 'audioDelay', 0, 500); event.preventDefault();">
-                                <div class="slider-fill" id="audioDelayFill" style="width: 0%">
-                                    <div class="slider-handle" id="audioDelayHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Opacity <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Audio blob transparency (0.0 = invisible, 1.0 = opaque)</span>
-                                </div></span>
-                                <input type="text" class="control-value number-input" id="audioOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioOpacity', 0, 1)" ontouchstart="handleSliderClick(event, 'audioOpacity', 0, 1); event.preventDefault();">
-                                <div class="slider-fill" id="audioOpacityFill" style="width: 80%">
-                                    <div class="slider-handle" id="audioOpacityHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Colorful <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Color cycling speed: 0.0 = base color only, higher values = faster cycling through random colors</span>
-                                </div></span>
-                                <input type="text" class="control-value number-input" id="audioColorfulValue" value="0.3" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioColorful', 0, 1)" ontouchstart="handleSliderClick(event, 'audioColorful', 0, 1); event.preventDefault();">
-                                <div class="slider-fill" id="audioColorfulFill" style="width: 30%">
-                                    <div class="slider-handle" id="audioColorfulHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Edge Softness <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Controls how soft or sharp the blob edges appear (0 = sharp, 1 = very soft)</span>
-                                </div></span>
-                                <input type="text" class="control-value number-input" id="audioEdgeSoftnessValue" value="0.25" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
-                            </div>
-                            <div class="slider-container" onclick="handleSliderClick(event, 'audioEdgeSoftness', 0, 1)" ontouchstart="handleSliderClick(event, 'audioEdgeSoftness', 0, 1); event.preventDefault();">
-                                <div class="slider-fill" id="audioEdgeSoftnessFill" style="width: 25%">
-                                    <div class="slider-handle" id="audioEdgeSoftnessHandle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="control-item">
-                            <div class="control-label">
-                                <span>Blob Color <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Base color for the audio blob</span>
-                                </div></span>
-                                <input type="text" id="audioBlobColorPicker" class="color-input" value="#06a3d7" data-coloris readonly inputmode="none">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                            <!-- Media Controls Section -->
-            <div class="camera-controls" id="cameraControls" style="display: none; margin-top: 12px;">
-                <div class="control-group">
-                    <div class="group-title">CAMERA</div>
-                    
-                    <div class="control-item">
-                        <div class="toggle-container" onclick="toggleCameraBackgroundRemoval()" ontouchstart="toggleCameraBackgroundRemoval(); event.preventDefault();">
-                            <span>Remove background</span>
-                            <div class="toggle-switch active" id="removeBackgroundToggle">
-                                <div class="toggle-handle"></div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Layers, top to bottom; the order is changed by dragging the handles -->
+                    <div class="group-title">Layers</div>
                     <div class="control-item" id="cameraLayersRow">
                         <ul class="camera-layers" id="cameraLayersList">
                             <li class="camera-layer" data-layer="camera">
@@ -4108,49 +3967,159 @@
                         </ul>
                     </div>
                 </div>
-            </div>
-            
-            <div class="media-controls" id="mediaControls" style="display: none; margin-top: 12px;">
-                <div class="control-group">
-                    <div class="group-title">MEDIA</div>
-                    
-                    <!-- Choose Media Button - Tablet Optimized -->
-                    <div class="control-item" style="margin-bottom: 12px;">
-                        <label for="mediaFileInput" id="chooseMediaButton" class="modern-button secondary tablet-optimized-button" role="button" aria-label="Choose media file to upload" tabindex="0">
-                            <i class="fas fa-folder-open"></i> Choose Media
-                        </label>
-                    </div>
-                    
-                    <div class="control-item">
-                        <div class="control-label">
-                            <span>Scale <div class="tooltip"><span class="info-icon">i</span>
-                                <span class="tooltiptext">Media size: 0.1 = very small, 1.0 = fit viewport, 2.0 = very large</span>
-                            </div></span>
-                            <input type="text" class="control-value number-input" id="mediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
-                        </div>
-                        <div class="slider-container" onclick="handleSliderClick(event, 'mediaScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'mediaScale', 0.1, 2.0); event.preventDefault();">
-                            <div class="slider-fill" id="mediaScaleFill" style="width: 47%">
-                                <div class="slider-handle" id="mediaScaleHandle"></div>
+
+                <!-- Controls of the checked layers. They're below the list, so showing
+                     them never moves it (see keepLayersInPlace). -->
+                <div class="camera-controls" id="cameraControls" style="display: none;">
+                    <div class="control-group">
+                        <div class="group-title">Camera</div>
+                        <div class="control-item">
+                            <div class="toggle-container" onclick="toggleCameraBackgroundRemoval()" ontouchstart="toggleCameraBackgroundRemoval(); event.preventDefault();">
+                                <span>Remove background</span>
+                                <div class="toggle-switch active" id="removeBackgroundToggle">
+                                    <div class="toggle-handle"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-                
+
+                <div class="media-controls" id="mediaControls" style="display: none;">
+                    <div class="control-group">
+                        <div class="group-title">Media</div>
+                        <div class="control-item">
+                            <div class="toggle-container" onclick="toggleMediaFit()" ontouchstart="toggleMediaFit(); event.preventDefault();">
+                                <span>Fit inside the screen</span>
+                                <div class="toggle-switch" id="mediaFitToggle">
+                                    <div class="toggle-handle"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Scale <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Media size: 0.1 = very small, 1.0 = fills the screen (with Fit: fits inside it), 2.0 = very large</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="mediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'mediaScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'mediaScale', 0.1, 2.0); event.preventDefault();">
+                                <div class="slider-fill" id="mediaScaleFill" style="width: 47%">
+                                    <div class="slider-handle" id="mediaScaleHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="audio-controls" id="audioControls" style="display: none;">
+                    <div class="control-group">
+                                                    <div class="control-item">
+                                <div class="group-title">
+                                    Audio Input
+                                </div>
+                                <select id="audioInputSelect" class="audio-select" style="width: 100%; padding: 8px 12px; background: var(--control-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 13px;">
+                                    <option value="">Default Microphone</option>
+                                </select>
+                            </div>
+
+                            <div class="control-item">
+                                <button class="modern-button secondary" id="previewAudioButton" onclick="toggleAudioPreview()" ontouchstart="toggleAudioPreview(); event.preventDefault();" style="display: none;">
+                                    <i class="fas fa-volume-up"></i> Preview Audio
+                                </button>
+                            </div>
+
+                            <div class="control-item">
+                            <div class="control-label">
+                                <span>Reactivity <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Audio sensitivity: higher values make blob more responsive to quiet sounds</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="audioReactivityValue" value="1.0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioReactivity', 0.1, 3.0)" ontouchstart="handleSliderClick(event, 'audioReactivity', 0.1, 3.0); event.preventDefault();">
+                                <div class="slider-fill" id="audioReactivityFill" style="width: 30%">
+                                    <div class="slider-handle" id="audioReactivityHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Delay <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Audio processing delay in milliseconds (0-500ms)</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="audioDelayValue" value="0" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioDelay', 0, 500)" ontouchstart="handleSliderClick(event, 'audioDelay', 0, 500); event.preventDefault();">
+                                <div class="slider-fill" id="audioDelayFill" style="width: 0%">
+                                    <div class="slider-handle" id="audioDelayHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Opacity <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Audio blob transparency (0.0 = invisible, 1.0 = opaque)</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="audioOpacityValue" value="0.8" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioOpacity', 0, 1)" ontouchstart="handleSliderClick(event, 'audioOpacity', 0, 1); event.preventDefault();">
+                                <div class="slider-fill" id="audioOpacityFill" style="width: 80%">
+                                    <div class="slider-handle" id="audioOpacityHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Colorful <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Color cycling speed: 0.0 = base color only, higher values = faster cycling through random colors</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="audioColorfulValue" value="0.3" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioColorful', 0, 1)" ontouchstart="handleSliderClick(event, 'audioColorful', 0, 1); event.preventDefault();">
+                                <div class="slider-fill" id="audioColorfulFill" style="width: 30%">
+                                    <div class="slider-handle" id="audioColorfulHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Edge Softness <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Controls how soft or sharp the blob edges appear (0 = sharp, 1 = very soft)</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="audioEdgeSoftnessValue" value="0.25" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'audioEdgeSoftness', 0, 1)" ontouchstart="handleSliderClick(event, 'audioEdgeSoftness', 0, 1); event.preventDefault();">
+                                <div class="slider-fill" id="audioEdgeSoftnessFill" style="width: 25%">
+                                    <div class="slider-handle" id="audioEdgeSoftnessHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Blob Color <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Base color for the audio blob</span>
+                                </div></span>
+                                <input type="text" id="audioBlobColorPicker" class="color-input" value="#06a3d7" data-coloris readonly inputmode="none">
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
                 <!-- Fluid Controls Section -->
                 <div id="fluidControlsContent">
                         <!-- Fluid and Canvas Colors -->
                         <div class="control-group">
-                        <div class="group-title">FLUID AND CANVAS</div>
+                        <div class="group-title">FLUID</div>
                         
                         <div class="color-row">
                             <div class="color-container full">
                                 <span class="color-label">Brush</span>
                                 <input type="text" id="staticColorPicker" class="color-input" value="#06a3d7" data-coloris readonly inputmode="none">
-                            </div>
-                            <div class="color-container full">
-                                <span class="color-label">Background</span>
-                                <input type="text" id="backgroundColorPicker" class="color-input" value="#000000" data-coloris readonly inputmode="none">
                             </div>
                         </div>
                     </div>
