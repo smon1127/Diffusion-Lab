@@ -3341,6 +3341,25 @@
                 cursor: pointer;
             }
 
+            .camera-layer-file {
+                max-width: 110px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                color: var(--text-secondary);
+                font-size: 12px;
+            }
+
+            .camera-layer .camera-layer-pick {
+                flex: none;
+                width: 28px;
+                height: 22px;
+                justify-content: center;
+                border-radius: 4px;
+                background: rgba(255, 255, 255, 0.08);
+                color: var(--accent-color);
+            }
+
             /* One-time question before connecting to the local remote-control helper */
             .remote-intro {
                 position: fixed;
@@ -4073,6 +4092,13 @@
                             <li class="camera-layer" data-layer="fluid">
                                 <span class="camera-layer-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
                                 <label><input type="checkbox" checked onchange="setCameraLayer('fluid', this.checked)"> Fluid</label>
+                            </li>
+                            <li class="camera-layer" data-layer="media">
+                                <span class="camera-layer-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
+                                <label><input type="checkbox" onchange="setCameraLayer('media', this.checked)"> Media</label>
+                                <span class="camera-layer-file" id="cameraMediaName"></span>
+                                <label for="cameraMediaInput" class="camera-layer-pick" title="Choose an image or video"><i class="fas fa-folder-open"></i></label>
+                                <input type="file" id="cameraMediaInput" accept="image/*,video/*" style="display: none;" onchange="loadCameraLayerMedia(this)">
                             </li>
                             <li class="camera-layer" data-layer="color">
                                 <span class="camera-layer-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
