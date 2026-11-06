@@ -85,6 +85,10 @@
                 left: 20px;
                 width: 360px;
                 max-height: 80vh;
+                max-height: 80dvh; /* visible height; vh ignores mobile browser bars */
+                /* Header stays, only the content scrolls, so collapsing is always reachable */
+                display: flex;
+                flex-direction: column;
                 backdrop-filter: blur(40px);
                 -webkit-backdrop-filter: blur(40px);
                 background: rgba(0, 0, 0, 0.4);
@@ -104,6 +108,7 @@
 
             /* Header */
             .panel-header {
+                flex: none;
                 padding: 15px 20px;
                 backdrop-filter: blur(40px);
                 -webkit-backdrop-filter: blur(40px);
@@ -134,7 +139,8 @@
             /* Content */
             .panel-content {
                 padding: 20px 30px 30px 50px;
-                max-height: calc(80vh - 50px);
+                flex: 1 1 auto;
+                min-height: 0;
                 overflow-y: auto;
                 overflow-x: hidden; /* Prevent horizontal scrolling */
                 scrollbar-width: thin;
@@ -563,6 +569,7 @@
                     right: 20px; /* Finger-width padding */
                     width: calc(100% - 40px); /* Adjust width for padding */
                     max-height: 85vh; /* Increased from 70vh to allow more content */
+                    max-height: 85dvh;
                     border-radius: 16px 16px 0 0;
                     border-bottom: none;
                     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
@@ -570,7 +577,6 @@
 
                 .panel-content {
                     padding: 12px 50px 30px 50px;
-                    max-height: calc(85vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
                     -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
@@ -672,12 +678,9 @@
                     left: auto;
                     width: 400px;
                     max-height: calc(100vh - 40px); /* Adjust for top/bottom padding */
+                    max-height: calc(100dvh - 40px);
                     border-radius: 16px;
                     box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
-                }
-
-                .panel-content {
-                    max-height: calc(100vh - 80px); /* Adjusted for 20px padding (top/bottom) + 40px panel padding (top/bottom) */
                 }
 
                 canvas {
@@ -689,6 +692,7 @@
             @media (max-width: 480px) {
                 .control-panel {
                     max-height: 90vh; /* Maximum space for controls on small screens */
+                    max-height: 90dvh;
                     /* Improve touch interactions */
                     -webkit-tap-highlight-color: transparent;
                     touch-action: manipulation;
@@ -727,7 +731,6 @@
 
                 .panel-content {
                     padding: 8px 50px 25px 50px;
-                    max-height: calc(90vh - 40px); /* Adjusted for 20px padding (20px top + 20px bottom) */
                     overflow-y: auto;
                     overflow-x: hidden; /* Prevent horizontal scrolling */
                     -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */

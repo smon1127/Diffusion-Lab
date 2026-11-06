@@ -862,7 +862,7 @@ function togglePanel() {
 function togglePanelVisibility() {
     const panel = document.getElementById('controlPanel');
     if (panel.style.display === 'none') {
-        panel.style.display = 'block';
+        panel.style.display = ''; // back to the stylesheet's flex layout
     } else {
         panel.style.display = 'none';
         // Close color picker when panel is hidden (especially important on tablets)
