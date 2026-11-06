@@ -224,9 +224,9 @@ let cameraSegmentation = {
     // the background is transparent. Order and checks are saved (STORAGE_KEYS.CAMERA_LAYERS)
     layers: [
         { id: 'camera', on: true },
+        { id: 'media', on: false },  // the image / video chosen for it (not saved, so off after a reload)
         { id: 'audio', on: false },  // off by default: it asks for the microphone
         { id: 'fluid', on: true },
-        { id: 'media', on: false },  // the image / video chosen for it (not saved, so off after a reload)
         { id: 'color', on: false }
     ],
     color: '#06a3d7',
