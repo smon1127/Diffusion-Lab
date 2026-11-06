@@ -245,6 +245,7 @@ let cameraSegmentation = {
     person: null,              // full-resolution frame with the mask applied
     fluidRunning: false,       // fluid simulation kept running as the background
     audioRunning: false,       // audio blob (and microphone) kept running as the background
+    mediaShown: false,         // media layer on, so its controls show
     fluidFrame: null,          // copies of the last fluid / audio frame (their WebGL buffers
     audioFrame: null           // are cleared once shown)
 };
@@ -8259,6 +8260,11 @@ function selectMediaFile() {
 }
 
 function handleMediaFileSelection(event) {
+    // Chosen from the controls of the camera's media layer: load it there, keep the camera
+    if (cameraSegmentation.mediaShown) {
+        loadCameraLayerMedia(event.target);
+        return;
+    }
     const file = event.target.files[0];
     if (!file) {
         console.log('No file selected');
@@ -8887,7 +8893,7 @@ function drawCameraLayerMedia(ctx) {
     const mh = isVideo ? el.videoHeight : el.naturalHeight;
     if (!mw || !mh) return;
     const cw = ctx.canvas.width, ch = ctx.canvas.height;
-    const scale = Math.max(cw / mw, ch / mh);
+    const scale = Math.max(cw / mw, ch / mh) * (config.MEDIA_SCALE || 1); // Scale 1.0 fills the frame
     ctx.drawImage(el, (cw - mw * scale) / 2, (ch - mh * scale) / 2, mw * scale, mh * scale);
 }
 
@@ -8958,6 +8964,17 @@ function startCameraLayerDrag(e) {
 function syncCameraBackgrounds() {
     syncCameraFluidBackground();
     syncCameraAudioBackground();
+    syncCameraMediaBackground();
+}
+
+// With the media layer on, the media controls show (Choose Media and Scale act on the layer)
+function syncCameraMediaBackground() {
+    const seg = cameraSegmentation;
+    const wanted = cameraState.active && seg.enabled && cameraLayerOn('media');
+    if (wanted === seg.mediaShown) return;
+    seg.mediaShown = wanted;
+    const controls = document.getElementById('mediaControls');
+    if (controls && !mediaState.active) controls.style.display = wanted ? 'block' : 'none';
 }
 
 // With the audio layer on, the microphone and blob run invisibly (like the fluid below)
