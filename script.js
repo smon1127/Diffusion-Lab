@@ -226,6 +226,7 @@ let cameraSegmentation = {
         { id: 'camera', on: true },
         { id: 'audio', on: false },  // off by default: it asks for the microphone
         { id: 'fluid', on: true },
+        { id: 'media', on: false },  // the image / video chosen for it (not saved, so off after a reload)
         { id: 'color', on: false }
     ],
     color: '#06a3d7',
@@ -8266,17 +8267,7 @@ function handleMediaFileSelection(event) {
     
     console.log('🎬 Media file selected:', file.name, file.type);
     
-    // Clean up previous media resources
-    if (mediaState.mediaElement) {
-        if (mediaState.mediaType === 'video') {
-            mediaState.mediaElement.pause();
-            mediaState.mediaElement.src = '';
-        }
-        // Revoke object URL to free memory
-        if (mediaState.mediaElement.src && mediaState.mediaElement.src.startsWith('blob:')) {
-            URL.revokeObjectURL(mediaState.mediaElement.src);
-        }
-    }
+    releaseMediaElement();
     
     // Validate file type
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
@@ -8313,6 +8304,17 @@ function handleFluidBackgroundUpload(event) {
     
     // Load the file into fluid background system
     loadFluidBackgroundFile(file);
+}
+
+// Frees the current media file (used by media mode and the camera's Media layer)
+function releaseMediaElement() {
+    const el = mediaState.mediaElement;
+    if (!el) return;
+    if (el.src && el.src.startsWith('blob:')) URL.revokeObjectURL(el.src);
+    if (mediaState.mediaType === 'video') {
+        el.pause();
+        el.src = '';
+    }
 }
 
 async function loadMediaFile(file) {
@@ -8836,19 +8838,79 @@ function cameraLayerOn(id) {
 function setCameraLayer(id, on) {
     const layer = cameraSegmentation.layers.find(l => l.id === id);
     if (!layer) return;
+    // Nothing to show yet: pick a file first; the layer turns on once it's loaded
+    if (id === 'media' && on && !mediaState.mediaElement) {
+        setCameraLayerChecked('media', false);
+        document.getElementById('cameraMediaInput').click();
+        return;
+    }
+    if (id === 'media' && !on && mediaState.mediaType === 'video' && !mediaState.active) {
+        mediaState.mediaElement.pause();
+    }
     layer.on = on;
     saveToLocalStorage(STORAGE_KEYS.CAMERA_LAYERS, cameraSegmentation.layers);
     syncCameraBackgrounds();
 }
 
-// Restores the saved layers (if they're valid) and puts the list in that order
+function setCameraLayerChecked(id, on) {
+    const box = document.querySelector(`#cameraLayersList [data-layer="${id}"] input[type="checkbox"]`);
+    if (box) box.checked = on;
+}
+
+// The Media layer's own file: loaded like media mode's, but without switching to it
+async function loadCameraLayerMedia(input) {
+    const file = input.files[0];
+    input.value = ''; // choosing the same file again still fires change
+    if (!file || !(file.type.startsWith('image/') || file.type.startsWith('video/'))) return;
+    releaseMediaElement();
+    const url = URL.createObjectURL(file);
+    try {
+        if (file.type.startsWith('image/')) await loadImageMedia(url, file.name);
+        else await loadVideoMedia(url, file.name);
+    } catch (error) {
+        console.error('Failed to load the media layer file:', error);
+        showCameraNotice('That file could not be opened. Try another image or video.');
+        return;
+    }
+    document.getElementById('cameraMediaName').textContent = file.name;
+    setCameraLayerChecked('media', true);
+    setCameraLayer('media', true);
+}
+
+// Fills the frame (cover), like the other background layers
+function drawCameraLayerMedia(ctx) {
+    const el = mediaState.mediaElement;
+    if (!el) return;
+    const isVideo = mediaState.mediaType === 'video';
+    if (isVideo && el.paused) el.play().catch(() => {});
+    const mw = isVideo ? el.videoWidth : el.naturalWidth;
+    const mh = isVideo ? el.videoHeight : el.naturalHeight;
+    if (!mw || !mh) return;
+    const cw = ctx.canvas.width, ch = ctx.canvas.height;
+    const scale = Math.max(cw / mw, ch / mh);
+    ctx.drawImage(el, (cw - mw * scale) / 2, (ch - mh * scale) / 2, mw * scale, mh * scale);
+}
+
+// Restores the saved layers and puts the list in that order. Unknown entries are
+// dropped and layers added since then go in at their default position.
 function initCameraLayers() {
     const seg = cameraSegmentation;
     const saved = loadFromLocalStorage(STORAGE_KEYS.CAMERA_LAYERS);
-    const ids = seg.layers.map(l => l.id).sort().join();
-    if (Array.isArray(saved) && saved.map(l => l && l.id).sort().join() === ids) {
-        seg.layers = saved.map(l => ({ id: l.id, on: !!l.on }));
+    if (Array.isArray(saved)) {
+        const defaults = seg.layers;
+        const layers = saved
+            .filter((l, i) => l && defaults.some(d => d.id === l.id) && saved.findIndex(o => o && o.id === l.id) === i)
+            .map(l => ({ id: l.id, on: !!l.on }));
+        // A new layer goes right below the one above it in the defaults (or on top)
+        defaults.forEach((d, i) => {
+            if (layers.some(l => l.id === d.id)) return;
+            const above = i > 0 ? layers.findIndex(l => l.id === defaults[i - 1].id) : -1;
+            layers.splice(above + 1, 0, { ...d });
+        });
+        seg.layers = layers;
     }
+    // The media file isn't saved, so that layer starts off
+    seg.layers.find(l => l.id === 'media').on = false;
 
     const list = document.getElementById('cameraLayersList');
     if (!list) return;
@@ -9061,6 +9123,8 @@ function drawCameraVideo(ctx, video, x, y, w, h) {
         } else if (layer.id === 'color') {
             ctx.fillStyle = seg.color;
             ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        } else if (layer.id === 'media') {
+            drawCameraLayerMedia(ctx);
         } else {
             const frame = seg[layer.id + 'Frame']; // fluidFrame, audioFrame
             if (frame) ctx.drawImage(frame.canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
