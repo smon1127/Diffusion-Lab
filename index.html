@@ -558,6 +558,7 @@
                     left: 0;
                     width: 100vw !important;
                     height: 100vh !important;
+                    height: 100dvh !important; /* visible height; vh ignores mobile browser bars */
                     touch-action: none; /* Prevent scrolling and zooming */
                 }
 
@@ -1344,6 +1345,8 @@
                 transform: translateX(-50%);
                 width: calc(100vh - 40px);
                 height: calc(100vh - 40px);
+                width: calc(100dvh - 40px);
+                height: calc(100dvh - 40px);
                 background: transparent;
                 border: none;
                 box-shadow: none;
@@ -3847,7 +3850,6 @@
                             <div class="tooltip" style="flex: 1; min-width: 0; position: relative;">
                                 <button class="stream-control-button primary" id="copyStreamUrlButton" 
                                         onclick="copyStreamUrlToClipboard()" 
-                                        ontouchstart="copyStreamUrlToClipboard(); event.preventDefault();"
                                         oncontextmenu="event.preventDefault(); copyStreamUrlToClipboard(true);">
                                     <i class="fas fa-copy"></i>
                                     <span>Copy URL</span>
@@ -3856,16 +3858,14 @@
                             </div>
                             <div class="tooltip">
                                 <button class="stream-control-button" id="fullscreenToggleButton" 
-                                        onclick="toggleFullscreen()" 
-                                        ontouchstart="toggleFullscreen(); event.preventDefault();">
+                                        onclick="toggleFullscreen()">
                                     <i class="fas fa-expand" id="fullscreenIcon"></i>
                                 </button>
                                 <span class="tooltiptext" id="fullscreenTooltip">Enter Fullscreen</span>
                             </div>
                             <div class="tooltip">
                                 <button class="stream-control-button" id="popOutStreamButtonUI" 
-                                        onclick="popOutStream()" 
-                                        ontouchstart="popOutStream(); event.preventDefault();">
+                                        onclick="popOutStream()">
                                     <i class="fas fa-external-link-alt"></i>
                                 </button>
                                 <span class="tooltiptext">Pop-Out Stream</span>
@@ -3988,17 +3988,9 @@
                     <div class="control-group">
                         <div class="group-title">Media</div>
                         <div class="control-item">
-                            <div class="toggle-container" onclick="toggleMediaFit()" ontouchstart="toggleMediaFit(); event.preventDefault();">
-                                <span>Fit inside the screen</span>
-                                <div class="toggle-switch" id="mediaFitToggle">
-                                    <div class="toggle-handle"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="control-item">
                             <div class="control-label">
-                                <span>Scale <div class="tooltip"><span class="info-icon">i</span>
-                                    <span class="tooltiptext">Media size: 0.1 = very small, 1.0 = fills the screen (with Fit: fits inside it), 2.0 = very large</span>
+                                <span>Width <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Share of the screen width: 0.2 = a fifth, 1.0 = full width, 2.0 = twice as wide. The aspect ratio stays the same.</span>
                                 </div></span>
                                 <input type="text" class="control-value number-input" id="mediaScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
                             </div>
