@@ -145,8 +145,7 @@ const commonParams = {
     // Media Parameters
     FLUID_CAMERA_SCALE: 1.0,      // Fluid background camera scale
     FLUID_MEDIA_SCALE: 1.0,       // Fluid background media scale
-    MEDIA_SCALE: 1.0,             // Media layer scale
-    MEDIA_FIT: false,             // Media layer fits inside the screen instead of filling it
+    MEDIA_SCALE: 1.0,             // Media layer width, as a share of the screen width
     // Layer settings
     CAMERA_REMOVE_BG: true,       // camera layer: Remove background
     CAMERA_BLOOM: false,          // with the camera on, the fluid has its own Bloom / Sunrays
@@ -831,7 +830,6 @@ function updateToggleStates() {
     updateToggle('forceClickToggle', config.FORCE_CLICK);
     updateToggle('debugToggle', config.DEBUG_MODE);
     updateToggle('removeBackgroundToggle', config.CAMERA_REMOVE_BG);
-    updateToggle('mediaFitToggle', config.MEDIA_FIT);
     
     // Apply cursor hiding CSS class if needed
     if (config.HIDE_CURSOR) {
@@ -881,62 +879,34 @@ function togglePanelVisibility() {
     }
 }
 
+function getFullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement ||
+        document.mozFullScreenElement || document.msFullscreenElement;
+}
+
+// Called from a click: browsers only allow fullscreen from a click or tap release,
+// not from touchstart (that is why it used to work only on the second tap)
 function toggleFullscreen() {
     const doc = document.documentElement;
-    const isFullscreen = document.fullscreenElement || 
-                        document.webkitFullscreenElement || 
-                        document.mozFullScreenElement || 
-                        document.msFullscreenElement;
-    
-    if (!isFullscreen) {
-        // Enter fullscreen
-        if (doc.requestFullscreen) {
-            doc.requestFullscreen().catch(err => {
-                console.log('Fullscreen request failed:', err);
-                showFullscreenFeedback('Fullscreen not supported');
-            });
-        } else if (doc.webkitRequestFullscreen) {
-            // Safari
-            doc.webkitRequestFullscreen().catch(err => {
-                console.log('Webkit fullscreen request failed:', err);
-                showFullscreenFeedback('Fullscreen not supported on this device');
-            });
-        } else if (doc.mozRequestFullScreen) {
-            // Firefox
-            doc.mozRequestFullScreen().catch(err => {
-                console.log('Mozilla fullscreen request failed:', err);
-                showFullscreenFeedback('Fullscreen not supported');
-            });
-        } else if (doc.msRequestFullscreen) {
-            // IE/Edge
-            doc.msRequestFullscreen().catch(err => {
-                console.log('MS fullscreen request failed:', err);
-                showFullscreenFeedback('Fullscreen not supported');
-            });
-        } else {
-            // Fallback for unsupported browsers
-            showFullscreenFeedback('Fullscreen not supported on this device');
-        }
-    } else {
-        // Exit fullscreen
-        if (document.exitFullscreen) {
-            document.exitFullscreen().catch(err => {
-                console.log('Exit fullscreen failed:', err);
-            });
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen().catch(err => {
-                console.log('Webkit exit fullscreen failed:', err);
-            });
-        } else if (document.mozCancelFullScreen) {
-            document.mozCancelFullScreen().catch(err => {
-                console.log('Mozilla exit fullscreen failed:', err);
-            });
-        } else if (document.msExitFullscreen) {
-            document.msExitFullscreen().catch(err => {
-                console.log('MS exit fullscreen failed:', err);
-            });
-        }
+    if (getFullscreenElement()) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen ||
+            document.mozCancelFullScreen || document.msExitFullscreen;
+        Promise.resolve(exit.call(document)).catch(err => console.log('Exit fullscreen failed:', err));
+        return;
     }
+    const request = doc.requestFullscreen || doc.webkitRequestFullscreen ||
+        doc.mozRequestFullScreen || doc.msRequestFullscreen;
+    if (!request) {
+        // iPhone Safari has no fullscreen for pages; a home screen app opens without the bars
+        showCameraNotice(/iPhone|iPod/.test(navigator.userAgent)
+            ? 'For fullscreen on iPhone: tap Share, then Add to Home Screen, and open Diffusion Lab from there.'
+            : 'Fullscreen is not supported in this browser.');
+        return;
+    }
+    Promise.resolve(request.call(doc, { navigationUI: 'hide' })).catch(err => {
+        console.log('Fullscreen request failed:', err);
+        showFullscreenFeedback('Fullscreen not supported');
+    });
 }
 
 function showFullscreenFeedback(message) {
@@ -959,12 +929,7 @@ function updateFullscreenButton() {
     
     if (!icon || !tooltip) return;
     
-    const isFullscreen = document.fullscreenElement || 
-                        document.webkitFullscreenElement || 
-                        document.mozFullScreenElement || 
-                        document.msFullscreenElement;
-    
-    if (isFullscreen) {
+    if (getFullscreenElement()) {
         icon.className = 'fas fa-compress';
         tooltip.textContent = 'Exit Fullscreen';
     } else {
@@ -4855,40 +4820,18 @@ function calcDeltaTime (maxDt = 0.016666) {
 }
 
 function resizeCanvas (maxSize = null) {
-    // Get actual viewport dimensions
-    let width, height;
-    
-    if (isMobile()) {
-        // On mobile, use viewport dimensions directly
-        width = window.innerWidth;
-        height = window.innerHeight;
-        
-        // Account for landscape mode with control panel
-        if (window.innerWidth > window.innerHeight && window.innerWidth <= 768) {
-            // Landscape mode - subtract control panel width (320px) + right padding (20px) + left margin (20px)
-            width = window.innerWidth - 360;
-        }
-        
-        // Scale by pixel ratio but limit for performance
-        width = scaleByPixelRatio(width);
-        height = scaleByPixelRatio(height);
-        
-        // Limit canvas resolution on mobile for better performance
-        const maxMobileSize = 1024;
-        if (width > maxMobileSize) {
-            const ratio = height / width;
-            width = maxMobileSize;
-            height = maxMobileSize * ratio;
-        }
-        if (height > maxMobileSize) {
-            const ratio = width / height;
-            height = maxMobileSize;
-            width = maxMobileSize * ratio;
-        }
-    } else {
-        // Desktop - use client dimensions
-        width = scaleByPixelRatio(canvas.clientWidth);
-        height = scaleByPixelRatio(canvas.clientHeight);
+    // The size the canvas is shown at, so the picture keeps its aspect ratio
+    // (on phones that changes as the URL bar shows and hides)
+    if (!canvas.clientWidth || !canvas.clientHeight) return false; // hidden: keep the last size
+    let width = scaleByPixelRatio(canvas.clientWidth);
+    let height = scaleByPixelRatio(canvas.clientHeight);
+
+    // Limit canvas resolution on mobile for better performance
+    const maxMobileSize = 1024;
+    if (isMobile() && Math.max(width, height) > maxMobileSize) {
+        const scale = maxMobileSize / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
     }
 
     // Optional size limit, e.g. the camera canvas the fluid is drawn into as background
@@ -8087,7 +8030,11 @@ async function loadLayerMediaFile(file, { restore = false, turnOn = true } = {})
         return;
     }
     document.getElementById('cameraMediaName').textContent = file.name;
-    if (!restore) saveLayerMediaFile(file);
+    if (!restore) {
+        saveLayerMediaFile(file);
+        // A new file starts at full width on a phone, a fifth of the width on bigger screens
+        updateSliderValue('mediaScale', ((isPhoneScreen() ? 1 : 0.2) - 0.1) / 1.9);
+    }
     if (turnOn) {
         setCameraLayerChecked('media', true);
         setCameraLayer('media', true);
@@ -8121,13 +8068,7 @@ function restoreLayerMediaFile(turnOn) {
         .catch(error => console.warn('⚠️ Could not restore the media file:', error));
 }
 
-function toggleMediaFit() {
-    config.MEDIA_FIT = !config.MEDIA_FIT;
-    updateToggle('mediaFitToggle', config.MEDIA_FIT);
-    saveConfig();
-}
-
-// Fills the screen, or fits inside it with Fit; Scale 1.0 is that size
+// Scale is the width as a share of the screen width; the height follows the media's aspect ratio
 function drawCameraLayerMedia(ctx) {
     const el = mediaState.mediaElement;
     if (!el) return;
@@ -8137,7 +8078,7 @@ function drawCameraLayerMedia(ctx) {
     const mh = isVideo ? el.videoHeight : el.naturalHeight;
     if (!mw || !mh) return;
     const cw = ctx.canvas.width, ch = ctx.canvas.height;
-    const scale = (config.MEDIA_FIT ? Math.min : Math.max)(cw / mw, ch / mh) * (config.MEDIA_SCALE || 1);
+    const scale = cw / mw * (config.MEDIA_SCALE || 1);
     ctx.drawImage(el, (cw - mw * scale) / 2, (ch - mh * scale) / 2, mw * scale, mh * scale);
 }
 
