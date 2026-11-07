@@ -3951,6 +3951,10 @@
                                 <label for="cameraMediaInput" class="camera-layer-pick" title="Choose an image or video"><i class="fas fa-folder-open"></i></label>
                                 <input type="file" id="cameraMediaInput" accept="image/*,video/*" style="display: none;" onchange="loadCameraLayerMedia(this)">
                             </li>
+                            <li class="camera-layer" data-layer="video">
+                                <span class="camera-layer-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
+                                <label><input type="checkbox" onchange="setCameraLayer('video', this.checked)"> Video input</label>
+                            </li>
                             <li class="camera-layer" data-layer="audio">
                                 <span class="camera-layer-handle" title="Drag to reorder"><i class="fas fa-grip-vertical"></i></span>
                                 <label><input type="checkbox" onchange="setCameraLayer('audio', this.checked)"> Audio</label>
@@ -3997,6 +4001,30 @@
                             <div class="slider-container" onclick="handleSliderClick(event, 'mediaScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'mediaScale', 0.1, 2.0); event.preventDefault();">
                                 <div class="slider-fill" id="mediaScaleFill" style="width: 47%">
                                     <div class="slider-handle" id="mediaScaleHandle"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="video-input-controls" id="videoInputControls" style="display: none;">
+                    <div class="control-group">
+                        <div class="group-title">Video input <div class="tooltip"><span class="info-icon">i</span>
+                            <span class="tooltiptext">Any video device: a second camera, a capture card, or NDI through a virtual camera (NDI Tools' webcam, or OBS with the NDI plugin and Virtual Camera)</span>
+                        </div></div>
+                        <div class="control-item">
+                            <select id="videoInputSelect" class="audio-select" onchange="selectVideoInputDevice(this.value)" style="width: 100%; padding: 8px 12px; background: var(--control-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 13px;"></select>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-label">
+                                <span>Width <div class="tooltip"><span class="info-icon">i</span>
+                                    <span class="tooltiptext">Share of the screen width: 0.2 = a fifth, 1.0 = full width, 2.0 = twice as wide. The aspect ratio stays the same.</span>
+                                </div></span>
+                                <input type="text" class="control-value number-input" id="videoInputScaleValue" value="1.00" style="width: 45px; font-size: 12px; color: var(--accent-color); font-weight: 600; background: rgba(6, 163, 215, 0.1); padding: 2px 8px; border-radius: 4px; border: none; text-align: center; margin-left: 4px; outline: none;" />
+                            </div>
+                            <div class="slider-container" onclick="handleSliderClick(event, 'videoInputScale', 0.1, 2.0)" ontouchstart="handleSliderClick(event, 'videoInputScale', 0.1, 2.0); event.preventDefault();">
+                                <div class="slider-fill" id="videoInputScaleFill" style="width: 47%">
+                                    <div class="slider-handle" id="videoInputScaleHandle"></div>
                                 </div>
                             </div>
                         </div>

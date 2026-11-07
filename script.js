@@ -146,6 +146,8 @@ const commonParams = {
     FLUID_CAMERA_SCALE: 1.0,      // Fluid background camera scale
     FLUID_MEDIA_SCALE: 1.0,       // Fluid background media scale
     MEDIA_SCALE: 1.0,             // Media layer width, as a share of the screen width
+    VIDEO_INPUT_DEVICE_ID: null,  // Video input layer: the chosen video device (null = not chosen yet)
+    VIDEO_INPUT_SCALE: 1.0,       // Video input layer width, as a share of the screen width
     // Layer settings
     CAMERA_REMOVE_BG: true,       // camera layer: Remove background
     CAMERA_BLOOM: false,          // with the camera on, the fluid has its own Bloom / Sunrays
@@ -227,6 +229,7 @@ let cameraState = {
 // shown straight from the fluid canvas instead, at its full resolution and frame rate.
 // Declared up here because update() reads it and first runs while the script loads.
 const layerOutput = { canvas: null, ctx: null, pacing: { last: 0 }, direct: false };
+let aiLoading = false; // the AI loader shows (connecting, warming up); the camera layer is hidden meanwhile
 
 // The page's layers (the only inputs) and the camera's background removal
 let cameraSegmentation = {
@@ -236,6 +239,7 @@ let cameraSegmentation = {
     layers: [
         { id: 'camera', on: true },
         { id: 'media', on: false },  // the image / video chosen for it (kept in IndexedDB)
+        { id: 'video', on: false },  // a video device, e.g. an NDI or OBS virtual camera
         { id: 'audio', on: false },  // off by default: it asks for the microphone
         { id: 'fluid', on: true },
         { id: 'color', on: false }   // config.BACK_COLOR
@@ -258,6 +262,15 @@ let cameraSegmentation = {
     mediaShown: null,          // media layer on, so its controls show
     fluidFrame: null,          // copies of the last fluid / audio frame (their WebGL buffers
     audioFrame: null           // are cleared once shown)
+};
+
+// The Video input layer's device (a second camera, capture card, NDI / OBS virtual camera)
+let videoInputState = {
+    active: false,
+    wanted: null,     // the layer is on (null until the first syncLayers)
+    generation: 0,    // bumped on stop, so a start that finishes later is discarded
+    stream: null,
+    video: null
 };
 
 // The Media layer's file
@@ -520,7 +533,7 @@ function initializeModernUI() {
 }
 
 function addSliderDragHandlers() {
-    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'fluidMediaScale', 'fluidCameraScale', 'streamOpacity', 'audioReactivity', 'audioDelay', 'audioOpacity', 'audioColorful', 'audioEdgeSoftness', 'telegramWaitlistInterval', 'styleStrength'];
+    const sliders = ['density', 'velocity', 'pressure', 'vorticity', 'splat', 'bloomIntensity', 'sunray', 'denoiseX', 'denoiseY', 'denoiseZ', 'inferenceSteps', 'seed', 'controlnetPose', 'controlnetHed', 'controlnetCanny', 'controlnetDepth', 'controlnetColor', 'guidanceScale', 'delta', 'animationInterval', 'chaos', 'breathing', 'colorLife', 'backgroundImageScale', 'mediaScale', 'videoInputScale', 'fluidMediaScale', 'fluidCameraScale', 'streamOpacity', 'audioReactivity', 'audioDelay', 'audioOpacity', 'audioColorful', 'audioEdgeSoftness', 'telegramWaitlistInterval', 'styleStrength'];
     
     sliders.forEach(slider => {
         const handle = document.getElementById(slider + 'Handle');
@@ -682,6 +695,7 @@ function updateSliderValue(sliderName, percentage, skipSave = false, updateInput
         'animationInterval': { min: 0, max: 1, prop: 'ANIMATION_INTERVAL', decimals: 2 },
         'backgroundImageScale': { min: 0.1, max: 2.0, prop: 'BACKGROUND_IMAGE_SCALE', decimals: 2 },
         'mediaScale': { min: 0.1, max: 2.0, prop: 'MEDIA_SCALE', decimals: 2, handler: updateMediaScale },
+        'videoInputScale': { min: 0.1, max: 2.0, prop: 'VIDEO_INPUT_SCALE', decimals: 2 },
         'fluidMediaScale': { min: 0.1, max: 2.0, prop: 'FLUID_MEDIA_SCALE', decimals: 2, handler: updateFluidMediaScale },
         'fluidCameraScale': { min: 0.1, max: 2.0, prop: 'FLUID_CAMERA_SCALE', decimals: 2, handler: updateFluidCameraScale },
         'tIndexList': { min: 0, max: 50, prop: 'T_INDEX_LIST', decimals: 0, isArray: true },
@@ -776,6 +790,7 @@ function updateSliderPositions() {
         'animationInterval': { prop: 'ANIMATION_INTERVAL', min: 0, max: 1 },
         'backgroundImageScale': { prop: 'BACKGROUND_IMAGE_SCALE', min: 0.1, max: 2.0 },
         'mediaScale': { prop: 'MEDIA_SCALE', min: 0.1, max: 2.0 },
+        'videoInputScale': { prop: 'VIDEO_INPUT_SCALE', min: 0.1, max: 2.0 },
         'fluidMediaScale': { prop: 'FLUID_MEDIA_SCALE', min: 0.1, max: 2.0 },
         'fluidCameraScale': { prop: 'FLUID_CAMERA_SCALE', min: 0.1, max: 2.0 },
         'tIndexList': { prop: 'T_INDEX_LIST', min: 0, max: 50, isArray: true },
@@ -6838,6 +6853,7 @@ const streamWarmup = { timer: null, startedAt: 0 };
 const STREAM_ERROR_TITLE = "The AI couldn't start";
 
 function setStreamLoader(state, title = '', detail = '') {
+    aiLoading = state === 'loading';
     const loader = document.getElementById('streamOverlayLoading');
     if (!loader) return;
     loader.classList.toggle('error', state === 'error');
@@ -7880,6 +7896,24 @@ async function playCameraVideo(video) {
     }
 }
 
+// A playing video for a camera stream. Never added to the page; renderLayers draws it.
+async function createStreamVideo(stream) {
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('The camera did not start in time.')), 10000);
+        video.addEventListener('loadedmetadata', () => {
+            clearTimeout(timeout);
+            resolve();
+        }, { once: true });
+    });
+    await playCameraVideo(video);
+    return video;
+}
+
 // Opens the camera for the camera layer (renderLayers draws it)
 async function startCamera() {
     const generation = ++cameraState.generation;
@@ -7895,20 +7929,7 @@ async function startCamera() {
         }
         if (generation !== cameraState.generation) throw new Error('stopped');
 
-        // Never added to the page; renderLayers draws it
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.autoplay = true;
-        video.playsInline = true;
-        video.muted = true;
-        await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('The camera did not start in time.')), 10000);
-            video.addEventListener('loadedmetadata', () => {
-                clearTimeout(timeout);
-                resolve();
-            }, { once: true });
-        });
-        await playCameraVideo(video);
+        const video = await createStreamVideo(stream);
         if (generation !== cameraState.generation) throw new Error('stopped');
 
         cameraState.stream = stream;
@@ -8032,8 +8053,7 @@ async function loadLayerMediaFile(file, { restore = false, turnOn = true } = {})
     document.getElementById('cameraMediaName').textContent = file.name;
     if (!restore) {
         saveLayerMediaFile(file);
-        // A new file starts at full width on a phone, a fifth of the width on bigger screens
-        updateSliderValue('mediaScale', ((isPhoneScreen() ? 1 : 0.2) - 0.1) / 1.9);
+        updateSliderValue('mediaScale', (defaultLayerWidth() - 0.1) / 1.9);
     }
     if (turnOn) {
         setCameraLayerChecked('media', true);
@@ -8068,18 +8088,120 @@ function restoreLayerMediaFile(turnOn) {
         .catch(error => console.warn('⚠️ Could not restore the media file:', error));
 }
 
-// Scale is the width as a share of the screen width; the height follows the media's aspect ratio
 function drawCameraLayerMedia(ctx) {
     const el = mediaState.mediaElement;
     if (!el) return;
     const isVideo = mediaState.mediaType === 'video';
     if (isVideo && el.paused) el.play().catch(() => {});
-    const mw = isVideo ? el.videoWidth : el.naturalWidth;
-    const mh = isVideo ? el.videoHeight : el.naturalHeight;
+    drawAtWidth(ctx, el, isVideo ? el.videoWidth : el.naturalWidth, isVideo ? el.videoHeight : el.naturalHeight, config.MEDIA_SCALE);
+}
+
+// Centered; share is the width as a share of the screen width, the height follows the
+// aspect ratio (Media and Video input)
+function drawAtWidth(ctx, el, mw, mh, share) {
     if (!mw || !mh) return;
     const cw = ctx.canvas.width, ch = ctx.canvas.height;
-    const scale = cw / mw * (config.MEDIA_SCALE || 1);
+    const scale = cw / mw * (share || 1);
     ctx.drawImage(el, (cw - mw * scale) / 2, (ch - mh * scale) / 2, mw * scale, mh * scale);
+}
+
+// The starting width for a new file or device: full width on a phone, a fifth on bigger screens
+function defaultLayerWidth() {
+    return isPhoneScreen() ? 1 : 0.2;
+}
+
+// Video input layer: any video device the browser lists. NDI arrives this way through a
+// virtual camera (NDI Tools' webcam, or OBS with the NDI plugin and its Virtual Camera).
+function syncVideoInputLayer() {
+    const state = videoInputState;
+    const wanted = cameraLayerOn('video');
+    if (wanted === state.wanted) return;
+    state.wanted = wanted;
+    showLayerControls('videoInputControls', wanted);
+    if (wanted) startVideoInput();
+    else stopVideoInput();
+}
+
+async function startVideoInput() {
+    const state = videoInputState;
+    const generation = ++state.generation;
+    let stream = null;
+    try {
+        if (!window.isSecureContext) throw new Error('Video devices need https:// (or localhost).');
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('This browser has no camera access.');
+        const deviceId = config.VIDEO_INPUT_DEVICE_ID;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId } } : true });
+        } catch (error) {
+            // The saved device is gone (unplugged, NDI tool closed): the default one instead
+            if (!deviceId || !['OverconstrainedError', 'NotFoundError'].includes(error.name)) throw error;
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+        if (generation !== state.generation) throw new Error('stopped');
+        const video = await createStreamVideo(stream);
+        if (generation !== state.generation) throw new Error('stopped');
+
+        state.stream = stream;
+        state.video = video;
+        state.active = true;
+        const opened = stream.getVideoTracks()[0]?.getSettings().deviceId || '';
+        const devices = await updateVideoInputDevices(opened);
+        console.log(`📺 Video input started: ${video.videoWidth}x${video.videoHeight}`);
+        // First time: an NDI or other virtual camera if there is one (labels are only known now)
+        if (!config.VIDEO_INPUT_DEVICE_ID) {
+            const virtual = devices.find(d => /ndi|obs|virtual/i.test(d.label));
+            selectVideoInputDevice(virtual ? virtual.deviceId : opened);
+        }
+    } catch (error) {
+        if (stream) stream.getTracks().forEach(track => track.stop());
+        if (generation !== state.generation) return; // turned off meanwhile
+        console.error('❌ Failed to start the video input:', error);
+        showCameraNotice(cameraErrorMessage(error));
+        setCameraLayerChecked('video', false);
+        setCameraLayer('video', false);
+    }
+}
+
+function stopVideoInput() {
+    const state = videoInputState;
+    state.generation++; // discards a start that's still in progress
+    state.active = false;
+    if (state.stream) {
+        state.stream.getTracks().forEach(track => track.stop());
+        state.stream = null;
+    }
+    if (state.video) {
+        state.video.srcObject = null;
+        state.video = null;
+    }
+}
+
+// Fills the device list (labels are empty until camera access is granted)
+async function updateVideoInputDevices(current) {
+    const select = document.getElementById('videoInputSelect');
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    select.replaceChildren(...devices.map((d, i) => new Option(d.label || `Video device ${i + 1}`, d.deviceId)));
+    select.value = current;
+    return devices;
+}
+
+// A newly chosen device starts at the default width, like a new media file
+function selectVideoInputDevice(deviceId) {
+    const changed = deviceId !== config.VIDEO_INPUT_DEVICE_ID;
+    config.VIDEO_INPUT_DEVICE_ID = deviceId;
+    if (changed) updateSliderValue('videoInputScale', (defaultLayerWidth() - 0.1) / 1.9); // saves the config
+    const opened = videoInputState.stream?.getVideoTracks()[0]?.getSettings().deviceId;
+    if (videoInputState.active && opened !== deviceId) {
+        stopVideoInput();
+        startVideoInput();
+    }
+}
+
+function drawVideoInputLayer(ctx) {
+    const video = videoInputState.video;
+    if (!videoInputState.active || !video) return;
+    if (video.paused) video.play().catch(() => {});
+    drawAtWidth(ctx, video, video.videoWidth, video.videoHeight, config.VIDEO_INPUT_SCALE);
 }
 
 // Restores the saved layers and puts the list in that order. Unknown entries are
@@ -8154,6 +8276,7 @@ function startCameraLayerDrag(e) {
 function syncLayers() {
     syncCameraLayer();
     syncMediaLayer();
+    syncVideoInputLayer();
     syncAudioLayer();
     syncFluidLayer();
     layerOutput.direct = isFluidDirect();
@@ -8174,9 +8297,9 @@ function fluidComposited() {
     return !!cameraSegmentation.fluidRunning && !layerOutput.direct;
 }
 
-// The output canvas only needs the camera's rate while the camera is on
+// The output canvas only needs the camera's rate while a camera (or video input) is on
 function layerFps() {
-    return cameraState.active ? CAMERA_FPS : FLUID_MAX_FPS;
+    return cameraState.active || videoInputState.active ? CAMERA_FPS : FLUID_MAX_FPS;
 }
 
 // Camera layer: opens the camera and shows its controls (Remove background)
@@ -8272,7 +8395,9 @@ function renderLayers() {
     if (out.direct || !frameDue(out.pacing, layerFps())) return;
     const ctx = out.ctx;
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    const layers = cameraSegmentation.layers.filter(l => l.on);
+    // While the AI loads, the camera isn't drawn (and its background removal pauses), so
+    // the phone has more to spare for starting the stream
+    const layers = cameraSegmentation.layers.filter(l => l.on && !(l.id === 'camera' && aiLoading));
     let bottom = layers.findIndex(l => isOpaqueLayer(l.id));
     if (bottom === -1) bottom = layers.length - 1;
     for (let i = bottom; i >= 0; i--) drawLayer(ctx, layers[i].id);
@@ -8288,6 +8413,8 @@ function drawLayer(ctx, id) {
         drawCameraLayer(ctx);
     } else if (id === 'media') {
         drawCameraLayerMedia(ctx);
+    } else if (id === 'video') {
+        drawVideoInputLayer(ctx);
     } else if (id === 'color') {
         ctx.fillStyle = rgbToHex(config.BACK_COLOR.r, config.BACK_COLOR.g, config.BACK_COLOR.b);
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -9801,6 +9928,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Media controls
         mediaScale: { min: 0.1, max: 2.0, updateFn: (v) => updateSliderValue('mediaScale', (v-0.1)/1.9, false, false), precision: 2 },
+        videoInputScale: { min: 0.1, max: 2.0, updateFn: (v) => updateSliderValue('videoInputScale', (v-0.1)/1.9, false, false), precision: 2 },
         
         // Fluid background controls
         fluidMediaScale: { min: 0.1, max: 2.0, updateFn: updateFluidMediaScale, precision: 2 },
@@ -10773,6 +10901,10 @@ function initLayers() {
         setCameraLayerChecked('camera', false);
         showCameraIntro();
     }
+    // A virtual camera started later (e.g. the NDI tool) shows up in the Video input list
+    navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+        if (videoInputState.active) updateVideoInputDevices(config.VIDEO_INPUT_DEVICE_ID);
+    });
     initLayerOutput();
     syncLayers();
 }
