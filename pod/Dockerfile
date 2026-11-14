@@ -12,8 +12,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/opt/venv/bin:$PATH \
     HF_HOME=/workspace/hf
 
+# build-essential: insightface (IPAdapter extra) compiles C++ on install
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git curl ca-certificates libgl1 libglib2.0-0 \
+        git curl ca-certificates libgl1 libglib2.0-0 build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # uv, pinned
