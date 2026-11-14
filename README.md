@@ -41,11 +41,11 @@ The startup script automatically:
 - Opens the application in your browser
 - Closes any conflicting browser tabs
 
-### 3. Configure AI API (Optional)
-1. Open the application in your browser
-2. Click the API configuration button
-3. Enter your AI service API key
-4. Select your preferred AI model
+### 3. Start the AI
+Click **Start AI**. The AI runs on an on-demand RunPod GPU (StreamDiffusion, SDXL Turbo);
+the first frames appear after about 2 minutes while the GPU starts. Nobody needs an API key:
+`api/runpod.php` holds the RunPod key on the server (see `.env.example`), and `pod/` is the
+GPU side (see `pod/README.md`). The GPU stops itself a few minutes after the last session.
 
 ### 4. Configure Telegram Bot (Optional)
 1. Create a bot via [@BotFather](https://t.me/BotFather) on Telegram
@@ -268,8 +268,9 @@ The startup script automatically:
 ### Custom ControlNet Presets
 Edit the preset definitions in `local-osc-server.js` to create custom AI processing configurations.
 
-### API Integration
-The system supports multiple AI service providers. Configure your preferred service in the web interface.
+### GPU Backend
+`api/runpod.php` starts and stops the GPU pod and issues short-lived tokens; the pod image,
+its WebRTC server and the benchmarks behind the defaults are in `pod/`.
 
 ### Development Mode
 Set `DEBUG=true` in `start-diffusion-lab.sh` for verbose logging and development features.
