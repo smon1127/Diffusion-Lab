@@ -66,8 +66,8 @@ IDLE_SECONDS = 60 * float(os.environ.get("IDLE_MINUTES", "5"))
 MAX_SECONDS = 60 * float(os.environ.get("MAX_SESSION_MINUTES", "60"))
 SD_CONFIG = os.environ.get("SD_CONFIG", "/app/config.yaml")
 MAX_SDP_BYTES = 64 * 1024
-MAX_PARAMS_BYTES = 256 * 1024
-MAX_STYLE_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_PARAMS_BYTES = 2 * 1024 * 1024  # room for one downscaled style image as a data: URL
+MAX_STYLE_IMAGE_BYTES = 1024 * 1024
 ALLOWED_SIZES = ("512", "768", "1024")  # the page's STREAM_RESOLUTIONS
 
 BOOT = time.monotonic()
@@ -239,7 +239,6 @@ PARAM_MAP = {
     "delta": "delta",
     "t_index_list": "t_index_list",
     "seed": "seed",
-    "controlnets": "controlnet_config",
     "cache_maxframes": "cache_maxframes",
     "cache_interval": "cache_interval",
     "prompt_interpolation_method": "prompt_interpolation_method",
@@ -257,7 +256,25 @@ def to_wrapper_params(params: dict) -> dict:
             out[target] = value
     if isinstance(params.get("prompt"), str):
         out["prompt_list"] = [(params["prompt"], 1.0)]
+    if isinstance(params.get("controlnets"), list):
+        out["controlnet_config"] = merge_controlnets(params["controlnets"])
     return out
+
+
+def merge_controlnets(requested: list) -> list:
+    """The pod's ControlNets (model + preprocessor) are fixed by its config and engines; the
+    page only sets each one's scale and on/off, matched by model_id."""
+    by_id = {c.get("model_id"): c for c in requested if isinstance(c, dict)}
+    merged = []
+    for loaded in engine.config.get("controlnets", []) if engine.config else []:
+        change = by_id.get(loaded["model_id"], {})
+        entry = dict(loaded)
+        if isinstance(change.get("conditioning_scale"), (int, float)):
+            entry["conditioning_scale"] = float(change["conditioning_scale"])
+        if isinstance(change.get("enabled"), bool):
+            entry["enabled"] = change["enabled"]
+        merged.append(entry)
+    return merged
 
 
 style_cache = {"url": None, "image": None}
@@ -281,13 +298,17 @@ async def fetch_style_image(url: str):
 
     if style_cache["url"] == url:
         return style_cache["image"]
-    if not await asyncio.get_running_loop().run_in_executor(None, public_https_url, url):
-        raise ValueError("style image URL must be public https")
-    async with ClientSession(timeout=ClientTimeout(total=15)) as http:
-        async with http.get(url, allow_redirects=False) as response:
-            if response.status != 200 or not response.content_type.startswith("image/"):
-                raise ValueError(f"style image fetch failed: HTTP {response.status}")
-            data = await response.content.read(MAX_STYLE_IMAGE_BYTES + 1)
+    data_url = re.match(r"data:image/(png|jpeg|webp);base64,(.+)$", url, re.S)
+    if data_url:
+        data = base64.b64decode(data_url.group(2), validate=False)
+    elif not await asyncio.get_running_loop().run_in_executor(None, public_https_url, url):
+        raise ValueError("style image must be a data:image URL or a public https URL")
+    else:
+        async with ClientSession(timeout=ClientTimeout(total=15)) as http:
+            async with http.get(url, allow_redirects=False) as response:
+                if response.status != 200 or not response.content_type.startswith("image/"):
+                    raise ValueError(f"style image fetch failed: HTTP {response.status}")
+                data = await response.content.read(MAX_STYLE_IMAGE_BYTES + 1)
     if len(data) > MAX_STYLE_IMAGE_BYTES:
         raise ValueError("style image too large")
     image = Image.open(io.BytesIO(data)).convert("RGB")
@@ -419,6 +440,9 @@ async def params_post(request: web.Request):
                 ip_config["style_image"] = await fetch_style_image(style_url)
             except (ValueError, OSError) as exc:
                 return web.json_response({"error": str(exc)}, status=400)
+        elif style_cache["image"] is not None:
+            # The page sends the image only when it changes; keep using the last one
+            ip_config["style_image"] = style_cache["image"]
         wrapper_params["ipadapter_config"] = ip_config
     with engine.lock:
         engine.pending_params = {**(engine.pending_params or {}), **wrapper_params}
