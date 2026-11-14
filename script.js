@@ -128,7 +128,7 @@ const commonParams = {
     GUIDANCE_SCALE: 1,  // SDXL uses lower guidance scale
     DELTA: 0.7,
     // SDXL parameters
-    WIDTH: 512,   // Daydream output resolution (square): see STREAM_RESOLUTIONS
+    WIDTH: 512,   // AI output resolution (square): see STREAM_RESOLUTIONS
     HEIGHT: 512,
     T_INDEX: 12,
     // Denoise controls
@@ -171,8 +171,6 @@ const commonParams = {
     // OSC Multi-splat channels REMOVED - replaced by OSC velocity drawing system
     HIDE_CURSOR: false,
     
-    // Daydream model (see DAYDREAM_MODELS)
-    MODEL_ID: 'stabilityai/sdxl-turbo',
     STREAM_OPACITY: 1,       // AI overlay opacity (not saved, so every visit starts fully opaque)
     STREAM_VISIBLE: true,    // AI overlay shown (always shown again on load)
     PANEL_COLLAPSED: null,   // null = device default (collapsed on mobile)
@@ -195,23 +193,26 @@ let config = {
 // Global State Variables (declared early to avoid initialization order issues)
 // Square stream input canvas (see getStreamInputStream). Declared up here because
 // update() reads it and first runs while the script is still loading.
-// Square resolutions Daydream generates at (multiples of 64, 384-1024)
+// Square resolutions the GPU pod generates at (its TensorRT engines cover 384-1024)
 const STREAM_RESOLUTIONS = [512, 768, 1024];
 const streamInput = { canvas: null, ctx: null, source: null, loopId: null, pacing: { last: 0 } };
 
 let streamState = {
     isStreaming: false,
-    streamId: null,
-    playbackId: null,
-    whipUrl: null,
-    whepUrl: null,            // WebRTC playback URL for the AI output
-    playbackConnection: null, // RTCPeerConnection receiving the AI output
-    peerConnection: null,
+    isStarting: false,        // waiting for the GPU pod / first connection
+    isReconnecting: false,
+    session: null,            // our session id at api/runpod.php
+    podUrl: null,             // https://<pod>-8000.proxy.runpod.net once the pod is ready
+    token: null,              // short-lived token for the pod (refreshed while streaming)
+    sessionUrl: null,         // the pod's /whip/<id> for this connection
+    lastParamsJson: null,     // last params sent to the pod (only changes are sent)
+    lastStyleImage: null,     // last style image sent (sent once, the pod keeps it)
+    keepaliveInterval: null,
+    peerConnection: null,     // one connection: input canvas up, AI output down
     mediaStream: null,
     popupWindow: null,
     popupCheckInterval: null,
     promptUpdateInterval: null,
-    lastParameterUpdate: 0,
     isUpdatingParameters: false
 };
 
@@ -377,26 +378,9 @@ document.addEventListener('DOMContentLoaded', () => {
     startGUI();
     initializeCursorIndicator();
     
-    // The AI overlay is always shown on load, with its loader while the stream connects
-    // (only when the stream can start: through the proxy or with the visitor's own key)
+    // The AI starts on "Start AI" (each start boots a paid GPU pod), not on page load
     config.STREAM_VISIBLE = true;
-    if (hasDaydreamAccess()) {
-        document.getElementById('streamOverlay')?.classList.add('visible');
-        setStreamLoader('loading', 'Connecting');
-    }
-    
-    // Auto-start stream
-    setTimeout(async () => {
-        try {
-            if (!streamState.isStreaming) {
-                console.log('🚀 Auto-starting stream on page load...');
-                await startStream(true);
-                updateStreamButton(streamState.isStreaming);
-            }
-        } catch (error) {
-            console.error('❌ Failed to auto-start stream:', error);
-        }
-    }, 1000); // Wait 1 second for UI to initialize
+    updateStreamButton(false);
     
     // Start idle animation immediately on page load
     setTimeout(() => {
@@ -1350,7 +1334,7 @@ function toggleStyleTransfer() {
     updateToggle('styleTransferToggle', config.STYLE_TRANSFER_ENABLED);
     updateStyleTransferVisibility();
     saveConfig();
-    if (streamState.streamId) debouncedParameterUpdate();
+    debouncedParameterUpdate();
 }
 
 function updateStyleTransferVisibility() {
@@ -1381,17 +1365,6 @@ function updateStyleWeightType() {
     saveConfig();
 }
 
-function updateModel() {
-    const select = document.getElementById('modelSelect');
-    config.MODEL_ID = select.value;
-    saveConfig();
-    updateModelControls();
-
-    // A PATCH can't drop params the old model stored (e.g. the IP Adapter that
-    // sd-turbo rejects), so a model change starts a fresh stream instead
-    restartStreamWithNewSettings({ type: 'model_changed', model: config.MODEL_ID });
-}
-
 function updateResolution() {
     const select = document.getElementById('resolutionSelect');
     const size = getStreamResolution(Number(select.value));
@@ -1400,33 +1373,23 @@ function updateResolution() {
     saveConfig();
     if (streamInput.canvas) ensureStreamInputCanvas();
 
-    // Daydream restarts the pipeline for a new resolution anyway
-    restartStreamWithNewSettings({ type: 'resolution_changed', resolution: size });
+    // The pod rebuilds its pipeline for the new size when we reconnect (~20 s, same GPU)
+    if (streamState.isStreaming) {
+        addStreamEventToDebug({ type: 'resolution_changed', resolution: size });
+        reconnectStream(`Switching to ${size} × ${size}`);
+    }
 }
 
 function getStreamResolution(size = config.WIDTH) {
     return STREAM_RESOLUTIONS.includes(size) ? size : STREAM_RESOLUTIONS[0];
 }
 
-function restartStreamWithNewSettings(debugEvent) {
-    if (!streamState.isStreaming) return;
-    const overlayVisible = document.getElementById('streamOverlay')?.classList.contains('visible');
-    addDaydreamEventToDebug(debugEvent);
-    stopStream();
-    clearStreamState();
-    startStream(overlayVisible);
-}
-
-// Show only the ControlNet sliders and style section the current model supports
+// Show only the ControlNet sliders the pod's model has (see AI_MODEL)
 function updateModelControls() {
-    const modelId = getCurrentModelId();
-    const model = DAYDREAM_MODELS[modelId];
-    const select = document.getElementById('modelSelect');
-    if (select) select.value = modelId;
     const resolutionSelect = document.getElementById('resolutionSelect');
     if (resolutionSelect) resolutionSelect.value = String(getStreamResolution());
 
-    const supportedScales = new Set(model.controlnets.map(cn => cn.scaleProp).filter(Boolean));
+    const supportedScales = new Set(AI_MODEL.controlnets.map(cn => cn.scaleProp).filter(Boolean));
     const sliderScales = {
         controlnetPose: 'CONTROLNET_POSE_SCALE',
         controlnetHed: 'CONTROLNET_HED_SCALE',
@@ -1438,9 +1401,6 @@ function updateModelControls() {
         const item = document.getElementById(`${slider}Fill`)?.closest('.control-item');
         if (item) item.style.display = supportedScales.has(prop) ? '' : 'none';
     });
-
-    const styleGroup = document.getElementById('styleTransferToggle')?.closest('.control-group');
-    if (styleGroup) styleGroup.style.display = model.ipAdapter ? '' : 'none';
 }
 
 function handleStyleImageUpload(event) {
@@ -1483,7 +1443,7 @@ function handleStyleImageUpload(event) {
         // Show delete button
         showStyleImageDeleteButton();
         
-        if (streamState.streamId) debouncedParameterUpdate();
+        debouncedParameterUpdate();
         console.log('✅ Style image uploaded:', file.name);
     };
     reader.readAsDataURL(file);
@@ -1492,7 +1452,7 @@ function handleStyleImageUpload(event) {
 function deleteStyleImage() {
     // Clear the image (which also turns style transfer off in the stream)
     config.STYLE_IMAGE_URL = null;
-    if (streamState.streamId) debouncedParameterUpdate();
+    debouncedParameterUpdate();
     
     // Clear from localStorage
     localStorage.removeItem(STORAGE_KEYS.STYLE_IMAGE);
@@ -2181,9 +2141,7 @@ function setPrompt(promptText) {
         updatePromptPresetButtons();
         
         // Trigger parameter update if stream is active
-        if (streamState.streamId) {
-            debouncedParameterUpdate();
-        }
+        debouncedParameterUpdate();
         
         console.log('✅ Prompt set to:', promptText);
         
@@ -2388,8 +2346,7 @@ function updateMobileDebugInfo(info) {
     // Get Telegram waitlist info
     const waitlistInfo = getTelegramWaitlistInfo();
     
-    // Get Daydream stream status
-    const daydreamStatus = getDaydreamStatusForDebug();
+    const streamStatus = getStreamStatusForDebug();
     
     debugInfo.innerHTML = `
         <div><span style="color: #60a5fa;">Status:</span> <span style="color: #fbbf24;">${info.status}</span></div>
@@ -2406,14 +2363,9 @@ function updateMobileDebugInfo(info) {
             <div><span style="color: #f472b6;">Interval:</span> <span style="color: #fbbf24;">${waitlistInfo.interval}s</span></div>
         </div>
         <div style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 6px;">
-            <div><span style="color: #8b5cf6;">☁️ Daydream:</span> <span style="color: ${daydreamStatus.color};">${daydreamStatus.text}</span></div>
-            ${streamState.playbackId ? `<div><span style="color: #8b5cf6;">Playback:</span> <span style="color: #fbbf24;">${streamState.playbackId.substring(0, 12)}...</span></div>` : ''}
+            <div><span style="color: #8b5cf6;">🖥️ GPU:</span> <span style="color: ${streamStatus.color};">${streamStatus.text}</span></div>
+            ${streamState.podUrl ? `<div><span style="color: #8b5cf6;">Pod:</span> <span style="color: #fbbf24;">${new URL(streamState.podUrl).hostname.split('-')[0]}</span></div>` : ''}
             ${streamState.peerConnection ? `<div><span style="color: #8b5cf6;">WebRTC:</span> <span style="color: #fbbf24;">${streamState.peerConnection.connectionState}</span></div>` : ''}
-            ${streamState.isStreaming && streamState.streamId ? `
-                <div><span style="color: #8b5cf6;">Stream ID:</span> <span style="color: #fbbf24;">${streamState.streamId}</span></div>
-                <div><span style="color: #8b5cf6;">WHIP URL:</span> <span style="color: #fbbf24;">${streamState.whipUrl || 'N/A'}</span></div>
-                <div><span style="color: #8b5cf6;">Livepeer URL:</span> <span style="color: #fbbf24;">https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force&controls=false</span></div>
-            ` : ''}
         </div>
     `;
 }
@@ -2437,47 +2389,10 @@ function getOSCStatusForDebug() {
     }
 }
 
-function getDaydreamStatusForDebug() {
-    if (streamState.isStreaming && streamState.streamId && streamState.playbackId) {
-        return {
-            text: `Active (${streamState.streamId.substring(0, 8)}...)`,
-            color: '#22c55e' // Green for active stream
-        };
-    } else if (streamState.streamId && streamState.playbackId && !streamState.isStreaming) {
-        return {
-            text: `Ready (${streamState.streamId.substring(0, 8)}...)`,
-            color: '#f59e0b' // Orange for ready but not streaming
-        };
-    } else if (streamState.streamId && !streamState.playbackId) {
-        return {
-            text: 'Creating...',
-            color: '#8b5cf6' // Purple for creating
-        };
-    } else {
-        return {
-            text: 'Not Connected',
-            color: '#6b7280' // Gray for not connected
-        };
-    }
-}
-
-async function fetchDaydreamStreamStatus() {
-    if (!streamState.streamId || !config.DEBUG_MODE) return null;
-    
-    try {
-        if (!hasDaydreamAccess()) return null;
-        
-        const response = await daydreamFetch(`streams/${streamState.streamId}/status`);
-        
-        if (response.ok) {
-            const data = await response.json();
-            return data.data ?? data;
-        }
-    } catch (error) {
-        console.warn('Failed to fetch stream status:', error);
-    }
-    
-    return null;
+function getStreamStatusForDebug() {
+    if (streamState.isStreaming) return { text: 'Active', color: '#22c55e' };
+    if (streamState.isStarting) return { text: 'Starting', color: '#8b5cf6' };
+    return { text: 'Idle', color: '#6b7280' };
 }
 
 function updateOSCSectionVisibility() {
@@ -2508,18 +2423,11 @@ function updateTelegramSectionVisibility() {
     }
 }
 
-function updateDaydreamSectionVisibility() {
-    const daydreamInfoDiv = document.getElementById('daydreamInfo');
-    const daydreamMessagesDiv = document.getElementById('daydreamMessages');
-    
-    if (!daydreamInfoDiv || !daydreamMessagesDiv) return;
-    
-    // Hide Daydream section if no messages, show if messages exist
-    if (daydreamMessagesDiv.children.length === 0) {
-        daydreamInfoDiv.style.display = 'none';
-    } else {
-        daydreamInfoDiv.style.display = 'block';
-    }
+function updateStreamSectionVisibility() {
+    const infoDiv = document.getElementById('streamInfo');
+    const messagesDiv = document.getElementById('streamMessages');
+    if (!infoDiv || !messagesDiv) return;
+    infoDiv.style.display = messagesDiv.children.length === 0 ? 'none' : 'block';
 }
 
 function addOSCMessageToDebug(message) {
@@ -2657,85 +2565,50 @@ function addTelegramMessageToDebug(message) {
     updateTelegramSectionVisibility();
 }
 
-function addDaydreamEventToDebug(message) {
+// [text, color] per stream event type for the debug overlay
+const STREAM_EVENT_LABELS = {
+    stream_connecting: ['Starting...', '#f59e0b'],
+    pod_starting: ['GPU pod starting', '#f59e0b'],
+    pod_ready: ['GPU pod ready', '#22c55e'],
+    stream_started: ['Stream started', '#10b981'],
+    stream_stopped: ['Stream stopped', '#ef4444'],
+    stream_connected: ['WebRTC connected', '#22c55e'],
+    stream_disconnected: ['WebRTC disconnected', '#ef4444'],
+    resolution_changed: ['Resolution changed', '#06a3d7']
+};
+
+function addStreamEventToDebug(message) {
     if (!config.DEBUG_MODE) return;
-    
-    const daydreamMessagesDiv = document.getElementById('daydreamMessages');
-    if (!daydreamMessagesDiv) return;
-    
-    const timestamp = new Date().toLocaleTimeString();
-    let messageText = '';
-    let messageColor = '#60a5fa'; // Default blue
-    
-    if (message.type === 'stream_created') {
-        const streamId = message.streamId || 'Unknown';
-        const playbackId = message.playbackId || 'Unknown';
-        messageText = `Stream created: ${streamId.substring(0, 8)}... (${playbackId.substring(0, 8)}...)`;
-        messageColor = '#22c55e'; // Green for successful creation
-    } else if (message.type === 'stream_started') {
-        messageText = 'Stream started';
-        messageColor = '#10b981'; // Emerald for active stream
-    } else if (message.type === 'stream_stopped') {
-        messageText = 'Stream stopped';
-        messageColor = '#ef4444'; // Red for stopped stream
-    } else if (message.type === 'stream_connecting') {
-        messageText = 'Connecting to stream...';
-        messageColor = '#f59e0b'; // Orange for connecting
-    } else if (message.type === 'stream_connected') {
-        messageText = 'WebRTC connected';
-        messageColor = '#22c55e'; // Green for connected
-    } else if (message.type === 'stream_disconnected') {
-        messageText = 'WebRTC disconnected';
-        messageColor = '#ef4444'; // Red for disconnected
-    } else if (message.type === 'stream_error') {
-        const error = message.error || 'Unknown error';
-        messageText = `Error: ${error}`;
-        messageColor = '#ef4444'; // Red for errors
+    const messagesDiv = document.getElementById('streamMessages');
+    if (!messagesDiv) return;
+
+    let [text, color] = STREAM_EVENT_LABELS[message.type] || [JSON.stringify(message), '#60a5fa'];
+    if (message.type === 'stream_error') {
+        [text, color] = [`Error: ${message.error || 'Unknown error'}`, '#ef4444'];
     } else if (message.type === 'parameters_updated') {
-        const prompt = message.prompt || 'No prompt';
-        messageText = `Parameters updated: "${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}"`;
-        messageColor = '#8b5cf6'; // Purple for parameter updates
-    } else if (message.type === 'popup_opened') {
-        const playbackId = message.playbackId || 'Unknown';
-        messageText = `Player opened: ${playbackId.substring(0, 8)}...`;
-        messageColor = '#06a3d7'; // Blue for popup actions
-    } else if (message.type === 'popup_closed') {
-        messageText = 'Player closed';
-        messageColor = '#6b7280'; // Gray for popup closed
-    } else if (message.type === 'stream_validated') {
-        const streamId = message.streamId || 'Unknown';
-        messageText = `Stream validated: ${streamId.substring(0, 8)}...`;
-        messageColor = '#22c55e'; // Green for validation
-    } else if (message.type === 'stream_invalid') {
-        messageText = 'Saved stream invalid, creating new';
-        messageColor = '#f59e0b'; // Orange for invalid stream
-    } else {
-        messageText = JSON.stringify(message);
+        const prompt = message.prompt || '';
+        [text, color] = [`Parameters updated: "${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}"`, '#8b5cf6'];
+    } else if (message.type === 'pod_ready' && message.uptime) {
+        text += ` after ${message.uptime}s`;
+    } else if (message.type === 'resolution_changed') {
+        text += ` to ${message.resolution}`;
     }
-    
-    const messageElement = document.createElement('div');
-    messageElement.style.cssText = `
-        margin-bottom: 2px;
-        font-size: 10px;
-        line-height: 1.2;
-    `;
-    messageElement.innerHTML = `
-        <span style="color: #6b7280;">${timestamp}</span> 
-        <span style="color: ${messageColor};">${messageText}</span>
-    `;
-    
-    daydreamMessagesDiv.appendChild(messageElement);
-    
-    // Keep only the last 20 messages
-    while (daydreamMessagesDiv.children.length > 20) {
-        daydreamMessagesDiv.removeChild(daydreamMessagesDiv.firstChild);
-    }
-    
-    // Auto-scroll to bottom
-    daydreamMessagesDiv.scrollTop = daydreamMessagesDiv.scrollHeight;
-    
-    // Update Daydream section visibility
-    updateDaydreamSectionVisibility();
+
+    // textContent: messages can carry server error text
+    const row = document.createElement('div');
+    row.style.cssText = 'margin-bottom: 2px; font-size: 10px; line-height: 1.2;';
+    const time = document.createElement('span');
+    time.style.color = '#6b7280';
+    time.textContent = new Date().toLocaleTimeString() + ' ';
+    const label = document.createElement('span');
+    label.style.color = color;
+    label.textContent = text;
+    row.append(time, label);
+    messagesDiv.appendChild(row);
+
+    while (messagesDiv.children.length > 20) messagesDiv.removeChild(messagesDiv.firstChild);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    updateStreamSectionVisibility();
 }
 
 function getDevicePixelRatio() {
@@ -2894,8 +2767,8 @@ async function toggleVideoRecording() {
 async function startVideoRecording() {
     try {
         // Check if there's an active stream
-        if (!streamState.playbackId) {
-            alert('Please start a stream first before recording.');
+        if (!streamState.isStreaming) {
+            alert('Please start the AI first before recording.');
             return;
         }
 
@@ -6044,70 +5917,49 @@ function hashCode (s) {
 };
 
 // StreamDiffusion functionality (state variables moved to top of file)
-const DAYDREAM_API_BASE = 'https://api.daydream.live/v1';
-// On diffusionlab.de the API key stays on the server: requests go through the PHP
-// proxy in api/daydream.php, unless the visitor saved their own key in settings
-const DAYDREAM_PROXY_URL = 'api/daydream.php';
-const DAYDREAM_PROXY_HOSTS = ['diffusionlab.de', 'www.diffusionlab.de'];
+// GPU backend. api/runpod.php starts an on-demand RunPod GPU pod running StreamDiffusion
+// (see pod/) and, once its models are loaded, hands out the pod's URL and a short-lived
+// token. The page then talks to the pod directly: one WebRTC connection carries the input
+// canvas up and the AI output back (POST /whip), live changes go to POST /params.
+// The pod deletes itself when nobody uses it, so a closed tab costs at most a few minutes.
+const RUNPOD_API_URL = 'api/runpod.php';
+const POD_START_TIMEOUT_MS = 5 * 60 * 1000; // a cold start takes 1.5-3 min
+const POD_STATUS_POLL_MS = 2000;             // while the pod starts
+const POD_KEEPALIVE_MS = 15000;              // while streaming: keeps our session, refreshes the token
+const ICE_GATHERING_TIMEOUT_MS = 3000;
+const STYLE_IMAGE_MAX_SIZE = 512;            // px; the style image is sent once, downscaled
 
-function hasOwnApiKey() {
-    return !!loadFromLocalStorage(STORAGE_KEYS.API_KEY_CONSENT, false) && !!loadFromLocalStorage(STORAGE_KEYS.API_KEY);
-}
-
-function useDaydreamProxy() {
-    return DAYDREAM_PROXY_HOSTS.includes(window.location.hostname) && !hasOwnApiKey();
-}
-
-function hasDaydreamAccess() {
-    return useDaydreamProxy() || !!getApiKey();
-}
-
-// fetch() for a Daydream API path like 'streams/str_x/status', via the proxy or directly
-function daydreamFetch(path, options = {}) {
-    if (useDaydreamProxy()) {
-        return fetch(`${DAYDREAM_PROXY_URL}?path=${encodeURIComponent(path)}`, options);
+// action: 'start' | 'status' | 'stop'; resolves with the JSON or throws its error text
+async function runpodApi(action, session = streamState.session) {
+    const isStatus = action === 'status';
+    const url = `${RUNPOD_API_URL}?action=${action}` + (isStatus ? `&session=${encodeURIComponent(session || '')}` : '');
+    const response = await fetch(url, isStatus
+        ? { cache: 'no-store' }
+        : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(session ? { session } : {}) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success === false) {
+        throw new Error(data.error || `GPU backend error (HTTP ${response.status})`);
     }
-    const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${getApiKey()}` };
-    return fetch(`${DAYDREAM_API_BASE}/${path}`, { ...options, headers });
+    return data;
 }
-// `pipeline` + `params.model_id` replaces the deprecated `pipeline_id: 'pip_SDXL-turbo'`
-const DAYDREAM_PIPELINE = 'streamdiffusion';
-const DEFAULT_MODEL_ID = 'stabilityai/sdxl-turbo';
 
-// Tile ControlNet with the feedback preprocessor
-const feedbackControlnet = (modelId) => ({
-    model_id: modelId, preprocessor: 'feedback', fixedScale: 0.1,
-    preprocessor_params: { feedback_strength: 0.5 }
-});
-const CANNY_PARAMS = { low_threshold: 100, high_threshold: 200 };
+// fetch() to the running pod, with its token
+function podFetch(path, options = {}) {
+    const headers = { ...(options.headers || {}), Authorization: `Bearer ${streamState.token}` };
+    return fetch(streamState.podUrl + path, { ...options, headers });
+}
 
-// ControlNets per model, from Daydream's docs. `scaleProp` ties a ControlNet to its
-// slider; a model without a slider's ControlNet hides that slider.
-const DAYDREAM_MODELS = {
-    'stabilityai/sdxl-turbo': {
-        ipAdapter: true,
-        controlnets: [
-            { model_id: 'xinsir/controlnet-depth-sdxl-1.0', preprocessor: 'depth_tensorrt', scaleProp: 'CONTROLNET_DEPTH_SCALE' },
-            { model_id: 'xinsir/controlnet-canny-sdxl-1.0', preprocessor: 'canny', scaleProp: 'CONTROLNET_CANNY_SCALE', preprocessor_params: CANNY_PARAMS },
-            feedbackControlnet('xinsir/controlnet-tile-sdxl-1.0')
-        ]
-    },
-    'stabilityai/sd-turbo': {
-        ipAdapter: false,
-        lcmLoraId: 'latent-consistency/lcm-lora-sdv1-5',
-        controlnets: [
-            { model_id: 'thibaud/controlnet-sd21-openpose-diffusers', preprocessor: 'pose_tensorrt', scaleProp: 'CONTROLNET_POSE_SCALE' },
-            { model_id: 'thibaud/controlnet-sd21-hed-diffusers', preprocessor: 'soft_edge', scaleProp: 'CONTROLNET_HED_SCALE' },
-            { model_id: 'thibaud/controlnet-sd21-canny-diffusers', preprocessor: 'canny', scaleProp: 'CONTROLNET_CANNY_SCALE', preprocessor_params: CANNY_PARAMS },
-            { model_id: 'thibaud/controlnet-sd21-depth-diffusers', preprocessor: 'depth_tensorrt', scaleProp: 'CONTROLNET_DEPTH_SCALE' },
-            { model_id: 'thibaud/controlnet-sd21-color-diffusers', preprocessor: 'passthrough', scaleProp: 'CONTROLNET_COLOR_SCALE' }
-        ]
-    }
+// The pod runs SDXL-Turbo with exactly these ControlNets (pod/config.yaml, matched by
+// model_id); the page only sets their scales. `scaleProp` ties a ControlNet to its slider;
+// sliders without a ControlNet here are hidden.
+const AI_MODEL = {
+    label: 'SDXL Turbo',
+    controlnets: [
+        { model_id: 'xinsir/controlnet-depth-sdxl-1.0', scaleProp: 'CONTROLNET_DEPTH_SCALE' },
+        { model_id: 'xinsir/controlnet-canny-sdxl-1.0', scaleProp: 'CONTROLNET_CANNY_SCALE' },
+        { model_id: 'xinsir/controlnet-tile-sdxl-1.0', fixedScale: 0.1 } // feedback: blends in the last output
+    ]
 };
-
-function getCurrentModelId() {
-    return DAYDREAM_MODELS[config.MODEL_ID] ? config.MODEL_ID : DEFAULT_MODEL_ID;
-}
 
 function updateStreamStatus(status, className = '') {
     const statusElement = document.getElementById('streamStatus');
@@ -6132,9 +5984,8 @@ function updateStreamButton(isStreaming) {
     const streamControlsRow = document.getElementById('streamControlsRow');
     const opacityContainer = document.getElementById('streamOpacityContainer');
     
-    const hasValidStream = streamState.playbackId && streamState.streamId && isStreaming;
     // Debug mode shows the stream controls without a stream, e.g. to edit the frame
-    const showControls = hasValidStream || config.DEBUG_MODE;
+    const showControls = isStreaming || config.DEBUG_MODE;
     
     if (streamControlsRow) {
         streamControlsRow.style.display = showControls ? 'flex' : 'none';
@@ -6144,412 +5995,146 @@ function updateStreamButton(isStreaming) {
         opacityContainer.style.display = showControls ? 'block' : 'none';
     }
     
-    // Hide button text follows the overlay, which is also shown while the stream connects
+    // "Start AI" while idle; afterwards it hides/shows the overlay (also while starting)
     if (hideButton) {
         const overlay = document.getElementById('streamOverlay');
         const isVisible = overlay && overlay.classList.contains('visible');
-        hideButton.textContent = isVisible ? 'Hide Diffusion' : 'Show Diffusion';
+        hideButton.textContent = !isStreaming && !streamState.isStarting ? 'Start AI'
+            : isVisible ? 'Hide Diffusion' : 'Show Diffusion';
     }
-}
-
-async function copyStreamUrlToClipboard(forceShare = false) {
-    if (!streamState.playbackId) {
-        console.warn('No stream URL available to copy');
-        return;
-    }
-    
-    const streamUrl = `https://lvpr.tv/?v=${streamState.playbackId}&lowLatency=force&controls=false`;
-    const copyButton = document.getElementById('copyStreamUrlButton');
-    
-    // Prepare share data with URL as text
-    const shareData = {
-        title: 'AI Fluid Simulation Stream',
-        text: `Check out this AI-powered fluid simulation stream: ${streamUrl}`,
-        url: streamUrl
-    };
-    
-    // Primary action: Try Web Share API first (share sheet priority)
-    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
-        try {
-            await navigator.share(shareData);
-            showShareFeedback(copyButton, 'Shared!');
-            return;
-        } catch (err) {
-            if (err.name !== 'AbortError') {
-                console.error('Web Share API failed:', err);
-            }
-            // Fall through to clipboard copy
-        }
-    }
-    
-    // Fallback action: Copy to clipboard if sharing fails or isn't available
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        try {
-            await navigator.clipboard.writeText(streamUrl);
-            showShareFeedback(copyButton, 'Copied!');
-        } catch (err) {
-            console.error('Failed to copy with clipboard API:', err);
-            // Fallback to older method
-            fallbackCopyToClipboard(streamUrl, copyButton);
-        }
-    } else {
-        // Fallback for older browsers
-        fallbackCopyToClipboard(streamUrl, copyButton);
-    }
-}
-
-function fallbackCopyToClipboard(text, button) {
-    // Create a temporary textarea element
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    
-    try {
-        textarea.select();
-        textarea.setSelectionRange(0, 99999); // For mobile devices
-        document.execCommand('copy');
-        showShareFeedback(button, 'Copied!');
-    } catch (err) {
-        console.error('Fallback copy failed:', err);
-    } finally {
-        document.body.removeChild(textarea);
-    }
-}
-
-function showShareFeedback(button, message = 'Copied!') {
-    if (!button) return;
-    
-    const originalText = button.textContent;
-    button.textContent = `✓ ${message}`;
-    button.classList.add('copied');
-    
-    setTimeout(() => {
-        button.textContent = originalText;
-        button.classList.remove('copied');
-    }, 2000);
-}
-
-
-
-
-async function createDaydreamStream() {
-    if (!hasDaydreamAccess()) {
-        throw new Error('API key is required');
-    }
-
-    const response = await daydreamFetch('streams', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            pipeline: DAYDREAM_PIPELINE,
-            params: buildStreamParams()
-        })
-        });
-
-        if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to create stream: ${error}`);
-    }
-
-    return await response.json();
 }
 
 function buildStreamParams() {
-    const prompt = document.getElementById('promptInput').value;
-    const negativePrompt = document.getElementById('negativePromptInput').value;
-    const modelId = getCurrentModelId();
-    const model = DAYDREAM_MODELS[modelId];
-
-    const params = {
+    return {
+        prompt: document.getElementById('promptInput').value,
+        negative_prompt: document.getElementById('negativePromptInput').value,
         seed: config.SEED,
         delta: config.DELTA,
-        width: getStreamResolution(),
-        height: getStreamResolution(),
-        prompt: prompt,
-        model_id: modelId,
-        lora_dict: null,
         num_inference_steps: config.INFERENCE_STEPS,
-        negative_prompt: negativePrompt,
-        use_denoising_batch: true,
-        normalize_seed_weights: true,
-        normalize_prompt_weights: true,
-        seed_interpolation_method: "linear",
-        enable_similar_image_filter: false,
-        prompt_interpolation_method: "linear",
-        similar_image_filter_threshold: 0.98,
-        similar_image_filter_max_skip_frame: 10,
-        acceleration: "tensorrt",
-        do_add_noise: true,
-        t_index_list: [config.T_INDEX],
-        use_lcm_lora: true,
         guidance_scale: config.GUIDANCE_SCALE,
-        controlnets: model.controlnets.map(cn => ({
-            enabled: true,
+        t_index_list: [config.T_INDEX],
+        controlnets: AI_MODEL.controlnets.map(cn => ({
             model_id: cn.model_id,
-            preprocessor: cn.preprocessor,
-            conditioning_scale: cn.scaleProp ? config[cn.scaleProp] : cn.fixedScale,
-            preprocessor_params: cn.preprocessor_params || {}
-        }))
-    };
-
-    if (model.lcmLoraId) {
-        params.lcm_lora_id = model.lcmLoraId;
-    }
-
-    // sd-turbo has no IP Adapter and rejects these keys, even as null
-    if (model.ipAdapter) {
-        params.ip_adapter = {
+            enabled: true,
+            conditioning_scale: cn.scaleProp ? config[cn.scaleProp] : cn.fixedScale
+        })),
+        ip_adapter: {
             scale: config.STYLE_STRENGTH || 0.5,
-            // Off without a style image, even when toggled on: the fallback image below
-            // would otherwise restyle the output
-            enabled: config.STYLE_TRANSFER_ENABLED && !!config.STYLE_IMAGE_URL
-        };
-        params.ip_adapter_style_image_url = config.STYLE_IMAGE_URL || "https://storage.googleapis.com/thom-vod-testing/style-presets/default_preset.png";
-    }
-
-    return params;
+            // Off without a style image, even when toggled on
+            enabled: !!(config.STYLE_TRANSFER_ENABLED && config.STYLE_IMAGE_URL)
+        }
+    };
 }
 
-async function updateStreamParameters() {
-    if (!streamState.streamId || !streamState.isStreaming) {
-        console.log('⚠️ Skipping parameter update - no active stream');
-        return;
-    }
-    
-    // Validate stream ID format
-    if (!streamState.streamId.startsWith('str_')) {
-        console.error('❌ Invalid stream ID format:', streamState.streamId);
-        addDaydreamEventToDebug({
-            type: 'parameter_update_failed',
-            error: 'Invalid stream ID format'
-        });
-        return;
-    }
-    
-    const now = Date.now();
-    if (now - streamState.lastParameterUpdate < 500) {
-        console.log('⚠️ Skipping parameter update - too frequent');
-        return; // Reduced throttle time
-    }
-    
-    // Prevent overlapping requests
-    if (streamState.isUpdatingParameters) {
-        console.log('⚠️ Skipping parameter update - already updating');
-        return;
-    }
+// Sends the params to the pod when they changed. Runs every second while streaming (OSC
+// and Telegram change `config` directly and reach the pod only this way) and right after
+// UI changes (debounced). A failed send is simply retried on the next tick.
+// Also used directly as an event listener, so `force` is an option, not a boolean argument.
+async function updateStreamParameters({ force = false } = {}) {
+    if (!streamState.isStreaming || streamState.isUpdatingParameters) return;
+
+    const params = buildStreamParams();
+    const json = JSON.stringify(params);
+    // The style image is sent only when it changes; the pod keeps the last one
+    const newStyleImage = params.ip_adapter.enabled && config.STYLE_IMAGE_URL !== streamState.lastStyleImage
+        ? config.STYLE_IMAGE_URL : null;
+    if (!force && !newStyleImage && json === streamState.lastParamsJson) return;
+
     streamState.isUpdatingParameters = true;
-    
     try {
-        const params = buildStreamParams();
-        const { prompt, negative_prompt: negativePrompt } = params;
-        
-        console.log('🔄 Updating stream parameters:', { prompt, negativePrompt });
-
-        const response = await daydreamFetch(`streams/${streamState.streamId}`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                pipeline: DAYDREAM_PIPELINE,
-                params: params
-            })
+        const body = { ...params };
+        if (newStyleImage) body.ip_adapter_style_image_url = await shrinkImageDataUrl(newStyleImage, STYLE_IMAGE_MAX_SIZE);
+        const response = await podFetch('/params', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
         });
-
-        if (response.ok) {
-            const result = await response.json();
-            streamState.lastParameterUpdate = now;
-            console.log('✅ Parameters updated successfully:', { 
-                prompt, 
-                negativePrompt, 
-                response: result,
-                guidance_scale: config.GUIDANCE_SCALE,
-                delta: config.DELTA,
-                controlnet_pose_scale: config.CONTROLNET_POSE_SCALE,
-                controlnet_hed_scale: config.CONTROLNET_HED_SCALE,
-                controlnet_canny_scale: config.CONTROLNET_CANNY_SCALE,
-                controlnet_depth_scale: config.CONTROLNET_DEPTH_SCALE,
-                controlnet_color_scale: config.CONTROLNET_COLOR_SCALE 
-            });
-            
-            // Add to debug log
-            addDaydreamEventToDebug({
-                type: 'parameters_updated',
-                prompt: prompt
-            });
-        } else {
-            const errorText = await response.text();
-            console.error('❌ Parameter update failed:', {
-                status: response.status,
-                statusText: response.statusText,
-                error: errorText,
-                sentParams: params,
-                streamId: streamState.streamId
-            });
-            
-            // Handle specific error cases
-            if (response.status === 404) {
-                console.error('🚨 Stream not found - may have expired or been deleted');
-                addDaydreamEventToDebug({
-                    type: 'stream_not_found',
-                    streamId: streamState.streamId,
-                    error: 'Stream not found (404)'
-                });
-            } else if (response.status === 401) {
-                console.error('🚨 Unauthorized - check API key');
-                addDaydreamEventToDebug({
-                    type: 'unauthorized',
-                    error: 'Invalid API key (401)'
-                });
-            } else if (response.status >= 500) {
-                console.error('🚨 Server error - API may be down');
-                addDaydreamEventToDebug({
-                    type: 'server_error',
-                    status: response.status,
-                    error: 'Server error'
-                });
-            }
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        streamState.lastParamsJson = json;
+        if (newStyleImage) streamState.lastStyleImage = newStyleImage;
+        addStreamEventToDebug({ type: 'parameters_updated', prompt: params.prompt });
     } catch (error) {
         console.warn('Failed to update stream parameters:', error);
-        
-        // Handle specific error types
-        if (error.name === 'TypeError' && error.message.includes('fetch')) {
-            console.error('🚨 Network error - check internet connection');
-            addDaydreamEventToDebug({
-                type: 'network_error',
-                error: 'Network connection failed'
-            });
-        } else if (error.name === 'AbortError') {
-            console.warn('⚠️ Request aborted');
-            addDaydreamEventToDebug({
-                type: 'request_aborted',
-                error: 'Request was aborted'
-            });
-        } else {
-            addDaydreamEventToDebug({
-                type: 'stream_error',
-                error: error.message || 'Parameter update failed'
-            });
-        }
-        
-        // Don't let API errors affect the simulation - just log and continue
+        addStreamEventToDebug({ type: 'stream_error', error: 'Parameter update failed: ' + error.message });
     } finally {
         streamState.isUpdatingParameters = false;
     }
 }
 
-async function setupWebRTCConnection(whipUrl, mediaStream) {
-    const peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
-
-    // Add the media stream to the peer connection
-    mediaStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, mediaStream);
-    });
-
-    // Create offer
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    // Send offer to WHIP endpoint
-    const response = await fetch(whipUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/sdp'
-        },
-        body: offer.sdp
-    });
-
-    if (!response.ok) {
-        throw new Error(`WHIP connection failed: ${response.statusText}`);
-    }
-
-    // Daydream returns the WHEP playback URL for the AI output in this header
-    streamState.whepUrl = response.headers.get('livepeer-playback-url') || null;
-
-    const answerSdp = await response.text();
-    await peerConnection.setRemoteDescription(new RTCSessionDescription({
-        type: 'answer',
-        sdp: answerSdp
-    }));
-
-    return peerConnection;
-}
-
-// The lvpr.tv player no longer receives the AI output ("stream offline"), so the
-// overlay plays it over WebRTC (WHEP) like Daydream's Browser SDK does.
-async function getWhepUrl() {
-    if (streamState.whepUrl) return streamState.whepUrl;
-
-    // Fallback when the WHIP header isn't readable: the status endpoint reports it
-    const response = await daydreamFetch(`streams/${streamState.streamId}/status`);
-    if (!response.ok) return null;
-    const data = await response.json();
-    streamState.whepUrl = data?.data?.gateway_status?.whep_url || null;
-    return streamState.whepUrl;
-}
-
-async function startStreamPlayback(attempt = 1) {
-    const video = document.getElementById('streamOverlayVideo');
-    if (!video || !streamState.streamId) return;
-
-    stopStreamPlayback();
-
-    try {
-        const whepUrl = await getWhepUrl();
-        if (!whepUrl) throw new Error('No playback URL yet');
-
-        const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        });
-        pc.addTransceiver('video', { direction: 'recvonly' });
-        pc.addTransceiver('audio', { direction: 'recvonly' });
-        pc.ontrack = (event) => {
-            video.srcObject = event.streams[0] || new MediaStream([event.track]);
-            // Stays under the loader until watchStreamWarmup() sees real AI frames
-            video.style.display = 'block';
-            syncPopupVideo();
-            startStreamUpscaler();
+// Downscales an image data URL to a JPEG of at most maxSize px on its longer side
+function shrinkImageDataUrl(dataUrl, maxSize) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => {
+            const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(image.width * scale);
+            canvas.height = Math.round(image.height * scale);
+            canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.9));
         };
-        streamState.playbackConnection = pc;
+        image.onerror = () => reject(new Error('Could not read the style image'));
+        image.src = dataUrl;
+    });
+}
 
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+// One peer connection: the input canvas goes up, the AI output comes back on it.
+// The pod (aiortc) can't take trickled ICE candidates, so the offer waits for all of them.
+async function connectToPod(mediaStream) {
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    pc.addTransceiver(mediaStream.getVideoTracks()[0], { direction: 'sendrecv', streams: [mediaStream] });
+    pc.ontrack = (event) => {
+        const video = document.getElementById('streamOverlayVideo');
+        video.srcObject = new MediaStream([event.track]);
+        video.style.display = 'block';
+        // Explicit play(): iOS doesn't autoplay a video it hasn't shown yet
+        video.play().catch(() => {});
+        // The loader stays up until AI frames actually play
+        video.addEventListener('playing', () => setStreamLoader('hidden'), { once: true });
+        syncPopupVideo();
+        startStreamUpscaler();
+    };
 
-        const response = await fetch(whepUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/sdp' },
-            body: offer.sdp
-        });
-        if (!response.ok) throw new Error(`WHEP playback failed: ${response.status}`);
+    await pc.setLocalDescription(await pc.createOffer());
+    await waitForIceGathering(pc);
 
-        await pc.setRemoteDescription({ type: 'answer', sdp: await response.text() });
-
-        pc.addEventListener('connectionstatechange', () => {
-            if (pc.connectionState === 'failed' && streamState.playbackConnection === pc && streamState.isStreaming) {
-                console.warn('⚠️ Playback connection failed, reconnecting...');
-                startStreamPlayback();
-            }
-        });
-        console.log('✅ Stream playback connected (WHEP)');
-    } catch (error) {
-        stopStreamPlayback();
-        // The output takes a few seconds to come up after the input connects
-        if (attempt < 10 && streamState.streamId) {
-            console.log(`⏳ Waiting for stream output (${attempt}/10):`, error.message);
-            setTimeout(() => startStreamPlayback(attempt + 1), 2000);
-        } else {
-            console.error('❌ Stream playback failed:', error);
-            setStreamLoader('error', STREAM_ERROR_TITLE);
-            showStreamGatewayError();
-        }
+    // A new size makes the pod rebuild its pipeline first (~20 s)
+    const response = await podFetch(`/whip?size=${getStreamResolution()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp' },
+        body: pc.localDescription.sdp
+    });
+    if (response.status !== 201) {
+        pc.close();
+        throw new Error(`The GPU refused the connection (HTTP ${response.status}): ${await response.text()}`);
     }
+    streamState.sessionUrl = response.headers.get('Location');
+    await pc.setRemoteDescription({ type: 'answer', sdp: await response.text() });
+
+    pc.addEventListener('connectionstatechange', () => {
+        if (pc !== streamState.peerConnection) return; // replaced by a reconnect
+        const state = pc.connectionState;
+        addStreamEventToDebug({ type: state === 'connected' ? 'stream_connected' : (state === 'failed' || state === 'disconnected') ? 'stream_disconnected' : 'stream_connecting' });
+        if (state === 'failed') {
+            updateStreamStatus('Connection lost, reconnecting...', 'connecting');
+            reconnectStream('Reconnecting');
+        }
+    });
+    return pc;
+}
+
+function waitForIceGathering(pc) {
+    if (pc.iceGatheringState === 'complete') return Promise.resolve();
+    return new Promise(resolve => {
+        const done = () => {
+            clearTimeout(timer);
+            pc.removeEventListener('icegatheringstatechange', onChange);
+            resolve();
+        };
+        const onChange = () => { if (pc.iceGatheringState === 'complete') done(); };
+        const timer = setTimeout(done, ICE_GATHERING_TIMEOUT_MS); // send what we have
+        pc.addEventListener('icegatheringstatechange', onChange);
+    });
 }
 
 // FSR display upscaling
@@ -6771,7 +6356,7 @@ function toggleFsrUpscaling() {
     config.FSR_ENABLED = !config.FSR_ENABLED;
     updateToggle('fsrToggle', config.FSR_ENABLED);
     saveConfig();
-    if (config.FSR_ENABLED && streamState.playbackConnection) startStreamUpscaler();
+    if (config.FSR_ENABLED && streamState.isStreaming) startStreamUpscaler();
     else stopStreamUpscaler();
 }
 
@@ -6844,13 +6429,11 @@ function renderUpscaledFrame() {
 }
 
 // Stream loader
-// While Daydream loads the pipeline it streams its own grey "Loading pipeline..."
-// frames. The overlay keeps its own loader on top until the status endpoint reports
-// real inference output, then fades the stream in.
-const STREAM_WARMUP_POLL_MS = 1000;
-const STREAM_WARMUP_TIMEOUT_MS = 120000; // reveal anyway if the status never confirms
-const streamWarmup = { timer: null, startedAt: 0 };
+// Covers the overlay while the GPU pod starts (its stage comes from api/runpod.php) and
+// until the first AI frame plays.
+const streamWarmup = { startedAt: 0 };
 const STREAM_ERROR_TITLE = "The AI couldn't start";
+const START_CANCELLED = 'Start cancelled';
 
 function setStreamLoader(state, title = '', detail = '') {
     aiLoading = state === 'loading';
@@ -6859,7 +6442,7 @@ function setStreamLoader(state, title = '', detail = '') {
     loader.classList.toggle('error', state === 'error');
     loader.style.display = state === 'hidden' ? 'none' : '';
     document.getElementById('streamLoaderTitle').textContent = title;
-    // Errors show a friendly title and hint; Daydream's raw message goes into "Technical details"
+    // Errors show a friendly title and hint; the raw message goes into "Technical details"
     const isError = state === 'error';
     document.getElementById('streamLoaderDetail').textContent = isError ? '' : detail;
     document.getElementById('streamLoaderTechnicalText').textContent = isError ? detail : '';
@@ -6869,79 +6452,63 @@ function setStreamLoader(state, title = '', detail = '') {
     document.querySelector('.stream-overlay-content')?.classList.toggle('stream-warming', state !== 'hidden');
 }
 
-function getStreamLoaderDetail() {
-    const model = document.getElementById('modelSelect');
-    const modelLabel = model?.selectedOptions[0]?.textContent || getCurrentModelId();
+function getStreamLoaderDetail(stage = '') {
     const size = getStreamResolution();
     const seconds = Math.round((Date.now() - streamWarmup.startedAt) / 1000);
-    return `${modelLabel} · ${size} × ${size} · ${seconds}s`;
+    return [stage, `${AI_MODEL.label} · ${size} × ${size} · ${seconds}s`].filter(Boolean).join(' · ');
 }
 
-function watchStreamWarmup() {
-    stopStreamWarmup();
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Starts the GPU pod (or joins the running one) and waits until its models are loaded.
+// Throws if it fails, takes too long, or the start was cancelled (stopStream clears the session).
+async function waitForPod() {
     streamWarmup.startedAt = Date.now();
-    setStreamLoader('loading', 'Warming up the AI', getStreamLoaderDetail());
+    setStreamLoader('loading', 'Starting a GPU', getStreamLoaderDetail());
+    const { session } = await runpodApi('start', null);
+    streamState.session = session;
+    addStreamEventToDebug({ type: 'pod_starting' });
 
-    const poll = async () => {
-        if (!streamState.streamId) return;
-        const elapsed = Date.now() - streamWarmup.startedAt;
-        setStreamLoader('loading', elapsed < 4000 ? 'Connecting' : 'Warming up the AI', getStreamLoaderDetail());
-
-        try {
-            const response = await daydreamFetch(`streams/${streamState.streamId}/status`);
-            const data = response.ok ? (await response.json()).data : null;
-            const inference = data?.inference_status;
-            const gatewayError = data?.gateway_status?.error?.error_message;
-            if (!streamWarmup.timer) return; // stopped while waiting
-
-            if (gatewayError) {
-                stopStreamWarmup();
-                setStreamLoader('error', STREAM_ERROR_TITLE, gatewayError);
-                return;
-            }
-            const producing = inference?.fps > 0 && Date.now() - inference.last_output_time < 5000;
-            if (producing || elapsed > STREAM_WARMUP_TIMEOUT_MS) {
-                stopStreamWarmup();
-                setStreamLoader('hidden');
-                return;
-            }
-        } catch (error) {
-            console.warn('Stream status check failed:', error);
+    const titles = { starting: 'Starting a GPU', loading: 'Loading the AI' };
+    while (streamState.session === session) {
+        const status = await runpodApi('status', session);
+        if (streamState.session !== session) break;
+        if (status.state === 'ready') {
+            streamState.podUrl = status.podUrl;
+            streamState.token = status.token;
+            addStreamEventToDebug({ type: 'pod_ready', uptime: status.uptime });
+            return;
         }
-        if (streamWarmup.timer) streamWarmup.timer = setTimeout(poll, STREAM_WARMUP_POLL_MS);
-    };
-    streamWarmup.timer = setTimeout(poll, STREAM_WARMUP_POLL_MS);
+        if (status.state === 'error') throw new Error('The GPU failed to start');
+        if (status.state === 'stopped') throw new Error('The GPU stopped before it was ready');
+        if (Date.now() - streamWarmup.startedAt > POD_START_TIMEOUT_MS) throw new Error('The GPU took too long to start');
+        setStreamLoader('loading', titles[status.state] || 'Starting a GPU', getStreamLoaderDetail(status.stage));
+        await sleep(POD_STATUS_POLL_MS);
+    }
+    throw new Error(START_CANCELLED);
 }
 
-function stopStreamWarmup() {
-    clearTimeout(streamWarmup.timer);
-    streamWarmup.timer = null;
-}
-
-// Show Daydream's reason when the output never arrives, e.g. "no orchestrators
-// available" when no GPU is serving the selected model right now
-async function showStreamGatewayError() {
+// While streaming: keeps our session on the pod alive and refreshes the token
+async function keepPodSession() {
+    if (!streamState.isStreaming) return;
     try {
-        const response = await daydreamFetch(`streams/${streamState.streamId}/status`);
-        if (!response.ok) return;
-        const data = await response.json();
-        const message = data?.data?.gateway_status?.error?.error_message || data?.data?.inference_status?.last_error;
-        if (!message) return;
-
-        setStreamLoader('error', STREAM_ERROR_TITLE, message);
-        updateStreamStatus('Error: ' + message, 'error');
-        addDaydreamEventToDebug({ type: 'stream_error', error: message });
+        const status = await runpodApi('status');
+        if (status.state === 'ready') {
+            streamState.token = status.token;
+        } else if (status.state === 'stopped' || status.state === 'error') {
+            // e.g. the pod hit its time limit or was stopped elsewhere
+            stopStream();
+            document.getElementById('streamOverlay')?.classList.add('visible');
+            setStreamLoader('error', 'The AI session ended', `GPU state: ${status.state}`);
+            updateStreamStatus('Session ended', 'error');
+        }
     } catch (error) {
-        console.warn('Failed to fetch stream error:', error);
+        console.warn('GPU status check failed:', error); // try again on the next tick
     }
 }
 
 function stopStreamPlayback() {
     stopStreamUpscaler();
-    if (streamState.playbackConnection) {
-        streamState.playbackConnection.close();
-        streamState.playbackConnection = null;
-    }
     const video = document.getElementById('streamOverlayVideo');
     if (video) {
         video.srcObject = null;
@@ -6949,8 +6516,7 @@ function stopStreamPlayback() {
     }
 }
 
-// The pop-out shows the same WebRTC stream as the overlay; lvpr.tv no longer
-// receives the AI output, so a link to it only ever showed a loading spinner.
+// The pop-out shows the same WebRTC stream as the overlay
 function openStreamPopup() {
     if (streamState.popupWindow && !streamState.popupWindow.closed) {
         syncPopupVideo(streamState.popupWindow);
@@ -6966,7 +6532,7 @@ function openStreamPopup() {
     console.log('🆕 Opening new popup window for stream');
     const popupWindow = window.open(
         '',
-        'AI_Daydream_Stream',
+        'DiffusionLab_AI_Stream',
         `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,menubar=no,toolbar=no,status=no`
     );
 
@@ -6999,388 +6565,171 @@ function syncPopupVideo(popupWindow = streamState.popupWindow) {
 }
 
 async function startStream(showOverlay = true) {
-    let savedStream = null;
-    let streamIsValid = false;
-    
+    if (streamState.isStreaming || streamState.isStarting) return;
+    streamState.isStarting = true;
+    updateStreamStatus('Starting...', 'connecting');
+    updateStreamButton(false);
+    addStreamEventToDebug({ type: 'stream_connecting' });
+    openStreamOverlay(showOverlay);
+
     try {
-        updateStreamStatus('Connecting...', 'connecting');
-        updateStreamButton(false);
-        
-        // Add to debug log
-        addDaydreamEventToDebug({
-            type: 'stream_connecting'
-        });
-        
-        // Validate API key (not needed when the diffusionlab.de proxy holds it)
-        if (!hasDaydreamAccess()) {
-            // First, ensure settings panel is open
-            const settingsContent = document.getElementById('settingsContent');
-            const apiKeyInput = document.getElementById('apiKeyInput');
-            
-            if (settingsContent && !settingsContent.classList.contains('expanded')) {
-                // Open settings panel first
-                toggleSettings();
-            }
-            
-            // Removed auto-scroll to API key input field
-            // Users can manually scroll to the API key section if needed
-            
-            // Update UI and return without throwing error
-            updateStreamStatus('API key required', 'error');
-            updateStreamButton(false);
-            return;
-        }
-        
-        // Create canvas media stream from appropriate canvas (audio blob or fluid)
-        const streamingCanvas = getStreamingCanvas();
-        streamState.mediaStream = getStreamInputStream(streamingCanvas);
-        if (!streamState.mediaStream) {
-            throw new Error('Failed to capture canvas stream');
-        }
-        
-        console.log(`📹 Using ${streamingCanvas === audioBlobState.canvas ? 'audio blob' : 'fluid'} canvas for streaming`);
-        
-        // Try to load and validate existing stream first
-        savedStream = loadStreamState();
-        
-        if (savedStream) {
-            updateStreamStatus('Checking saved stream...', 'connecting');
-            streamIsValid = await validateSavedStream(savedStream);
-            
-            if (streamIsValid) {
-                updateStreamStatus('Reconnecting to existing stream...', 'connecting');
-                streamState.streamId = savedStream.streamId;
-                streamState.playbackId = savedStream.playbackId;
-                streamState.whipUrl = savedStream.whipUrl;
-                console.log('✅ Reusing validated stream:', savedStream.streamId);
-                
-                // Add to debug log
-                addDaydreamEventToDebug({
-                    type: 'stream_validated',
-                    streamId: savedStream.streamId
-                });
-            } else {
-                console.log('❌ Saved stream is no longer valid, creating new one...');
-                clearStreamState(); // Clear invalid stream data
-                
-                // Add to debug log
-                addDaydreamEventToDebug({
-                    type: 'stream_invalid'
-                });
-            }
-        }
-        
-        if (!streamIsValid) {
-            // Create new Daydream stream
-            updateStreamStatus('Creating new stream...', 'connecting');
-            const streamData = await createDaydreamStream();
-            streamState.streamId = streamData.id;
-            streamState.playbackId = streamData.output_playback_id;
-            streamState.whipUrl = streamData.whip_url;
-            
-            // Save the new stream state
-            saveStreamState();
-            console.log('✅ Created new stream:', streamState.streamId);
-            
-            // Add to debug log
-            addDaydreamEventToDebug({
-                type: 'stream_created',
-                streamId: streamState.streamId,
-                playbackId: streamState.playbackId
-            });
-        }
-        
-        // Update button visibility now that we have a valid stream
-        updateStreamButton(false); // Update copy button visibility
-        
-        // Open stream overlay instead of popup window
-        updateStreamStatus('Opening player...', 'connecting');
-        openStreamOverlay(streamState.playbackId, showOverlay);
-        
-        // Add to debug log
-        addDaydreamEventToDebug({
-            type: 'popup_opened',
-            playbackId: streamState.playbackId
-        });
-        
-        // Setup WebRTC connection
-        updateStreamStatus('Connecting to stream...', 'connecting');
-        streamState.peerConnection = await setupWebRTCConnection(
-            streamState.whipUrl,
-            streamState.mediaStream
-        );
-        
-        // Play the AI output in the overlay (WHEP)
-        startStreamPlayback();
-        
-        // Monitor connection state
-        streamState.peerConnection.addEventListener('connectionstatechange', () => {
-            const state = streamState.peerConnection.connectionState;
-            
-            // Add to debug log
-            addDaydreamEventToDebug({
-                type: state === 'connected' ? 'stream_connected' : 
-                      (state === 'failed' || state === 'disconnected') ? 'stream_disconnected' : 'stream_connecting'
-            });
-            
-            if (state === 'failed' || state === 'disconnected') {
-                updateStreamStatus('Connection lost', 'error');
-                setTimeout(() => stopStream(), 2000);
-            }
-        });
-        
-        // Update parameters
-        await updateStreamParameters();
-        
+        await waitForPod();
+
+        setStreamLoader('loading', 'Connecting', getStreamLoaderDetail());
+        streamState.mediaStream = getStreamInputStream(getStreamingCanvas());
+        if (!streamState.mediaStream) throw new Error('Failed to capture the canvas stream');
+        streamState.peerConnection = await connectToPod(streamState.mediaStream);
+
         streamState.isStreaming = true;
+        await updateStreamParameters({ force: true });
         updateStreamStatus('Active', 'active');
-        updateStreamButton(true);
-        
-        // Add to debug log
-        addDaydreamEventToDebug({
-            type: 'stream_started'
-        });
-        
-        // Start continuous prompt updates to override default prompts
-        streamState.promptUpdateInterval = setInterval(() => {
-            if (streamState.isStreaming) {
-                console.log('🔄 Auto-updating stream prompt...');
-                updateStreamParameters();
-            }
-        }, 1000); // Update every second
-        
-        console.log('✅ Started continuous prompt updates every 1 second');
-        
-        // Monitor popup window
-        const checkPopup = setInterval(() => {
+        addStreamEventToDebug({ type: 'stream_started' });
+
+        streamState.promptUpdateInterval = setInterval(() => updateStreamParameters(), 1000);
+        streamState.keepaliveInterval = setInterval(keepPodSession, POD_KEEPALIVE_MS);
+        // Forget a pop-out the user closed
+        streamState.popupCheckInterval = setInterval(() => {
             if (streamState.popupWindow && streamState.popupWindow.closed) {
-                clearInterval(checkPopup);
-                // Don't automatically stop stream when popup closes
-                // Just clean up the popup reference
+                clearInterval(streamState.popupCheckInterval);
                 streamState.popupWindow = null;
                 streamState.popupCheckInterval = null;
             }
         }, 1000);
-        
-        // Store interval ID for cleanup
-        streamState.popupCheckInterval = checkPopup;
-        
     } catch (error) {
+        const cancelled = error.message === START_CANCELLED;
         console.error('Failed to start stream:', error);
-        
-        // Add to debug log
-        addDaydreamEventToDebug({
-            type: 'stream_error',
-            error: error.message || 'Stream start failed'
-        });
-        
-        let errorMessage = error.message;
-        let shouldRetryWithNewStream = false;
-        
-        // Provide user-friendly error messages
-        if (error.message.includes('API key')) {
-            errorMessage = 'Invalid API key';
-            // For API key errors, just update status and return - don't show confirm dialog
-            // The user experience is already handled by opening settings and scrolling to input
-            updateStreamStatus('Error: ' + errorMessage, 'error');
-            updateStreamButton(false);
-            stopStream();
-            return;
-        } else if (error.message.includes('Popup blocked')) {
-            errorMessage = 'Popup blocked - please allow popups';
-        } else if (error.message.includes('WHIP connection')) {
-            errorMessage = 'Stream connection failed';
-            // If we were trying to reuse a saved stream, suggest creating a new one
-            if (savedStream && streamIsValid) {
-                shouldRetryWithNewStream = true;
-                errorMessage += ' (saved stream may be expired)';
-            }
-        } else if (error.message.includes('Failed to create stream')) {
-            errorMessage = 'API error - check your key';
-        }
-        
-        updateStreamStatus('Error: ' + errorMessage, 'error');
-        updateStreamButton(false);
         stopStream();
-        
-        // If connection failed with saved stream, try creating a new one automatically
-        if (shouldRetryWithNewStream) {
-            console.log('🔄 Retrying with new stream after saved stream connection failed...');
-            clearStreamState(); // Clear the problematic saved stream
-            updateStreamStatus('Retrying with new stream...', 'connecting');
-            setTimeout(() => startStream(), 2000);
-            return;
+        if (!cancelled) {
+            addStreamEventToDebug({ type: 'stream_error', error: error.message });
+            // stopStream() closed the overlay; reopen it to explain what went wrong
+            document.getElementById('streamOverlay')?.classList.add('visible');
+            setStreamLoader('error', STREAM_ERROR_TITLE, error.message);
+            updateStreamStatus('Error: ' + error.message, 'error');
         }
-        
-        // stopStream() closed the overlay; reopen it to explain what went wrong
-        document.getElementById('streamOverlay')?.classList.add('visible');
-        setStreamLoader('error', STREAM_ERROR_TITLE, error.message);
-        updateStreamButton(false);
-
-        // Log error for debugging
-        console.log(`Stream failed: ${errorMessage}`);
+    } finally {
+        streamState.isStarting = false;
+        updateStreamButton(streamState.isStreaming);
     }
 }
 
+// Ends the session: closes the connection and tells the backend, which terminates the
+// pod when nobody else uses it
 function stopStream() {
+    const { session } = streamState;
     streamState.isStreaming = false;
-    
-    // Add to debug log
-    addDaydreamEventToDebug({
-        type: 'stream_stopped'
-    });
-    
-    // Clean up WebRTC connections
-    if (streamState.peerConnection) {
-        streamState.peerConnection.close();
-        streamState.peerConnection = null;
-    }
-    stopStreamPlayback();
-    stopStreamWarmup();
-    
-    // Clean up media stream
+    addStreamEventToDebug({ type: 'stream_stopped' });
+
+    closePodConnection();
+    if (session) runpodApi('stop', session).catch(error => console.warn('GPU stop failed:', error));
+    Object.assign(streamState, { session: null, podUrl: null, token: null, sessionUrl: null });
+
     if (streamState.mediaStream) {
         streamState.mediaStream.getTracks().forEach(track => track.stop());
         streamState.mediaStream = null;
     }
-    
-    // Clean up popup window only if it's closed or we're fully stopping
-    if (streamState.popupWindow && streamState.popupWindow.closed) {
-        streamState.popupWindow = null;
-        console.log('🔄 Popup window was closed, clearing reference');
-    } else if (streamState.popupWindow && !streamState.popupWindow.closed) {
-        console.log('🔄 Keeping popup window open for potential reconnection');
-        // Don't close or null the popup - keep it for reconnection
-    }
-    
-    // Clean up intervals
-    if (streamState.popupCheckInterval) {
-        clearInterval(streamState.popupCheckInterval);
-        streamState.popupCheckInterval = null;
-    }
-    
-    if (streamState.promptUpdateInterval) {
-        clearInterval(streamState.promptUpdateInterval);
-        streamState.promptUpdateInterval = null;
-        console.log('🔄 Stopped continuous prompt updates');
-    }
-    
-    // Close stream overlay when stopping
+    // A pop-out stays open (it shows the stream again after a restart)
+    if (streamState.popupWindow && streamState.popupWindow.closed) streamState.popupWindow = null;
+    [streamState.popupCheckInterval, streamState.promptUpdateInterval, streamState.keepaliveInterval].forEach(clearInterval);
+    streamState.popupCheckInterval = streamState.promptUpdateInterval = streamState.keepaliveInterval = null;
+
     closeStreamOverlay();
-    
-    // Reset connection state but preserve stream IDs and popup for reuse
-    // streamState.streamId, playbackId, whipUrl, popupWindow are kept for reconnection
-    streamState.lastParameterUpdate = 0;
-    streamState.isUpdatingParameters = false;
-    
     updateStreamStatus('Idle', 'idle');
     updateStreamButton(false);
 }
 
-function toggleStream() {
-    if (streamState.isStreaming) {
+// Closes the WebRTC connection and ends that session on the pod (the pod keeps running)
+function closePodConnection() {
+    if (streamState.peerConnection) {
+        streamState.peerConnection.close();
+        streamState.peerConnection = null;
+    }
+    if (streamState.sessionUrl && streamState.podUrl) {
+        podFetch(streamState.sessionUrl, { method: 'DELETE', keepalive: true }).catch(() => {});
+    }
+    streamState.sessionUrl = null;
+    streamState.lastParamsJson = null;
+    streamState.lastStyleImage = null; // a reconnect may land on a fresh pipeline
+    stopStreamPlayback();
+}
+
+// New WebRTC connection to the same pod: for the restart button, a size change (the pod
+// rebuilds its pipeline, ~20 s) or a dropped connection. No new GPU, no cold start.
+async function reconnectStream(title = 'Reconnecting') {
+    if (!streamState.isStreaming) return startStream();
+    if (streamState.isReconnecting) return;
+    streamState.isReconnecting = true;
+    streamWarmup.startedAt = Date.now();
+    closePodConnection();
+    setStreamLoader('loading', title, getStreamLoaderDetail());
+    try {
+        streamState.peerConnection = await connectToPod(streamState.mediaStream);
+        await updateStreamParameters({ force: true });
+        updateStreamStatus('Active', 'active');
+    } catch (error) {
+        console.error('Reconnect failed:', error);
         stopStream();
-    } else {
-        startStream();
+        document.getElementById('streamOverlay')?.classList.add('visible');
+        setStreamLoader('error', STREAM_ERROR_TITLE, error.message);
+        updateStreamStatus('Error: ' + error.message, 'error');
+    } finally {
+        streamState.isReconnecting = false;
     }
 }
 
-async function restartStream() {
-    console.log('🔄 Restarting stream...');
-    
-    if (streamState.isStreaming) {
-        console.log('🛑 Stopping current stream...');
-        await stopStream();
-        
-        // Wait a moment before restarting
-        setTimeout(async () => {
-            console.log('🚀 Starting new stream...');
-            await startStream();
-        }, 1000);
-    } else {
-        // If not streaming, just start it
-        console.log('🚀 Starting stream...');
-        await startStream();
-    }
+function restartStream() {
+    return reconnectStream('Reconnecting');
 }
+
+// Best effort on leaving the page; the pod's idle shutdown is the real guarantee
+window.addEventListener('pagehide', () => {
+    if (streamState.session) {
+        navigator.sendBeacon(`${RUNPOD_API_URL}?action=stop`, JSON.stringify({ session: streamState.session }));
+    }
+});
+// Back from the back/forward cache: that session was stopped on pagehide
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted && (streamState.session || streamState.isStreaming)) stopStream();
+});
 
 // Stream overlay management
-function openStreamOverlay(playbackId, showOverlay = true) {
+function openStreamOverlay(showOverlay = true) {
     const overlay = document.getElementById('streamOverlay');
     const video = document.getElementById('streamOverlayVideo');
-    const loading = document.getElementById('streamOverlayLoading');
-    
-    if (!overlay || !video || !loading) {
+    if (!overlay || !video) {
         console.error('Stream overlay elements not found');
         return;
     }
-    
-    // Show overlay only if requested
-    if (showOverlay) {
-        overlay.classList.add('visible');
-    }
-    
-    // Show the loader until watchStreamWarmup() sees real AI frames
-    if (!streamState.playbackConnection) {
-        video.style.display = 'none';
-        watchStreamWarmup();
-    }
-    
-    console.log('🆕 Opened stream overlay');
+    if (showOverlay) overlay.classList.add('visible');
+    video.style.display = 'none';
+    setStreamLoader('loading', 'Starting a GPU');
 }
 
-function closeStreamOverlay(clearIframe = true) {
-    const overlay = document.getElementById('streamOverlay');
-    const iframe = document.getElementById('streamOverlayFrame');
-    
-    if (overlay) {
-        overlay.classList.remove('visible');
-    }
-    
-    // Only clear the player if explicitly requested (when stopping stream)
-    if (clearIframe) {
-        stopStreamPlayback();
-        if (iframe) iframe.src = '';
-    }
-    
-    console.log('🔄 Closed stream overlay');
+function closeStreamOverlay() {
+    document.getElementById('streamOverlay')?.classList.remove('visible');
+    stopStreamPlayback();
 }
 
 function popOutStream() {
-    if (!streamState.playbackId) {
+    if (!streamState.isStreaming) {
         console.warn('No stream available to pop out');
         return;
     }
-    
     // Keep the overlay visible, just open popup window
     streamState.popupWindow = openStreamPopup();
-    
-    console.log('🔄 Popped out stream to new window (overlay stays visible)');
 }
 
+// The main stream button: "Start AI" while idle, then hides/shows the AI overlay
 function toggleStreamVisibility() {
-    const overlay = document.getElementById('streamOverlay');
-    const hideButton = document.getElementById('hideStreamToggle');
-    
-    if (!overlay) return;
-    
-    const isVisible = overlay.classList.contains('visible');
-    
-    config.STREAM_VISIBLE = !isVisible;
-    saveConfig();
-    
-    if (isVisible) {
-        overlay.classList.remove('visible');
-        if (hideButton) hideButton.textContent = 'Show Diffusion';
-    } else {
-        overlay.classList.add('visible');
-        if (hideButton) hideButton.textContent = 'Hide Diffusion';
-        
-        // Ensure playback is still connected when showing again
-        if (streamState.isStreaming && !streamState.playbackConnection) {
-            startStreamPlayback();
-        }
+    if (!streamState.isStreaming && !streamState.isStarting) {
+        startStream(true);
+        return;
     }
+    const overlay = document.getElementById('streamOverlay');
+    if (!overlay) return;
+    const isVisible = overlay.classList.toggle('visible');
+    config.STREAM_VISIBLE = isVisible;
+    saveConfig();
+    updateStreamButton(streamState.isStreaming);
 }
 
 
@@ -9523,7 +8872,7 @@ function removeAudioFromStream() {
 }
 
 // Square stream input
-// Daydream processes a square, so the stream gets the square around the stream frame
+// The AI processes a square, so the stream gets the square around the stream frame
 // (side = the frame's longer side, same center) instead of the whole screen. The
 // overlay crops that square back to the frame (object-fit: cover), so every output
 // pixel lands on the background pixel it was made from, at any frame aspect ratio.
@@ -10114,71 +9463,7 @@ function debouncedSliderParameterUpdate() {
 let parameterUpdateTimeout;
 function debouncedParameterUpdate() {
     clearTimeout(parameterUpdateTimeout);
-    parameterUpdateTimeout = setTimeout(updateStreamParametersWithRetry, 300);
-}
-
-// Stream validation function
-async function validateStreamState() {
-    if (!streamState.streamId || !streamState.isStreaming) {
-        return false;
-    }
-    
-    try {
-        if (!hasDaydreamAccess()) {
-            console.warn('No API key found for stream validation');
-            return false;
-        }
-        
-        const response = await daydreamFetch(`streams/${streamState.streamId}`);
-        
-        if (response.ok) {
-            console.log('✅ Stream validation successful');
-            return true;
-        } else if (response.status === 404) {
-            console.error('❌ Stream not found - may have expired');
-            addDaydreamEventToDebug({
-                type: 'stream_validation_failed',
-                error: 'Stream not found (404)'
-            });
-            return false;
-        } else {
-            console.warn('⚠️ Stream validation failed with status:', response.status);
-            return false;
-        }
-    } catch (error) {
-        console.warn('Stream validation error:', error);
-        return false;
-    }
-}
-
-// Retry logic for failed API calls
-let retryCount = 0;
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
-
-async function updateStreamParametersWithRetry() {
-    if (retryCount >= MAX_RETRIES) {
-        console.error('❌ Max retries reached for parameter update');
-        retryCount = 0;
-        return;
-    }
-    
-    try {
-        await updateStreamParameters();
-        retryCount = 0; // Reset on success
-    } catch (error) {
-        retryCount++;
-        console.warn(`⚠️ Parameter update failed, retrying (${retryCount}/${MAX_RETRIES}):`, error);
-        
-        if (retryCount < MAX_RETRIES) {
-            setTimeout(() => {
-                updateStreamParametersWithRetry();
-            }, RETRY_DELAY * retryCount); // Exponential backoff
-        } else {
-            console.error('❌ All retry attempts failed');
-            retryCount = 0;
-        }
-    }
+    parameterUpdateTimeout = setTimeout(updateStreamParameters, 300);
 }
 
 updateSliderValue = function(sliderName, percentage, skipSave = false) {
@@ -10251,20 +9536,21 @@ function updateSliderPosition(sliderName) {
 const STORAGE_PREFIX = 'fluidSim_';
 const STORAGE_KEYS = {
     CONFIG: STORAGE_PREFIX + 'config',
-    API_KEY: STORAGE_PREFIX + 'apiKey',
     PROMPTS: STORAGE_PREFIX + 'prompts',
-    API_KEY_CONSENT: STORAGE_PREFIX + 'apiKeyConsent',
-    STREAM_STATE: STORAGE_PREFIX + 'streamState',
     TELEGRAM_SETTINGS: STORAGE_PREFIX + 'telegramSettings',
     TELEGRAM_TOKEN: STORAGE_PREFIX + 'telegramToken',
     TELEGRAM_TOKEN_CONSENT: STORAGE_PREFIX + 'telegramTokenConsent',
-    WELCOME_SKIPPED: STORAGE_PREFIX + 'welcomeSkipped',
     STYLE_IMAGE: STORAGE_PREFIX + 'styleImage',
     OVERLAY_LAYOUT: STORAGE_PREFIX + 'overlayLayout',
     CAMERA_LAYERS: STORAGE_PREFIX + 'cameraLayers',
     CAMERA_CHOICE: STORAGE_PREFIX + 'cameraChoice',  // 'yes' / 'no', asked once on the first start
     REMOTE_CHOICE: STORAGE_PREFIX + 'remoteChoice'   // 'yes' / 'no', asked once before connecting
 };
+
+// Left over from the Daydream backend (including a visitor's own Daydream API key): remove
+['apiKey', 'apiKeyConsent', 'streamState', 'welcomeSkipped'].forEach(key => {
+    try { localStorage.removeItem(STORAGE_PREFIX + key); } catch (error) { /* storage blocked */ }
+});
 
 function isLocalStorageAvailable() {
     try {
@@ -10310,107 +9596,6 @@ function clearLocalStorage() {
 }
 
 // Stream State Persistence Functions
-function saveStreamState() {
-    if (!streamState.streamId || !streamState.playbackId) return;
-    
-    const streamData = {
-        streamId: streamState.streamId,
-        playbackId: streamState.playbackId,
-        whipUrl: streamState.whipUrl,
-        modelId: getCurrentModelId(),
-        resolution: getStreamResolution(),
-        timestamp: Date.now()
-    };
-    
-    saveToLocalStorage(STORAGE_KEYS.STREAM_STATE, streamData);
-}
-
-// Validate if a saved stream is still active on the server
-async function validateSavedStream(savedStream) {
-    if (!savedStream || !savedStream.streamId) return false;
-    
-    try {
-        if (!hasDaydreamAccess()) return false;
-        
-        // Check if stream still exists on Daydream servers
-        const response = await daydreamFetch(`streams/${savedStream.streamId}`);
-        
-        if (response.ok) {
-            const streamData = await response.json();
-            // Check if stream is in a valid state (not ended or failed).
-            // The API reports e.g. "active" or "running", so reject only terminal states.
-            const endedStates = ['ended', 'failed', 'deleted', 'error'];
-            return !endedStates.includes(streamData.status);
-        } else if (response.status === 404) {
-            // Stream no longer exists on server - clear saved state
-            console.log(`Stream ${savedStream.streamId} no longer exists (404), clearing saved state`);
-            clearStreamState();
-            return false;
-        }
-        
-        return false;
-    } catch (error) {
-        console.log('Stream validation failed:', error.message);
-        return false;
-    }
-}
-
-function loadStreamState() {
-    const savedStream = loadFromLocalStorage(STORAGE_KEYS.STREAM_STATE);
-    if (!savedStream) return null;
-    
-    // Validate stream data structure
-    if (!savedStream.streamId || !savedStream.playbackId || !savedStream.whipUrl) {
-        clearStreamState();
-        return null;
-    }
-    
-    // A stream made for another model or resolution can't be switched over, so start a new one
-    if ((savedStream.modelId || DEFAULT_MODEL_ID) !== getCurrentModelId() ||
-        (savedStream.resolution || STREAM_RESOLUTIONS[0]) !== getStreamResolution()) {
-        clearStreamState();
-        return null;
-    }
-    
-    // Check if stream is too old (expire after 24 hours)
-    const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-    const age = Date.now() - (savedStream.timestamp || 0);
-    
-    if (age > maxAge) {
-        console.log('Saved stream expired, clearing...');
-        clearStreamState();
-        return null;
-    }
-    
-    return savedStream;
-}
-
-function clearStreamState() {
-    if (!isLocalStorageAvailable()) return;
-    localStorage.removeItem(STORAGE_KEYS.STREAM_STATE);
-}
-
-// Enhanced obfuscation for the Telegram token (browser-safe method)
-const HARDCODED_OBFUSCATED_TELEGRAM_TOKEN = "OTZ2SE9lWmpqQld4Z3NONDRVWmRUVzoxT1RlQkhgRElHQkI7MTEyOjYxMjkzOQ==";
-
-// Enhanced obfuscation encoding function (for generating obfuscated keys)
-function encodeApiKey(apiKey) {
-    // Simple but effective multi-layer obfuscation
-    // Layer 1: Reverse the string
-    let encoded = apiKey.split('').reverse().join('');
-    
-    // Layer 2: Character code shift (safe range)
-    encoded = encoded.split('').map(char => {
-        let code = char.charCodeAt(0);
-        // Shift by 1 to stay in safe ASCII range
-        return String.fromCharCode(code + 1);
-    }).join('');
-    
-    // Layer 3: Base64 encode
-    return btoa(encoded);
-}
-
-// Enhanced obfuscation decoding function
 function decodeApiKey(obfuscatedKey) {
     try {
         // Layer 3: Base64 decode
@@ -10555,74 +9740,6 @@ function loadTelegramSettings() {
     updateSliderPositions();
     
     // Interval will be synced when WebSocket connects
-}
-
-function saveApiKey() {
-    const apiKeyInput = document.getElementById('apiKeyInput');
-    const consentCheckbox = document.getElementById('apiKeyConsent');
-
-    if (apiKeyInput && consentCheckbox && consentCheckbox.checked) {
-        const apiKey = apiKeyInput.value.trim();
-        if (apiKey) {
-            saveToLocalStorage(STORAGE_KEYS.API_KEY, obfuscateApiKey(apiKey));
-            saveToLocalStorage(STORAGE_KEYS.API_KEY_CONSENT, true);
-        }
-    }
-    
-    // Update API instructions visibility
-    updateApiInstructions();
-}
-
-function getApiKey() {
-    const consent = loadFromLocalStorage(STORAGE_KEYS.API_KEY_CONSENT, false);
-    if (consent) {
-        const savedKey = loadFromLocalStorage(STORAGE_KEYS.API_KEY);
-        if (savedKey) {
-            return deobfuscateApiKey(savedKey);
-        }
-    }
-    
-    // No built-in key: on diffusionlab.de the PHP proxy supplies it (see useDaydreamProxy)
-    return null;
-}
-
-function setWelcomeSkipped() {
-    saveToLocalStorage(STORAGE_KEYS.WELCOME_SKIPPED, true);
-}
-
-function getWelcomeSkipped() {
-    return loadFromLocalStorage(STORAGE_KEYS.WELCOME_SKIPPED, false);
-}
-
-function loadApiKey() {
-    const consent = loadFromLocalStorage(STORAGE_KEYS.API_KEY_CONSENT, false);
-    if (consent) {
-        const savedKey = loadFromLocalStorage(STORAGE_KEYS.API_KEY);
-        if (savedKey) {
-            const apiKeyInput = document.getElementById('apiKeyInput');
-            const consentCheckbox = document.getElementById('apiKeyConsent');
-            
-            if (apiKeyInput) {
-                apiKeyInput.value = deobfuscateApiKey(savedKey);
-            }
-            if (consentCheckbox) {
-                consentCheckbox.checked = true;
-            }
-        }
-    }
-    
-    // Update API instructions visibility
-    updateApiInstructions();
-}
-
-function updateApiInstructions() {
-    const apiKeyInput = document.getElementById('apiKeyInput');
-    const apiInstructions = document.getElementById('apiInstructions');
-    
-    if (apiKeyInput && apiInstructions) {
-        const hasApiKey = apiKeyInput.value.trim().length > 0;
-        apiInstructions.style.display = hasApiKey ? 'none' : 'block';
-    }
 }
 
 function saveTelegramToken() {
@@ -10932,58 +10049,7 @@ function answerCameraIntro(useCamera) {
 // Welcome overlay functions
 function showWelcomeOverlay() {
     const overlay = document.getElementById('welcomeOverlay');
-    if (overlay) {
-        // Check if API key is already saved and show it obfuscated
-        const savedApiKey = getApiKey();
-        const apiKeyInput = document.getElementById('welcomeApiKey');
-        const consentCheckbox = document.getElementById('welcomeApiConsent');
-        const startButton = document.getElementById('welcomeStartButton');
-        const apiSection = document.querySelector('.welcome-api-section h3');
-        const apiDescription = document.querySelector('.welcome-api-section p');
-        
-        if (savedApiKey) {
-            // Update content for existing users
-            if (apiSection) {
-                apiSection.textContent = '🔑 Your API Key';
-            }
-            if (apiDescription) {
-                apiDescription.style.display = 'none';
-            }
-            if (startButton) {
-                startButton.textContent = 'Continue';
-            }
-            
-            // Show obfuscated version: show first 3 chars + dots + last 4 chars
-            if (apiKeyInput) {
-                const obfuscated = savedApiKey.substring(0, 3) + '•'.repeat(20) + savedApiKey.substring(savedApiKey.length - 4);
-                apiKeyInput.value = obfuscated;
-                apiKeyInput.setAttribute('data-original', savedApiKey);
-            }
-            if (consentCheckbox) {
-                consentCheckbox.checked = true;
-            }
-        } else {
-            // Reset content for new users
-            if (apiSection) {
-                apiSection.textContent = '🔑 Your API Key';
-            }
-            if (apiDescription) {
-                apiDescription.style.display = 'none';
-            }
-            if (startButton) {
-                startButton.textContent = 'Start Creating';
-            }
-            if (apiKeyInput) {
-                apiKeyInput.value = '';
-                apiKeyInput.removeAttribute('data-original');
-            }
-            if (consentCheckbox) {
-                consentCheckbox.checked = false;
-            }
-        }
-        
-        overlay.style.display = 'flex';
-    }
+    if (overlay) overlay.style.display = 'flex';
 }
 
 function hideWelcomeOverlay() {
@@ -10993,102 +10059,14 @@ function hideWelcomeOverlay() {
     }
 }
 
-function saveWelcomeApiKey() {
-    const apiKeyInput = document.getElementById('welcomeApiKey');
-    const consentCheckbox = document.getElementById('welcomeApiConsent');
-    
-    if (apiKeyInput && consentCheckbox && consentCheckbox.checked) {
-        let apiKey = apiKeyInput.value.trim();
-        
-        // If the input contains the obfuscated version, use the original
-        const originalKey = apiKeyInput.getAttribute('data-original');
-        if (originalKey && apiKey.includes('•')) {
-            apiKey = originalKey;
-        }
-        
-        if (apiKey) {
-            // Save to localStorage
-            saveToLocalStorage(STORAGE_KEYS.API_KEY, obfuscateApiKey(apiKey));
-            saveToLocalStorage(STORAGE_KEYS.API_KEY_CONSENT, true);
-            
-            // Also update the main API key input if it exists
-            const mainApiKeyInput = document.getElementById('apiKeyInput');
-            const mainConsentCheckbox = document.getElementById('apiKeyConsent');
-            
-            if (mainApiKeyInput) {
-                mainApiKeyInput.value = apiKey;
-            }
-            if (mainConsentCheckbox) {
-                mainConsentCheckbox.checked = true;
-            }
-            
-            return true;
-        }
-    }
-    return false;
-}
-
+// The welcome overlay opens from the "About" button (never automatically)
 function initializeWelcomeOverlay() {
-    // Check if Daydream is reachable (proxy or saved key) or if welcome was previously skipped
-    const hasAccess = hasDaydreamAccess();
-    const welcomeSkipped = getWelcomeSkipped();
-    
-    // Phones never get it automatically, even on the first start (it stays reachable
-    // from the settings)
-    if (!hasAccess && !welcomeSkipped && !isPhoneScreen()) {
-        // No Daydream access and welcome not skipped, show welcome overlay
-        showWelcomeOverlay();
-    }
-    
-    // Initialize feature status indicators
     updateFeatureStatuses();
-    
-    // Set up event listeners
-    const startButton = document.getElementById('welcomeStartButton');
-    if (startButton) {
-        startButton.addEventListener('click', function() {
-            // Save API key if provided and consent is checked
-            saveWelcomeApiKey();
-            
-            // If no API key was provided, mark welcome as skipped
-            const apiKeyInput = document.getElementById('welcomeApiKey');
-            if (apiKeyInput && !apiKeyInput.value.trim()) {
-                setWelcomeSkipped();
-            }
-            
-            // Hide overlay regardless of whether API key was saved
-            hideWelcomeOverlay();
-        });
-    }
-    
-    // Allow Enter key to trigger start button and handle obfuscated key clearing
-    const apiKeyInput = document.getElementById('welcomeApiKey');
-    if (apiKeyInput) {
-        apiKeyInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                startButton.click();
-            }
-        });
-        
-        // Clear obfuscated key when user starts typing
-        apiKeyInput.addEventListener('focus', function() {
-            if (this.value.includes('•')) {
-                this.value = '';
-                this.removeAttribute('data-original');
-            }
-        });
-        
-        // Clear obfuscated key on first keypress
-        apiKeyInput.addEventListener('input', function() {
-            if (this.getAttribute('data-original') && !this.value.includes('•')) {
-                this.removeAttribute('data-original');
-            }
-        });
-    }
+    document.getElementById('welcomeStartButton')?.addEventListener('click', hideWelcomeOverlay);
 }
 
 function resetValues() {
-    if (confirm('Are you sure you want to reset all slider values to defaults? This will not affect your prompt, API key, Telegram settings, or other input fields.')) {
+    if (confirm('Are you sure you want to reset all slider values to defaults? This will not affect your prompt, Telegram settings, or other input fields.')) {
         // Store current telegram settings to preserve them
         const currentTelegramReceive = config.TELEGRAM_RECEIVE;
         const currentTelegramInterval = config.TELEGRAM_WAITLIST_INTERVAL;
@@ -11324,82 +10302,6 @@ async function pasteFromClipboard(inputId) {
     }
 }
 
-function clearAllSettings() {
-    if (confirm('Are you sure you want to clear all saved settings? This will reset all sliders, prompts, API key, and saved stream data to defaults.')) {
-        clearLocalStorage();
-        
-        // Clear current stream state in memory and close popup
-        streamState.streamId = null;
-        streamState.playbackId = null;
-        streamState.whipUrl = null;
-        
-        // Close popup window when clearing all settings
-        if (streamState.popupWindow && !streamState.popupWindow.closed) {
-            streamState.popupWindow.close();
-        }
-        streamState.popupWindow = null;
-        
-        // Clear prompt update interval
-        if (streamState.promptUpdateInterval) {
-            clearInterval(streamState.promptUpdateInterval);
-            streamState.promptUpdateInterval = null;
-        }
-        
-        updateStreamButton(false);
-        
-        // Reset to default values - optimized for slower, longer-lasting animations
-        config.DENSITY_DISSIPATION = 0.15;
-        config.VELOCITY_DISSIPATION = 0.6;
-        config.PRESSURE = 0.37;
-        config.CURL = 4;
-        config.SPLAT_RADIUS = 0.19;
-        config.BLOOM_INTENSITY = 0.4;
-        config.SUNRAYS_WEIGHT = 0.4;
-        config.INFERENCE_STEPS = 50;
-        config.SEED = 42;
-        config.CONTROLNET_POSE_SCALE = 0.65;
-        config.CONTROLNET_HED_SCALE = 0.41;
-        config.CONTROLNET_CANNY_SCALE = 0.17;
-        config.CONTROLNET_DEPTH_SCALE = 0.43;
-        config.CONTROLNET_COLOR_SCALE = 0.26;
-        config.GUIDANCE_SCALE = 7.5;
-        config.DELTA = 0.5;
-        config.DENOISE_X = 3;
-        config.DENOISE_Y = 6;
-        config.DENOISE_Z = 6;
-        config.COLORFUL = false;
-        config.PAUSED = false;
-        config.BLOOM = true;
-        config.SUNRAYS = true;
-        config.STATIC_COLOR = { r: 0, g: 0.831, b: 1 }; // Default cyan color
-        config.BACK_COLOR = { r: 0, g: 0, b: 0 }; // Default black background
-        
-        // Update UI
-        updateSliderPositions();
-        updateToggleStates();
-        initializeColorPickers();
-        
-        // Clear input fields
-        const promptInput = document.getElementById('promptInput');
-        const negativePromptInput = document.getElementById('negativePromptInput');
-        const apiKeyInput = document.getElementById('apiKeyInput');
-        const consentCheckbox = document.getElementById('apiKeyConsent');
-        const telegramTokenInput = document.getElementById('telegramTokenInput');
-        const telegramTokenConsent = document.getElementById('telegramTokenConsent');
-        
-        if (promptInput) promptInput.value = 'blooming flower with delicate petals, vibrant colors, soft natural lighting, botanical beauty, detailed macro photography, spring garden atmosphere';
-        if (negativePromptInput) negativePromptInput.value = 'blurry, low quality, flat, 2d';
-        updatePromptPresetButtons();
-        if (apiKeyInput) apiKeyInput.value = '';
-        if (consentCheckbox) consentCheckbox.checked = false;
-        if (telegramTokenInput) telegramTokenInput.value = '';
-        if (telegramTokenConsent) telegramTokenConsent.checked = false;
-        
-        alert('Settings cleared! Page will reload to apply defaults.');
-        window.location.reload();
-    }
-}
-
 // Settings that do more than set a value or a toggle's look
 function applySavedUiState() {
     applyDebugMode();
@@ -11442,83 +10344,17 @@ function initializeLocalStorage() {
         updateToggleStates();
         applySavedUiState();
         loadPrompts();
-        loadApiKey();
         loadTelegramToken();
         updateTelegramBotElements(); // Update visibility based on loaded values
         loadStyleImage(); // Load saved style image
         setupInputSaveHandlers();
-        initializeStreamRecovery();
         initializeColorPickers();
     }, 200); // Increased timeout to ensure DOM is ready
-}
-
-function initializeStreamRecovery() {
-    const savedStream = loadStreamState();
-    if (savedStream) {
-        // Restore stream state to memory
-        streamState.streamId = savedStream.streamId;
-        streamState.playbackId = savedStream.playbackId;
-        streamState.whipUrl = savedStream.whipUrl;
-        
-        // Update UI to show available stream
-        updateStreamButton(false); // Show copy button since we have a valid stream
-        
-        console.log('Recovered stream state:', savedStream.streamId);
-        
-        // Calculate and log stream age
-        const ageHours = Math.floor((Date.now() - savedStream.timestamp) / (1000 * 60 * 60));
-        if (ageHours < 1) {
-            console.log('Stream is less than 1 hour old');
-        } else {
-            console.log(`Stream is ${ageHours} hours old`);
-        }
-    }
-}
-
-function initializeColorPickers() {
-    // Set static color picker value
-    const staticColorPicker = document.getElementById('staticColorPicker');
-    if (staticColorPicker) {
-        const staticColorHex = rgbToHex(config.STATIC_COLOR.r, config.STATIC_COLOR.g, config.STATIC_COLOR.b);
-        staticColorPicker.value = staticColorHex;
-        staticColorPicker.style.backgroundColor = staticColorHex;
-        // Update Coloris if it's already initialized
-        if (window.Coloris) {
-            staticColorPicker.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    }
-    
-    // The solid color layer (config.BACK_COLOR)
-    const colorLayerPicker = document.getElementById('cameraBackgroundColorPicker');
-    if (colorLayerPicker) {
-        const backgroundColorHex = rgbToHex(config.BACK_COLOR.r, config.BACK_COLOR.g, config.BACK_COLOR.b);
-        colorLayerPicker.value = backgroundColorHex;
-        colorLayerPicker.style.backgroundColor = backgroundColorHex;
-        // Update Coloris if it's already initialized
-        if (window.Coloris) {
-            colorLayerPicker.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    }
-    
-    // Set audio blob color picker value (the saved one first)
-    if (config.AUDIO_BLOB_COLOR) updateAudioBlobColor(config.AUDIO_BLOB_COLOR, false);
-    const audioBlobColorPicker = document.getElementById('audioBlobColorPicker');
-    if (audioBlobColorPicker) {
-        const audioBlobColorHex = rgbToHex(audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
-        audioBlobColorPicker.value = audioBlobColorHex;
-        audioBlobColorPicker.style.backgroundColor = audioBlobColorHex;
-        // Update Coloris if it's already initialized
-        if (window.Coloris) {
-            audioBlobColorPicker.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    }
 }
 
 function setupInputSaveHandlers() {
     const promptInput = document.getElementById('promptInput');
     const negativePromptInput = document.getElementById('negativePromptInput');
-    const apiKeyInput = document.getElementById('apiKeyInput');
-    const consentCheckbox = document.getElementById('apiKeyConsent');
     const telegramTokenInput = document.getElementById('telegramTokenInput');
     const telegramTokenConsent = document.getElementById('telegramTokenConsent');
     
@@ -11535,19 +10371,6 @@ function setupInputSaveHandlers() {
         negativePromptInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') savePrompts();
         });
-    }
-    
-    // Save API key on change
-    if (apiKeyInput) {
-        apiKeyInput.addEventListener('blur', saveApiKey);
-        apiKeyInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') saveApiKey();
-        });
-        apiKeyInput.addEventListener('input', updateApiInstructions);
-    }
-    
-    if (consentCheckbox) {
-        consentCheckbox.addEventListener('change', saveApiKey);
     }
     
     // Save Telegram token on change

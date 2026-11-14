@@ -9,17 +9,18 @@
 # Files come from a git commit, not the working copy, so uncommitted changes
 # (like a local API key in script.js) never go live. The current live files are
 # downloaded to deploy-backups/<timestamp>/ before anything is overwritten.
-# Login details are read from .env (see .env.example). If .env sets DAYDREAM_API_KEY,
-# it is uploaded to api/.secrets/ for the PHP proxy in api/daydream.php, which keeps
-# it out of the page. Likewise, the RUNPOD_* settings become api/.secrets/runpod.json
-# for api/runpod.php (see tools/runpod-config.py). That folder is blocked for web
-# access by its .htaccess; secrets are only uploaded after a probe file there is
-# confirmed unreachable from the web.
+# Login details are read from .env (see .env.example). The RUNPOD_* settings there
+# become api/.secrets/runpod.json for api/runpod.php (see tools/runpod-config.py), which
+# keeps the RunPod key out of the page. That folder is blocked for web access by its
+# .htaccess; secrets are only uploaded after a probe file there is confirmed
+# unreachable from the web. Files listed in OBSOLETE are deleted from the server.
 set -euo pipefail
 
-FILES=(index.html script.js prompt-presets.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4 models/selfie_segmenter.tflite api/daydream.php api/runpod.php api/.secrets/.htaccess)
+FILES=(index.html script.js prompt-presets.js coloris.min.js coloris.min.css favicon.ico diffusion_lab_teaser.mp4 models/selfie_segmenter.tflite api/runpod.php api/.secrets/.htaccess)
 SITE_URL="https://diffusionlab.de"
 SECRETS_DIR="api/.secrets" # inside the web folder, blocked by its .htaccess
+# No longer part of the site (the Daydream backend): removed from the server on deploy
+OBSOLETE=(api/daydream.php daydream_logo.svg api/.secrets/daydream.key api/.secrets/stream-creations.json)
 
 ref="HEAD"
 dry_run=false
@@ -71,15 +72,9 @@ if [ -n "$(git status --porcelain -- "${FILES[@]}")" ]; then
   echo "  Note: local changes to site files are NOT included (only the committed version is)."
 fi
 printf '  %s\n' "${FILES[@]}"
+printf '  - %s (removed from the server)\n' "${OBSOLETE[@]}"
 # Secret files for api/.secrets/, built in the private temp folder
 secrets=()
-if [ -n "${DAYDREAM_API_KEY:-}" ]; then
-  ( umask 077; printf '%s\n' "$DAYDREAM_API_KEY" > "$work/daydream.key" )
-  secrets+=(daydream.key)
-  echo "  + Daydream API key -> $SECRETS_DIR/daydream.key (web access blocked, checked before upload)"
-else
-  echo "  (no DAYDREAM_API_KEY in .env: the proxy keeps its current key, if any)"
-fi
 if python3 tools/runpod-config.py "$work/runpod.json"; then
   secrets+=(runpod.json)
   echo "  + RunPod settings -> $SECRETS_DIR/runpod.json (web access blocked, checked before upload)"
@@ -133,4 +128,9 @@ if [ ${#secrets[@]} -gt 0 ]; then
     ftp_curl --upload-file "$work/$secret" "$base/$SECRETS_DIR/$secret"
   done
 fi
+for file in "${OBSOLETE[@]}"; do
+  if ftp_curl --quote "DELE ${remote_dir:+$remote_dir/}$file" --list-only "$base/$(dirname "$file")/" >/dev/null 2>&1; then
+    echo "Removed obsolete $file"
+  fi
+done
 echo "Done: https://diffusionlab.de/ now serves $(git log -1 --format=%h "$commit")."
