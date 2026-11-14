@@ -27,6 +27,20 @@ let t = 0;
   requestAnimationFrame(draw);
 })();
 
+// Mean brightness (0-255) of the received AI frame: ~0 means the pod sends black frames
+const probe = document.createElement('canvas');
+probe.width = probe.height = 64;
+function outputBrightness() {
+  const video = document.getElementById('out');
+  if (!video.videoWidth) return null;
+  const c = probe.getContext('2d', { willReadFrequently: true });
+  c.drawImage(video, 0, 0, 64, 64);
+  const px = c.getImageData(0, 0, 64, 64).data;
+  let sum = 0;
+  for (let i = 0; i < px.length; i += 4) sum += (px[i] + px[i + 1] + px[i + 2]) / 3;
+  return Math.round(sum / (px.length / 4));
+}
+
 async function run() {
   const ice = q.get('ice') ? JSON.parse(q.get('ice')) : [{ urls: 'stun:stun.l.google.com:19302' }];
   const pc = new RTCPeerConnection({ iceServers: ice, iceTransportPolicy: q.get('relay') ? 'relay' : 'all' });
@@ -74,7 +88,8 @@ async function run() {
       rttMs: pair && pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null,
       fps: inbound ? inbound.framesPerSecond : null,
       framesDecoded: inbound ? inbound.framesDecoded : 0,
-      size: inbound ? `${inbound.frameWidth}x${inbound.frameHeight}` : null
+      size: inbound ? `${inbound.frameWidth}x${inbound.frameHeight}` : null,
+      outMean: outputBrightness()
     };
     samples.push(sample);
     log(JSON.stringify(sample));

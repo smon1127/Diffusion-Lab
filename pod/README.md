@@ -37,10 +37,18 @@ Browser ──POST start / GET status──> api/runpod.php ──RunPod REST v2
 ### RunPod
 - **Inbound UDP isn't supported** (RunPod docs). Outbound UDP works, and the pod's NAT keeps the
   same public port for every destination (endpoint-independent mapping, tested against three
-  STUN servers). So ICE should connect directly with just STUN for most visitors; TURN is a
-  fallback for restrictive browser networks. *To confirm end to end with `test/whip-test.html`.*
+  STUN servers). **Confirmed end to end:** headless Chromium on our VPS connected with only
+  Google STUN, route `host/udp -> srflx/udp` (straight to the pod's NAT-mapped UDP port), RTT
+  26–36 ms, 512x512 AI output at a steady 30 fps, live `/params` applied without reconnecting.
+  Caveat: the VPS has a public IP. A visitor behind a home NAT is srflx↔srflx, which should
+  also work with this NAT type; a TURN fallback only matters for strict corporate networks.
 - Every pod gets `RUNPOD_POD_ID` and `RUNPOD_API_KEY`, so it can delete itself with
-  `DELETE https://api.runpod.io/v2/pods/$RUNPOD_POD_ID`.
+  `DELETE https://api.runpod.io/v2/pods/$RUNPOD_POD_ID`. **Confirmed:** `server.py` with
+  `IDLE_MINUTES=1` and no session deleted its own pod about 75 s after start; `get-pod` then
+  answered 404 and the account had 0 pods.
+- With engines already built, `server.py` was ready (`/health` → ready) **20 s** after starting.
+- Auth through the public proxy: missing, garbage, expired and other-pod tokens → 401; a valid
+  token from a foreign `Origin` → 403; preflight from a foreign origin → 403; a valid token → 200.
 - The HTTP proxy (`https://<pod>-8000.proxy.runpod.net`) is public and unauthenticated, with a
   100 s idle timeout. WebRTC signaling is short requests, so that's fine.
 - A pod from the stock `runpod/pytorch` template took about 7 min to get past "container
@@ -54,10 +62,36 @@ Browser ──POST start / GET status──> api/runpod.php ──RunPod REST v2
   certificate **expired on 2026-10-05**. Don't use it. If a TURN fallback is needed: our own
   Cloudflare Realtime TURN key (credentials minted per session) or coturn on TCP/TLS 443.
 
-### Engine (to fill in from the benchmark)
-| Config | Engine build | Steady fps | p50 ms | p95 ms | VRAM |
-|---|---|---|---|---|---|
-| A SD-Turbo + canny + depth ControlNet | | | | | |
-| B A + cached attention (StreamV2V) | | | | | |
-| C SDXL-Turbo + canny + depth ControlNet | | | | | |
-| D C + cached attention | | | | | |
+### Engine benchmark (512x512 img2img, 1 step, TensorRT FP16, tiny VAE, our teaser clip, 300 frames)
+Canny ControlNet plus a depth ControlNet (Depth-Anything-V2-Small, PyTorch preprocessor). "First
+load" is the first-ever start: model download + ONNX export + TensorRT build. Inference time is the
+whole `wrapper(image)` call, preprocessing included.
+
+| Config | First load | Steady fps | p50 ms | p95 ms | VRAM | Frame-to-frame change* |
+|---|---|---|---|---|---|---|
+| A SD-Turbo | 8.8 min | **61.4** | 14.8 | 25.7 | 2.6 GB | |
+| B SD-Turbo + cached attention | 8.1 min | **55.9** | 16.7 | 23.9 | 3.0 GB | |
+| C SDXL-Turbo (site default) | 12.5 min | **50.6** | 19.6 | 20.4 | 7.1 GB | 5.93 (p90 9.12) |
+| D SDXL-Turbo + cached attention (`cache_maxframes 2`) | 9.8 min | **38.2** | 25.8 | 28.5 | 7.9 GB | **4.61** (p90 6.85) |
+
+\* mean absolute grey-level change between consecutive output frames; the input clip itself
+changes by 4.2 (p90 7.52). With cached attention the output barely flickers more than the
+input does; without it, shapes re-form from frame to frame (`C_vs_D.jpg` in the spike notes).
+
+Takeaways:
+- Speed is not the problem on a 4090: even the heaviest config runs above 30 fps.
+- **Use SDXL-Turbo + cached attention as the default.** It fixes most of the flicker for 25% of the speed.
+- Engines can't be built on boot (8–13 min each). Build them once per GPU type and keep them on the
+  network volume (`/workspace/engines`). Engine names encode the model, LoRA, batch size and
+  cached-attention flag, so every combination we offer needs its engine built in advance.
+- `cached attention` needs `peft` installed (see Dockerfile), otherwise ONNX export fails with
+  `Linear.forward() takes 2 positional arguments but 3 were given`.
+
+### Follow-ups found by the spike
+- ControlNet TensorRT engines fail to build in this fork (`randn(): argument 'size' ... NoneType`),
+  so the ControlNets run in PyTorch. All numbers above already include that; fixing it is a speed-up.
+- The depth preprocessor in the site's config is `depth_tensorrt`, which needs a prebuilt
+  Depth-Anything engine (`engine_path`). The spike used `depth` (PyTorch, Depth-Anything-V2-Small).
+- Diffusers warns on every frame about the [-1, 1] tensor range (`image_processor.py:730`); silence it.
+- End-to-end latency (camera → AI frame on screen) still needs a frame-counter measurement in the real frontend.
+- Spike cost: one RTX 4090 pod for about 65 min ≈ $0.96 (RunPod billing record not posted yet).
