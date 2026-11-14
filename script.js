@@ -5545,6 +5545,10 @@ const POD_START_TIMEOUT_MS = 10 * 60 * 1000; // resuming takes 1-2 min; a GPU ma
 const POD_STATUS_POLL_MS = 2000;             // while the pod starts
 const POD_KEEPALIVE_MS = 15000;              // while streaming: keeps our session, refreshes the token
 const POD_RESIZE_TIMEOUT_MS = 5 * 60 * 1000; // rebuilding the pipeline at another size: 1-2 min
+// The first use of a size on a GPU type builds its TensorRT engines (~15 min, the pod says
+// "building engines ..."); start and size switch then wait this long instead
+const POD_ENGINE_BUILD_TIMEOUT_MS = 30 * 60 * 1000;
+const isEngineBuild = (stage) => /^building engines/.test(stage || '');
 const ICE_GATHERING_TIMEOUT_MS = 3000;
 const STYLE_IMAGE_MAX_SIZE = 512;            // px; the style image is sent once, downscaled
 
@@ -5752,10 +5756,24 @@ async function ensurePodSize(size) {
     if (response.status === 200) return;
     if (response.status !== 202) throw new Error(`The GPU couldn't switch size (HTTP ${response.status}): ${await response.text()}`);
     const started = Date.now();
-    while (Date.now() - started < POD_RESIZE_TIMEOUT_MS) {
+    let limit = POD_RESIZE_TIMEOUT_MS;
+    let lastCheckIn = started;
+    while (Date.now() - started < limit) {
         await sleep(POD_STATUS_POLL_MS);
+        // api/runpod.php forgets a session after 90 s without a status call, and an engine
+        // build outlasts the stream keepalive's absence (it starts only after connecting)
+        if (Date.now() - lastCheckIn > POD_KEEPALIVE_MS) {
+            lastCheckIn = Date.now();
+            await runpodApi('status').catch(() => null);
+        }
         const health = await fetch(streamState.podUrl + '/health', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
-        if (health?.ready) return;
+        if (health?.ready) {
+            // the token may be near its 20-min expiry after a long build: take a fresh one
+            const status = await runpodApi('status').catch(() => null);
+            if (status?.state === 'ready') streamState.token = status.token;
+            return;
+        }
+        if (isEngineBuild(health?.stage)) limit = POD_ENGINE_BUILD_TIMEOUT_MS;
         if (health?.stage === 'error') throw new Error("The GPU couldn't switch size");
         if (health?.stage) setStreamLoader('loading', `Switching to ${size} × ${size}`, getStreamLoaderDetail(health.stage));
     }
@@ -6121,7 +6139,8 @@ async function waitForPod() {
         }
         if (status.state === 'error') throw new Error('The GPU failed to start');
         if (status.state === 'stopped') throw new Error('The GPU stopped before it was ready');
-        if (Date.now() - streamWarmup.startedAt > POD_START_TIMEOUT_MS) throw new Error('The GPU took too long to start');
+        const startLimit = isEngineBuild(status.stage) ? POD_ENGINE_BUILD_TIMEOUT_MS : POD_START_TIMEOUT_MS;
+        if (Date.now() - streamWarmup.startedAt > startLimit) throw new Error('The GPU took too long to start');
         setStreamLoader('loading', titles[status.state] || 'Starting a GPU', getStreamLoaderDetail(status.stage));
         await sleep(POD_STATUS_POLL_MS);
     }

@@ -49,6 +49,16 @@ else
 fi
 echo "[start] environment ready in $(( $(date +%s) - t0 ))s (release $RELEASE)"
 
+# Engines are per GPU type and size (engines/<gpu>/<size>); the first ones sat directly in
+# engines/<gpu> and were all 512 px. Moves them once; a no-op on every later start.
+for dir in /workspace/engines/*/; do
+    if [ -d "${dir}stabilityai" ]; then
+        mkdir -p "${dir}512"
+        find "$dir" -mindepth 1 -maxdepth 1 ! -name 512 ! -name 768 ! -name 1024 -exec mv -t "${dir}512" {} +
+        echo "[start] moved the 512 px engines in $dir to ${dir}512"
+    fi
+done
+
 # (it may already be gone; under set -e a failing kill would end the script)
 kill "$STATUS_PID" 2>/dev/null || true
 wait "$STATUS_PID" 2>/dev/null || true

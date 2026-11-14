@@ -21,8 +21,9 @@ use_denoising_batch: true
 use_tiny_vae: true
 acceleration: tensorrt
 cfg_type: self
-# One engine set per GPU type on the network volume ({gpu} is filled in by server.py)
-engine_dir: /workspace/engines/{gpu}
+# One engine set per GPU type and size on the network volume (server.py fills in {gpu} and
+# {size}): with cached attention the UNet engine only accepts the size it was built for
+engine_dir: /workspace/engines/{gpu}/{size}
 
 # Temporal consistency (StreamV2V-style cached attention); spike: ~22% less flicker, 38 fps on a 4090
 use_cached_attn: true

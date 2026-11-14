@@ -111,15 +111,21 @@ Takeaways:
 - **Out of memory with 3 ControlNets + IPAdapter on 24 GB:** 12.5 GB PyTorch + ~11 GB TensorRT
   (the UNet engine reserves for its largest profile, 1024 px / batch 4). The tile/feedback
   ControlNet was dropped (cached attention covers it); `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
+- **Each size needs its own engines.** With cached attention the UNet engine's KV-cache inputs
+  are fixed to the build size (512 px = 1024 tokens; 768 px sends 2304 and TensorRT refuses:
+  `Static dimension mismatch ... kvo_cache_in_0`), although the engine name has no size in it.
+  So `engine_dir` is `/workspace/engines/{gpu}/{size}`; the first switch to a size on a GPU type
+  builds its engines (~15 min, `/health` says "building engines ..."), later ones take 1–2 min.
 - A failed load now deletes the pod after 2 minutes; before, a pod stuck in `error` never
   counted as idle and would have run until the 60-minute limit.
 
 ## Operating it
 - **GPU fallback list** (`RUNPOD_GPU_IDS`, all in EU-RO-1 where the volume lives; stock there is
   often LOW, so one type is not enough): RTX 4090 ($0.89/h) → RTX PRO 4500 32 GB ($0.72/h) →
-  RTX 5090 ($1.39/h) → A100 80 GB PCIe ($2.09/h). TensorRT engines are per GPU type
-  (`/workspace/engines/<gpu>`); build them once per type with a short "prebuild" pod from the
-  template, so no visitor waits 10–15 min for a first build.
+  RTX 5090 ($1.39/h) → A100 80 GB PCIe ($2.09/h). TensorRT engines are per GPU type and
+  size (`/workspace/engines/<gpu>/<size>`); build them once per type and size with a short
+  "prebuild" pod (start it, then `POST /resize` to 768 and 1024), so no visitor waits ~15 min
+  for a first build.
 - **Releasing a new pod image:** the `pod-image` workflow pushes `ghcr.io/<owner>/diffusionlab-pod:sha-<commit>`.
   Set that as `RUNPOD_IMAGE` (`.env` / repo variable) and deploy. `api/runpod.php` creates pods
   with it and replaces (instead of resuming) a stopped pod that still runs an older image.

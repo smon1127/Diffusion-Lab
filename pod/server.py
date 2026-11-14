@@ -21,9 +21,10 @@ RunPod injects RUNPOD_POD_ID and RUNPOD_API_KEY into every pod.
 Env: TOKEN_SECRET (required), ALLOWED_ORIGINS (default https://diffusionlab.de,
 https://www.diffusionlab.de), PORT (8000), IDLE_MINUTES (5), MAX_SESSION_MINUTES (60),
 ICE_SERVERS (JSON list of {"urls", "username"?, "credential"?}; default Google STUN),
-SD_CONFIG (StreamDiffusion YAML, default /app/config.yaml; "{gpu}" in its engine_dir becomes
-the GPU model, e.g. /workspace/engines/nvidia-geforce-rtx-4090, because TensorRT engines are
-built for one GPU type), DISABLE_SELF_STOP=1 for tests.
+SD_CONFIG (StreamDiffusion YAML, default /app/config.yaml; in its engine_dir "{gpu}" becomes
+the GPU model and "{size}" the image size, e.g. /workspace/engines/nvidia-geforce-rtx-4090/512,
+because TensorRT engines are built for one GPU type and, with cached attention, one size),
+DISABLE_SELF_STOP=1 for tests.
 """
 import asyncio
 import base64
@@ -144,6 +145,18 @@ class Engine:
         self.new_input = threading.Event()
         self.pending_params = None
         self.width = self.height = 512
+        self.engine_dirs = ""      # engine_dir with {gpu} filled in, {size} still open
+
+    def engine_dir(self, size: int) -> str:
+        return self.engine_dirs.replace("{size}", str(size))
+
+    def has_engines(self, size: int) -> bool:
+        return any(name.endswith(".engine") for _, _, files in os.walk(self.engine_dir(size)) for name in files)
+
+    def build_stage(self, size: int, action: str) -> str:
+        if self.has_engines(size):
+            return action
+        return f"building engines for {size} x {size} (first time on this GPU, about 15 min)"
 
     def load(self):
         import torch  # imported here so /health answers while torch loads
@@ -152,24 +165,24 @@ class Engine:
         config = load_config(SD_CONFIG)
         config["output_type"] = "np"
         gpu = re.sub(r"[^a-z0-9]+", "-", torch.cuda.get_device_name().lower()).strip("-")
-        engine_dir = str(config.get("engine_dir", "/workspace/engines/{gpu}")).replace("{gpu}", gpu)
-        config["engine_dir"] = engine_dir
-        has_engines = any(name.endswith(".engine") for _, _, files in os.walk(engine_dir) for name in files)
-        state["stage"] = "loading models" if has_engines else "building engines (first start on this GPU, about 15 min)"
-        log.info("GPU %s, engines in %s (%s)", gpu, engine_dir, "cached" if has_engines else "building")
+        self.engine_dirs = str(config.get("engine_dir", "/workspace/engines/{gpu}/{size}")).replace("{gpu}", gpu)
+        size = int(config.get("width", 512))
+        state["stage"] = self.build_stage(size, "loading models")
+        log.info("GPU %s, engines in %s (%s)", gpu, self.engine_dir(size), "cached" if self.has_engines(size) else "building")
         self.config = config
         with self.pipeline_lock:
-            self._build(config.get("width", 512))
+            self._build(size)
         state.update(ready=True, stage="ready", last_activity=time.monotonic())  # idle clock starts now
         log.info("models loaded in %.0fs", time.monotonic() - BOOT)
 
     def _build(self, size: int):
-        """Creates the pipeline at size x size (caller holds pipeline_lock). The TensorRT
-        engines cover 384-1024 px, so a new size reuses them."""
+        """Creates the pipeline at size x size (caller holds pipeline_lock). Each size has its
+        own TensorRT engines: with cached attention the UNet engine's KV cache is fixed to the
+        size it was built for (a 512 engine refuses 768 frames)."""
         from PIL import Image
         from streamdiffusion import create_wrapper_from_config
 
-        config = {**self.config, "width": size, "height": size}
+        config = {**self.config, "width": size, "height": size, "engine_dir": self.engine_dir(size)}
         self.wrapper = create_wrapper_from_config(config)
         self.width = self.height = size
         # One warm-up frame so the first visitor doesn't pay for lazy initialisation
@@ -184,7 +197,7 @@ class Engine:
         import torch
 
         t0 = time.monotonic()
-        state.update(ready=False, stage=f"switching to {size} x {size}")
+        state.update(ready=False, stage=self.build_stage(size, f"switching to {size} x {size}"))
         with self.pipeline_lock:
             self.wrapper = None
             gc.collect()
@@ -424,8 +437,8 @@ async def whip_post(request: web.Request):
 
 async def resize_post(request: web.Request):
     """Starts rebuilding the pipeline at another size and returns at once (202); /health
-    reports the progress. The rebuild (about 1-2 min, models come from the network volume)
-    would outlast the RunPod proxy's 100 s request limit."""
+    reports the progress. The rebuild (about 1-2 min, models come from the network volume;
+    about 15 min more the first time a size is used on a GPU type) would outlast the RunPod proxy's 100 s request limit."""
     try:
         size = str((await request.json()).get("size", ""))
     except (json.JSONDecodeError, AttributeError):
@@ -438,7 +451,7 @@ async def resize_post(request: web.Request):
         return web.json_response({"ok": True, "size": engine.width})
     for existing in list(sessions):
         await close_session(existing)
-    state.update(ready=False, stage=f"switching to {size} x {size}")
+    state.update(ready=False, stage=engine.build_stage(int(size), f"switching to {size} x {size}"))
     asyncio.get_running_loop().run_in_executor(None, engine.resize, int(size))
     return web.json_response({"ok": True, "size": int(size), "pending": True}, status=202)
 
