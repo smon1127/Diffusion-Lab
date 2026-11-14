@@ -208,6 +208,7 @@ let streamState = {
     lastParamsJson: null,     // last params sent to the pod (only changes are sent)
     lastStyleImage: null,     // last style image sent (sent once, the pod keeps it)
     keepaliveInterval: null,
+    podInfo: null,            // { uptime, costPerHour, at } from the last status call (debug overlay)
     peerConnection: null,     // one connection: input canvas up, AI output down
     mediaStream: null,
     popupWindow: null,
@@ -2365,6 +2366,7 @@ function updateMobileDebugInfo(info) {
         <div style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 6px;">
             <div><span style="color: #8b5cf6;">🖥️ GPU:</span> <span style="color: ${streamStatus.color};">${streamStatus.text}</span></div>
             ${streamState.podUrl ? `<div><span style="color: #8b5cf6;">Pod:</span> <span style="color: #fbbf24;">${new URL(streamState.podUrl).hostname.split('-')[0]}</span></div>` : ''}
+            ${streamState.podInfo ? `<div><span style="color: #8b5cf6;">Running:</span> <span style="color: #fbbf24;">${formatPodCost(streamState.podInfo)}</span></div>` : ''}
             ${streamState.peerConnection ? `<div><span style="color: #8b5cf6;">WebRTC:</span> <span style="color: #fbbf24;">${streamState.peerConnection.connectionState}</span></div>` : ''}
         </div>
     `;
@@ -2387,6 +2389,13 @@ function getOSCStatusForDebug() {
             color: '#ef4444' // Red
         };
     }
+}
+
+// "4 min · ~$0.06 at $0.89/h", extrapolated from the last status call
+function formatPodCost({ uptime, costPerHour, at }) {
+    const seconds = uptime + (Date.now() - at) / 1000;
+    const cost = (seconds / 3600) * costPerHour;
+    return `${Math.floor(seconds / 60)} min · ~$${cost.toFixed(2)} at $${costPerHour.toFixed(2)}/h`;
 }
 
 function getStreamStatusForDebug() {
@@ -6473,6 +6482,7 @@ async function waitForPod() {
         const status = await runpodApi('status', session);
         if (streamState.session !== session) break;
         if (status.state === 'ready') {
+            rememberPodStatus(status);
             streamState.podUrl = status.podUrl;
             streamState.token = status.token;
             addStreamEventToDebug({ type: 'pod_ready', uptime: status.uptime });
@@ -6492,6 +6502,7 @@ async function keepPodSession() {
     if (!streamState.isStreaming) return;
     try {
         const status = await runpodApi('status');
+        rememberPodStatus(status);
         if (status.state === 'ready') {
             streamState.token = status.token;
         } else if (status.state === 'stopped' || status.state === 'error') {
@@ -6504,6 +6515,11 @@ async function keepPodSession() {
     } catch (error) {
         console.warn('GPU status check failed:', error); // try again on the next tick
     }
+}
+
+// For the debug overlay: how long the pod has been running and what it costs
+function rememberPodStatus(status) {
+    streamState.podInfo = { uptime: status.uptime || 0, costPerHour: status.costPerHour || 0, at: Date.now() };
 }
 
 function stopStreamPlayback() {
@@ -6620,7 +6636,7 @@ function stopStream() {
 
     closePodConnection();
     if (session) runpodApi('stop', session).catch(error => console.warn('GPU stop failed:', error));
-    Object.assign(streamState, { session: null, podUrl: null, token: null, sessionUrl: null });
+    Object.assign(streamState, { session: null, podUrl: null, token: null, sessionUrl: null, podInfo: null });
 
     if (streamState.mediaStream) {
         streamState.mediaStream.getTracks().forEach(track => track.stop());

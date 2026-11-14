@@ -365,7 +365,7 @@ if ($status === 0 || $status >= 400) {
 $clients[$session] = $now;
 $state['clients'] = $clients;
 $podStatus = (string) ($pod['status'] ?? '');
-$result = ['success' => true, 'uptime' => $now - (int) $state['startedAt']];
+$result = ['success' => true, 'uptime' => $now - (int) $state['startedAt'], 'costPerHour' => (float) ($pod['cost'] ?? 0)];
 if ($podStatus === 'EXITED') {
     // Stopped itself (idle or time limit): keep it for the next start
     $state = ['podId' => $podId, 'startedAt' => null, 'clients' => []];
