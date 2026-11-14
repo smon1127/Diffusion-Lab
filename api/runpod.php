@@ -6,7 +6,8 @@
 //   POST api/runpod.php?action=stop    body { session }: leave; the pod is terminated when nobody is left
 //
 // state is one of: starting (pod booting), loading (container up, models loading),
-// ready (pod /health says ready; podUrl + token are returned), stopped, error.
+// ready (pod /health says ready; podUrl + token are returned), stopped, error. While
+// loading, `stage` carries the pod's own progress label (e.g. "loading models").
 //
 // One pod at a time. It is created from a RunPod template for each session and
 // terminated (not stopped) afterwards, so nothing bills while idle; models live on a
@@ -111,8 +112,9 @@ function podUrl(array $config, string $podId): string
     return 'https://' . $podId . '-' . (int) ($config['port'] ?? 8000) . '.proxy.runpod.net';
 }
 
-// Asks the pod itself whether the models are loaded. The proxy answers 502/404 while it boots.
-function podIsReady(array $config, string $podId): bool
+// Asks the pod itself whether the models are loaded: [ready, stage]. The proxy answers
+// 502/404 while the container boots.
+function podHealth(array $config, string $podId): array
 {
     $curl = curl_init(podUrl($config, $podId) . '/health');
     curl_setopt_array($curl, [
@@ -125,7 +127,12 @@ function podIsReady(array $config, string $podId): bool
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
     curl_close($curl);
     $health = is_string($response) ? json_decode($response, true) : null;
-    return $status === 200 && is_array($health) && ($health['ready'] ?? false) === true;
+    if ($status !== 200 || !is_array($health)) {
+        return [false, 'starting server'];
+    }
+    // Only pass on a short, plain stage label (it is shown in the warm-up overlay)
+    $stage = preg_replace('/[^a-zA-Z0-9 ,.()-]/', '', substr((string) ($health['stage'] ?? ''), 0, 80));
+    return [($health['ready'] ?? false) === true, $stage];
 }
 
 function createPod(array $config): ?string
@@ -315,8 +322,9 @@ if ($podStatus === 'EXITED' || $podStatus === 'TERMINATED') {
     $result['state'] = 'error';
 } elseif ($podStatus !== 'RUNNING' || empty($pod['runtime'])) {
     $result['state'] = 'starting';
-} elseif (!podIsReady($config, $podId)) {
+} elseif (!([$ready, $stage] = podHealth($config, $podId))[0]) {
     $result['state'] = 'loading';
+    $result['stage'] = $stage;
 } else {
     $result['state'] = 'ready';
     $result['podUrl'] = podUrl($config, $podId);
