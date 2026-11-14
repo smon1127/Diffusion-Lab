@@ -5541,7 +5541,7 @@ function hashCode (s) {
 // canvas up and the AI output back (POST /whip), live changes go to POST /params.
 // The pod deletes itself when nobody uses it, so a closed tab costs at most a few minutes.
 const RUNPOD_API_URL = 'api/runpod.php';
-const POD_START_TIMEOUT_MS = 5 * 60 * 1000; // a cold start takes 1.5-3 min
+const POD_START_TIMEOUT_MS = 10 * 60 * 1000; // resuming takes 1-2 min; a GPU machine new to the image ~7
 const POD_STATUS_POLL_MS = 2000;             // while the pod starts
 const POD_KEEPALIVE_MS = 15000;              // while streaming: keeps our session, refreshes the token
 const ICE_GATHERING_TIMEOUT_MS = 3000;
