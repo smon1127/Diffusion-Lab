@@ -19,25 +19,36 @@ RUNPOD_POD_ID and RUNPOD_API_KEY into every pod.
 Env: TOKEN_SECRET (required), ALLOWED_ORIGINS (default https://diffusionlab.de,
 https://www.diffusionlab.de), PORT (8000), IDLE_MINUTES (5), MAX_SESSION_MINUTES (60),
 ICE_SERVERS (JSON list of {"urls", "username"?, "credential"?}; default Google STUN),
-SD_CONFIG (StreamDiffusion YAML, default /app/config.yaml), DISABLE_SELF_STOP=1 for tests.
+SD_CONFIG (StreamDiffusion YAML, default /app/config.yaml; "{gpu}" in its engine_dir becomes
+the GPU model, e.g. /workspace/engines/nvidia-geforce-rtx-4090, because TensorRT engines are
+built for one GPU type), DISABLE_SELF_STOP=1 for tests.
 """
 import asyncio
 import base64
 import hashlib
 import hmac
+import io
+import ipaddress
 import json
 import logging
 import os
+import re
+import socket
 import threading
 import time
 import uuid
+import warnings
 from fractions import Fraction
+from urllib.parse import urlparse
 
 import numpy as np
 from aiohttp import ClientSession, ClientTimeout, web
 from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
 from aiortc.mediastreams import MediaStreamError, VideoStreamTrack
 from av import VideoFrame
+
+# diffusers warns on every frame about the [-1, 1] tensor range StreamDiffusion hands it
+warnings.filterwarnings("ignore", category=FutureWarning, module="diffusers")
 
 log = logging.getLogger("pod")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -55,6 +66,7 @@ MAX_SECONDS = 60 * float(os.environ.get("MAX_SESSION_MINUTES", "60"))
 SD_CONFIG = os.environ.get("SD_CONFIG", "/app/config.yaml")
 MAX_SDP_BYTES = 64 * 1024
 MAX_PARAMS_BYTES = 256 * 1024
+MAX_STYLE_IMAGE_BYTES = 5 * 1024 * 1024
 
 BOOT = time.monotonic()
 state = {"ready": False, "stage": "starting", "last_activity": time.monotonic()}
@@ -128,19 +140,24 @@ class Engine:
         self.width = self.height = 512
 
     def load(self):
-        import torch  # noqa: F401  (import here so /health answers while torch loads)
+        import torch  # imported here so /health answers while torch loads
         from streamdiffusion import create_wrapper_from_config, load_config
 
-        state["stage"] = "loading models"
         config = load_config(SD_CONFIG)
         config["output_type"] = "np"
+        gpu = re.sub(r"[^a-z0-9]+", "-", torch.cuda.get_device_name().lower()).strip("-")
+        engine_dir = str(config.get("engine_dir", "/workspace/engines/{gpu}")).replace("{gpu}", gpu)
+        config["engine_dir"] = engine_dir
+        has_engines = any(name.endswith(".engine") for _, _, files in os.walk(engine_dir) for name in files)
+        state["stage"] = "loading models" if has_engines else "building engines (first start on this GPU, about 15 min)"
+        log.info("GPU %s, engines in %s (%s)", gpu, engine_dir, "cached" if has_engines else "building")
         self.width, self.height = config.get("width", 512), config.get("height", 512)
         self.wrapper = create_wrapper_from_config(config)
         # One warm-up frame so the first visitor doesn't pay for lazy initialisation
         from PIL import Image
 
         self.wrapper(image=Image.new("RGB", (self.width, self.height)))
-        state.update(ready=True, stage="ready")
+        state.update(ready=True, stage="ready", last_activity=time.monotonic())  # idle clock starts now
         log.info("models loaded in %.0fs", time.monotonic() - BOOT)
 
     def submit(self, rgb: np.ndarray):
@@ -191,7 +208,6 @@ PARAM_MAP = {
     "t_index_list": "t_index_list",
     "seed": "seed",
     "controlnets": "controlnet_config",
-    "ip_adapter": "ipadapter_config",
     "cache_maxframes": "cache_maxframes",
     "cache_interval": "cache_interval",
     "prompt_interpolation_method": "prompt_interpolation_method",
@@ -209,9 +225,42 @@ def to_wrapper_params(params: dict) -> dict:
             out[target] = value
     if isinstance(params.get("prompt"), str):
         out["prompt_list"] = [(params["prompt"], 1.0)]
-    if isinstance(params.get("ip_adapter"), dict) and params.get("ip_adapter_style_image_url"):
-        out["ipadapter_config"] = {**params["ip_adapter"], "style_image": params["ip_adapter_style_image_url"]}
     return out
+
+
+style_cache = {"url": None, "image": None}
+
+
+def public_https_url(url: str) -> bool:
+    """Only fetch https URLs that resolve to public addresses (no RunPod-internal hosts)."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return False
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(parsed.hostname, parsed.port or 443)}
+    except socket.gaierror:
+        return False
+    return all(ipaddress.ip_address(a).is_global for a in addresses)
+
+
+async def fetch_style_image(url: str):
+    """Downloads the style image once per URL (the page resends all params on every change)."""
+    from PIL import Image
+
+    if style_cache["url"] == url:
+        return style_cache["image"]
+    if not await asyncio.get_running_loop().run_in_executor(None, public_https_url, url):
+        raise ValueError("style image URL must be public https")
+    async with ClientSession(timeout=ClientTimeout(total=15)) as http:
+        async with http.get(url, allow_redirects=False) as response:
+            if response.status != 200 or not response.content_type.startswith("image/"):
+                raise ValueError(f"style image fetch failed: HTTP {response.status}")
+            data = await response.content.read(MAX_STYLE_IMAGE_BYTES + 1)
+    if len(data) > MAX_STYLE_IMAGE_BYTES:
+        raise ValueError("style image too large")
+    image = Image.open(io.BytesIO(data)).convert("RGB")
+    style_cache.update(url=url, image=image)
+    return image
 
 
 # --- WebRTC -------------------------------------------------------------------------
@@ -324,6 +373,15 @@ async def params_post(request: web.Request):
     if not isinstance(params, dict):
         return web.json_response({"error": "expected an object"}, status=400)
     wrapper_params = to_wrapper_params(params)
+    style_url = params.get("ip_adapter_style_image_url")
+    if isinstance(params.get("ip_adapter"), dict):
+        ip_config = dict(params["ip_adapter"])
+        if isinstance(style_url, str) and style_url:
+            try:
+                ip_config["style_image"] = await fetch_style_image(style_url)
+            except (ValueError, OSError) as exc:
+                return web.json_response({"error": str(exc)}, status=400)
+        wrapper_params["ipadapter_config"] = ip_config
     with engine.lock:
         engine.pending_params = {**(engine.pending_params or {}), **wrapper_params}
     engine.new_input.set()
@@ -356,8 +414,8 @@ async def watchdog(_app):
         while True:
             await asyncio.sleep(30)
             now = time.monotonic()
-            if sessions:
-                state["last_activity"] = now
+            if sessions or not state["ready"]:
+                state["last_activity"] = now  # loading/building engines is not idle
             if now - BOOT > MAX_SECONDS:
                 await terminate_self("MAX_SESSION_MINUTES reached")
             elif now - state["last_activity"] > IDLE_SECONDS:

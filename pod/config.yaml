@@ -1,0 +1,56 @@
+# StreamDiffusion config the pod loads at boot. Values here are load-time only (model,
+# resolution, ControlNet/IPAdapter set, cached attention); everything the site changes live
+# (prompt, seed, t_index, delta, ControlNet scales, style image) comes through POST /params.
+# Mirrors the site's SDXL-Turbo setup (DAYDREAM_MODELS in script.js) and its defaults.
+# The TensorRT engines are built for exactly this set: changing the model, the ControlNet
+# list, IPAdapter or cached attention means new engines (8-13 min on first start).
+model_id: stabilityai/sdxl-turbo
+t_index_list: [12]
+width: 512
+height: 512
+device: cuda
+dtype: float16
+prompt: "a dreamy painting, vivid colors, masterpiece"
+negative_prompt: "blurry, low quality, distorted"
+guidance_scale: 1.0
+num_inference_steps: 50
+seed: 42
+frame_buffer_size: 1
+delta: 0.7
+use_denoising_batch: true
+use_tiny_vae: true
+acceleration: tensorrt
+cfg_type: self
+# One engine set per GPU type on the network volume ({gpu} is filled in by server.py)
+engine_dir: /workspace/engines/{gpu}
+
+# Temporal consistency (StreamV2V-style cached attention); spike: ~22% less flicker, 38 fps on a 4090
+use_cached_attn: true
+cache_maxframes: 2
+cache_interval: 1
+
+use_controlnet: true
+controlnets:
+  - model_id: xinsir/controlnet-depth-sdxl-1.0
+    conditioning_scale: 0.43
+    preprocessor: depth
+    preprocessor_params: {model_name: depth-anything/Depth-Anything-V2-Small-hf}
+    enabled: true
+  - model_id: xinsir/controlnet-canny-sdxl-1.0
+    conditioning_scale: 0.17
+    preprocessor: canny
+    preprocessor_params: {low_threshold: 100, high_threshold: 200}
+    enabled: true
+  - model_id: xinsir/controlnet-tile-sdxl-1.0
+    conditioning_scale: 0.1
+    preprocessor: feedback
+    preprocessor_params: {feedback_strength: 0.5}
+    enabled: true
+
+use_ipadapter: true
+ipadapters:
+  - ipadapter_model_path: h94/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin
+    image_encoder_path: h94/IP-Adapter/sdxl_models/image_encoder
+    style_image: /app/style-default.png
+    scale: 0.5
+    enabled: false

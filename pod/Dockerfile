@@ -36,6 +36,8 @@ RUN uv venv /opt/venv --python 3.11 \
     && rm -rf /tmp/uv-cache
 
 WORKDIR /app
+# IPAdapter needs a style image at load time; it starts disabled, the page sends the real one
+RUN python -c "from PIL import Image; Image.new('RGB', (512, 512), (128, 128, 128)).save('/app/style-default.png')"
 COPY server.py config.yaml ./
 
 EXPOSE 8000
