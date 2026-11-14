@@ -6676,6 +6676,11 @@ async function reconnectStream(title = 'Reconnecting') {
     }
 }
 
+function toggleStream() {
+    if (streamState.isStreaming || streamState.isStarting) stopStream();
+    else startStream();
+}
+
 function restartStream() {
     return reconnectStream('Reconnecting');
 }
@@ -9596,6 +9601,9 @@ function clearLocalStorage() {
 }
 
 // Stream State Persistence Functions
+// Enhanced obfuscation for the Telegram token (browser-safe method)
+const HARDCODED_OBFUSCATED_TELEGRAM_TOKEN = "OTZ2SE9lWmpqQld4Z3NONDRVWmRUVzoxT1RlQkhgRElHQkI7MTEyOjYxMjkzOQ==";
+
 function decodeApiKey(obfuscatedKey) {
     try {
         // Layer 3: Base64 decode
@@ -10350,6 +10358,45 @@ function initializeLocalStorage() {
         setupInputSaveHandlers();
         initializeColorPickers();
     }, 200); // Increased timeout to ensure DOM is ready
+}
+
+function initializeColorPickers() {
+    // Set static color picker value
+    const staticColorPicker = document.getElementById('staticColorPicker');
+    if (staticColorPicker) {
+        const staticColorHex = rgbToHex(config.STATIC_COLOR.r, config.STATIC_COLOR.g, config.STATIC_COLOR.b);
+        staticColorPicker.value = staticColorHex;
+        staticColorPicker.style.backgroundColor = staticColorHex;
+        // Update Coloris if it's already initialized
+        if (window.Coloris) {
+            staticColorPicker.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+    
+    // The solid color layer (config.BACK_COLOR)
+    const colorLayerPicker = document.getElementById('cameraBackgroundColorPicker');
+    if (colorLayerPicker) {
+        const backgroundColorHex = rgbToHex(config.BACK_COLOR.r, config.BACK_COLOR.g, config.BACK_COLOR.b);
+        colorLayerPicker.value = backgroundColorHex;
+        colorLayerPicker.style.backgroundColor = backgroundColorHex;
+        // Update Coloris if it's already initialized
+        if (window.Coloris) {
+            colorLayerPicker.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+    
+    // Set audio blob color picker value (the saved one first)
+    if (config.AUDIO_BLOB_COLOR) updateAudioBlobColor(config.AUDIO_BLOB_COLOR, false);
+    const audioBlobColorPicker = document.getElementById('audioBlobColorPicker');
+    if (audioBlobColorPicker) {
+        const audioBlobColorHex = rgbToHex(audioBlobState.color.r, audioBlobState.color.g, audioBlobState.color.b);
+        audioBlobColorPicker.value = audioBlobColorHex;
+        audioBlobColorPicker.style.backgroundColor = audioBlobColorHex;
+        // Update Coloris if it's already initialized
+        if (window.Coloris) {
+            audioBlobColorPicker.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
 }
 
 function setupInputSaveHandlers() {

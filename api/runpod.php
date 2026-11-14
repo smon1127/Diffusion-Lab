@@ -121,7 +121,7 @@ function podHealth(array $config, string $podId): array
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_CONNECTTIMEOUT => 4,
-        CURLOPT_TIMEOUT => 5,
+        CURLOPT_TIMEOUT => 8, // the pod answers slowly while it builds engines
     ]);
     $response = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
