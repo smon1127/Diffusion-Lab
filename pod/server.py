@@ -13,9 +13,9 @@ Every request except /health needs "Authorization: Bearer <token>", the HMAC tok
 api/runpod.php issues (v1.<payload>.<sig>, payload {"pod", "exp"}), signed with
 TOKEN_SECRET and bound to this pod's RUNPOD_POD_ID.
 
-The pod terminates itself through the RunPod API when nobody has used it for
-IDLE_MINUTES, and in any case MAX_SESSION_MINUTES after boot. RunPod injects
-RUNPOD_POD_ID and RUNPOD_API_KEY into every pod.
+The pod stops itself through the RunPod API when nobody has used it for IDLE_MINUTES,
+and in any case MAX_SESSION_MINUTES after boot (a failed model load deletes it instead).
+RunPod injects RUNPOD_POD_ID and RUNPOD_API_KEY into every pod.
 
 Env: TOKEN_SECRET (required), ALLOWED_ORIGINS (default https://diffusionlab.de,
 https://www.diffusionlab.de), PORT (8000), IDLE_MINUTES (5), MAX_SESSION_MINUTES (60),
@@ -457,19 +457,25 @@ async def health(_request: web.Request):
 
 # --- self-stop ----------------------------------------------------------------------
 
-async def terminate_self(reason: str):
-    log.warning("terminating this pod: %s", reason)
+async def shut_down_self(reason: str, delete: bool = False):
+    """Stops this pod through the RunPod API (a stopped pod costs nothing and resumes on the
+    same host with the image cached); delete=True removes it instead, for a broken pod."""
+    log.warning("%s this pod: %s", "deleting" if delete else "stopping", reason)
     if os.environ.get("DISABLE_SELF_STOP") == "1":
         return
     key = os.environ.get("RUNPOD_API_KEY")
     if not key or POD_ID == "local":
-        log.error("cannot self-terminate: RUNPOD_API_KEY or RUNPOD_POD_ID missing")
+        log.error("cannot shut down: RUNPOD_API_KEY or RUNPOD_POD_ID missing")
         return
+    url = f"https://api.runpod.io/v2/pods/{POD_ID}"
+    headers = {"Authorization": f"Bearer {key}"}
     async with ClientSession(timeout=ClientTimeout(total=20)) as http:
-        async with http.delete(
-            f"https://api.runpod.io/v2/pods/{POD_ID}", headers={"Authorization": f"Bearer {key}"}
-        ) as response:
-            log.warning("self-terminate -> HTTP %s", response.status)
+        if delete:
+            request = http.delete(url, headers=headers)
+        else:
+            request = http.post(url + "/action", headers=headers, json={"action": "stop"})
+        async with request as response:
+            log.warning("self-shutdown -> HTTP %s", response.status)
 
 
 async def watchdog(_app):
@@ -480,14 +486,14 @@ async def watchdog(_app):
             if state["stage"] == "error":
                 # A failed load won't recover; leave the error readable for a moment, then go
                 if now - state.setdefault("failed_at", now) > LOAD_ERROR_GRACE_SECONDS:
-                    await terminate_self("model load failed")
+                    await shut_down_self("model load failed", delete=True)
                 continue
             if sessions or not state["ready"]:
                 state["last_activity"] = now  # loading/building engines is not idle
             if now - BOOT > MAX_SECONDS:
-                await terminate_self("MAX_SESSION_MINUTES reached")
+                await shut_down_self("MAX_SESSION_MINUTES reached")
             elif now - state["last_activity"] > IDLE_SECONDS:
-                await terminate_self("idle")
+                await shut_down_self("idle")
 
     task = asyncio.ensure_future(loop())
     yield

@@ -3,16 +3,17 @@
 //
 //   POST api/runpod.php?action=start   create the GPU pod (or join the running one) -> { state, session }
 //   GET  api/runpod.php?action=status&session=...  -> { state, podUrl?, token? }
-//   POST api/runpod.php?action=stop    body { session }: leave; the pod is terminated when nobody is left
+//   POST api/runpod.php?action=stop    body { session }: leave; the pod is stopped when nobody is left
 //
 // state is one of: starting (pod booting), loading (container up, models loading),
 // ready (pod /health says ready; podUrl + token are returned), stopped, error. While
 // loading, `stage` carries the pod's own progress label (e.g. "loading models").
 //
-// One pod at a time. It is created from a RunPod template for each session and
-// terminated (not stopped) afterwards, so nothing bills while idle; models live on a
-// network volume or in the image. The pod also stops itself when idle, and an
-// external cron is the last safety net; this script is only the front door.
+// One pod at a time, created from a RunPod template with the models and TensorRT
+// engines on a network volume. After a session it is stopped, not deleted: a stopped
+// pod costs nothing and resumes on the same host with its image cached. If that host
+// has no free GPU, or the template has a newer image, a new pod is created instead.
+// The pod also stops itself when idle; an external cron is the last safety net.
 //
 // Settings and the RunPod API key are read from api/.secrets/runpod.json, which
 // .htaccess blocks for web access and deploy.sh uploads from .env. The browser never
@@ -170,7 +171,53 @@ function terminatePod(array $config, string $podId): void
     if (($status >= 200 && $status < 300) || $status === 404) {
         return; // 404: already gone
     }
-    error_log("runpod.php: could not terminate pod $podId; the idle watcher or cron has to catch it");
+    error_log("runpod.php: could not terminate pod $podId; the cron has to catch it");
+}
+
+// Stopping keeps the pod for the next session: it then resumes on the same host with
+// the image cached (seconds instead of minutes), and a stopped pod costs nothing here
+// (no volume disk; the network volume bills either way).
+function stopPod(array $config, string $podId): void
+{
+    [$status] = runpod($config, 'POST', 'pods/' . $podId . '/action', ['action' => 'stop']);
+    if (($status >= 200 && $status < 300) || $status === 409) {
+        return; // 409: not running any more
+    }
+    error_log("runpod.php: could not stop pod $podId; its idle watcher has to catch it");
+}
+
+// Resumes our stopped pod. Fails (and the caller creates a new pod) when its host has no
+// free GPU, or when it runs an older image than the template.
+function resumePod(array $config, array $pod): bool
+{
+    [$status, $template] = runpod($config, 'GET', 'templates/' . $config['templateId']);
+    if ($status !== 200 || ($template['image'] ?? '') !== ($pod['image'] ?? null)) {
+        return false;
+    }
+    [$status] = runpod($config, 'POST', 'pods/' . $pod['id'] . '/action', ['action' => 'start']);
+    return $status >= 200 && $status < 300;
+}
+
+// Caps pod starts (each one costs money) per visitor and in total
+function checkStartRate(int $now): void
+{
+    $rates = fopen(RATE_FILE, 'c+');
+    if ($rates === false || !flock($rates, LOCK_EX)) {
+        fail(503, 'Please try again');
+    }
+    $visitor = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '');
+    $log = json_decode((string) stream_get_contents($rates), true) ?: [];
+    $log = array_values(array_filter($log, fn($entry) => ($entry['t'] ?? 0) > $now - 3600));
+    $mine = count(array_filter($log, fn($entry) => ($entry['v'] ?? '') === $visitor));
+    if ($mine >= STARTS_PER_VISITOR_PER_HOUR || count($log) >= STARTS_PER_HOUR) {
+        fail(429, 'Too many starts, please wait a bit');
+    }
+    $log[] = ['t' => $now, 'v' => $visitor];
+    ftruncate($rates, 0);
+    rewind($rates);
+    fwrite($rates, json_encode($log));
+    flock($rates, LOCK_UN);
+    fclose($rates);
 }
 
 // --- request checks -------------------------------------------------------------
@@ -236,36 +283,45 @@ $clients = array_filter(
 );
 
 // --- actions ----------------------------------------------------------------------
+// state: podId (kept while the pod exists, also when stopped), startedAt (when the
+// current run began; null while stopped), clients (session => last poll).
 
 if ($action === 'start') {
     if ($session === '') {
         $session = bin2hex(random_bytes(16));
     }
-    if ($podId === '') {
-        // Cap new pods, since each one costs money
-        $rates = fopen(RATE_FILE, 'c+');
-        if ($rates === false || !flock($rates, LOCK_EX)) {
-            fail(503, 'Please try again');
+    $running = false;
+    $rateChecked = false;
+    if ($podId !== '') {
+        [$status, $pod] = runpod($config, 'GET', 'pods/' . $podId);
+        $podStatus = (string) ($pod['status'] ?? '');
+        if ($status === 0 || ($status >= 400 && $status !== 404)) {
+            fail(502, 'GPU backend is not reachable');
+        } elseif (in_array($podStatus, ['RUNNING', 'PROVISIONING', 'STARTING'], true)) {
+            $running = true; // join the running pod
+        } elseif ($status !== 404 && $podStatus === 'EXITED') {
+            checkStartRate($now);
+            $rateChecked = true;
+            if (resumePod($config, $pod)) {
+                $state['startedAt'] = $now;
+                $running = true;
+            } else {
+                terminatePod($config, $podId); // no GPU on its host, or an outdated image
+            }
+        } elseif ($status !== 404) {
+            terminatePod($config, $podId); // ERROR / TERMINATED
         }
-        $visitor = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '');
-        $log = json_decode((string) stream_get_contents($rates), true) ?: [];
-        $log = array_values(array_filter($log, fn($entry) => ($entry['t'] ?? 0) > $now - 3600));
-        $mine = count(array_filter($log, fn($entry) => ($entry['v'] ?? '') === $visitor));
-        if ($mine >= STARTS_PER_VISITOR_PER_HOUR || count($log) >= STARTS_PER_HOUR) {
-            fail(429, 'Too many starts, please wait a bit');
+    }
+    if (!$running) {
+        if (!$rateChecked) {
+            checkStartRate($now);
         }
-        $log[] = ['t' => $now, 'v' => $visitor];
-        ftruncate($rates, 0);
-        rewind($rates);
-        fwrite($rates, json_encode($log));
-        flock($rates, LOCK_UN);
-        fclose($rates);
-
         $podId = createPod($config) ?? '';
         if ($podId === '') {
+            $saveState([]);
             fail(503, 'No GPU available right now, please try again later');
         }
-        $state = ['podId' => $podId, 'createdAt' => $now];
+        $state = ['podId' => $podId, 'startedAt' => $now];
         $clients = [];
     }
     $clients[$session] = $now;
@@ -276,31 +332,30 @@ if ($action === 'start') {
 
 if ($action === 'stop') {
     unset($clients[$session]);
-    if ($podId !== '' && count($clients) === 0) {
-        terminatePod($config, $podId);
-        $saveState([]);
-    } else {
-        $state['clients'] = $clients;
-        $saveState($state);
+    if ($podId !== '' && count($clients) === 0 && !empty($state['startedAt'])) {
+        stopPod($config, $podId);
+        $state['startedAt'] = null;
     }
+    $state['clients'] = $clients;
+    $saveState($state);
     respond(200, ['success' => true, 'state' => 'stopped']);
 }
 
 // status. The page keeps polling (about every 15 s) during a session; that keeps its
 // session alive and fetches a fresh token. An unknown or timed-out session gets
 // "stopped" and has to call start again to (re)join the pod.
-if ($podId === '' || !isset($clients[$session])) {
+if ($podId === '' || empty($state['startedAt']) || !isset($clients[$session])) {
     respond(200, ['success' => true, 'state' => 'stopped']);
 }
-if ($now - (int) ($state['createdAt'] ?? $now) > $maxSessionSeconds) {
-    terminatePod($config, $podId);
-    $saveState([]);
+if ($now - (int) $state['startedAt'] > $maxSessionSeconds) {
+    stopPod($config, $podId);
+    $saveState(['podId' => $podId, 'startedAt' => null, 'clients' => []]);
     respond(200, ['success' => true, 'state' => 'stopped', 'reason' => 'time limit']);
 }
 
 [$status, $pod] = runpod($config, 'GET', 'pods/' . $podId);
 if ($status === 404) {
-    $saveState([]); // terminated by the idle watcher, the cron or by hand
+    $saveState([]); // deleted by the cron or by hand
     respond(200, ['success' => true, 'state' => 'stopped']);
 }
 if ($status === 0 || $status >= 400) {
@@ -310,28 +365,24 @@ if ($status === 0 || $status >= 400) {
 $clients[$session] = $now;
 $state['clients'] = $clients;
 $podStatus = (string) ($pod['status'] ?? '');
-$result = ['success' => true];
-if ($podStatus === 'EXITED' || $podStatus === 'TERMINATED') {
-    // A stopped pod still bills for its disk; we never restart one, so remove it
-    terminatePod($config, $podId);
-    $state = [];
+$result = ['success' => true, 'uptime' => $now - (int) $state['startedAt']];
+if ($podStatus === 'EXITED') {
+    // Stopped itself (idle or time limit): keep it for the next start
+    $state = ['podId' => $podId, 'startedAt' => null, 'clients' => []];
     $result['state'] = 'stopped';
-} elseif ($podStatus === 'ERROR') {
+} elseif ($podStatus === 'ERROR' || $podStatus === 'TERMINATED') {
     terminatePod($config, $podId);
     $state = [];
-    $result['state'] = 'error';
+    $result['state'] = $podStatus === 'ERROR' ? 'error' : 'stopped';
 } elseif ($podStatus !== 'RUNNING' || empty($pod['runtime'])) {
     $result['state'] = 'starting';
 } elseif (!([$ready, $stage] = podHealth($config, $podId))[0]) {
-    $result['state'] = 'loading';
+    $result['state'] = $stage === 'error' ? 'error' : 'loading';
     $result['stage'] = $stage;
 } else {
     $result['state'] = 'ready';
     $result['podUrl'] = podUrl($config, $podId);
     $result['token'] = issueToken($config['tokenSecret'], $podId);
-}
-if (isset($state['createdAt'])) {
-    $result['uptime'] = $now - (int) $state['createdAt'];
 }
 $saveState($state);
 respond(200, $result);
