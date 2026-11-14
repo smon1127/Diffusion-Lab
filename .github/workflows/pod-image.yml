@@ -12,6 +12,8 @@ on:
       - 'pod/Dockerfile'
       - 'pod/server.py'
       - 'pod/config.yaml'
+      - 'pod/start.sh'
+      - 'pod/install-env.sh'
       - '.github/workflows/pod-image.yml'
   workflow_dispatch:
 

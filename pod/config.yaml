@@ -49,6 +49,6 @@ use_ipadapter: true
 ipadapters:
   - ipadapter_model_path: h94/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin
     image_encoder_path: h94/IP-Adapter/sdxl_models/image_encoder
-    style_image: /app/style-default.png
+    style_image: /opt/env/style-default.png
     scale: 0.5
     enabled: false
