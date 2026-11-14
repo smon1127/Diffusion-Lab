@@ -12,7 +12,7 @@
 // One pod at a time, created from a RunPod template with the models and TensorRT
 // engines on a network volume. After a session it is stopped, not deleted: a stopped
 // pod costs nothing and resumes on the same host with its image cached. If that host
-// has no free GPU, or the template has a newer image, a new pod is created instead.
+// has no free GPU, or RUNPOD_IMAGE names a newer release, a new pod is created instead.
 // The pod also stops itself when idle; an external cron is the last safety net.
 //
 // Settings and the RunPod API key are read from api/.secrets/runpod.json, which
@@ -144,6 +144,9 @@ function createPod(array $config): ?string
         'cloud' => $config['cloud'] ?? 'SECURE',
         'env' => ['MAX_SESSION_MINUTES' => (string) ($config['maxSessionMinutes'] ?? DEFAULT_MAX_SESSION_MINUTES)],
     ];
+    if (!empty($config['image'])) {
+        $body['image'] = $config['image']; // the release to run; overrides the template's
+    }
     if (!empty($config['dataCenterIds'])) {
         $body['dataCenterIds'] = array_values($config['dataCenterIds']);
     }
@@ -187,11 +190,10 @@ function stopPod(array $config, string $podId): void
 }
 
 // Resumes our stopped pod. Fails (and the caller creates a new pod) when its host has no
-// free GPU, or when it runs an older image than the template.
+// free GPU, or when it runs another image than the configured one (a new release).
 function resumePod(array $config, array $pod): bool
 {
-    [$status, $template] = runpod($config, 'GET', 'templates/' . $config['templateId']);
-    if ($status !== 200 || ($template['image'] ?? '') !== ($pod['image'] ?? null)) {
+    if (!empty($config['image']) && ($pod['image'] ?? '') !== $config['image']) {
         return false;
     }
     [$status] = runpod($config, 'POST', 'pods/' . $pod['id'] . '/action', ['action' => 'start']);

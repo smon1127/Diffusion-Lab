@@ -8,7 +8,7 @@ name: Deploy to diffusionlab.de
 #                below they become api/.secrets/runpod.json for api/runpod.php)
 #              DEPLOY_KNOWN_HOSTS (sftp only: output of `ssh-keyscan <host>`)
 #   variables: DEPLOY_PROTOCOL (ftps or sftp, default ftps)
-#              RUNPOD_TEMPLATE_ID, RUNPOD_GPU_IDS, RUNPOD_DATA_CENTER_IDS,
+#              RUNPOD_TEMPLATE_ID, RUNPOD_IMAGE, RUNPOD_GPU_IDS, RUNPOD_DATA_CENTER_IDS,
 #              RUNPOD_NETWORK_VOLUME_ID, RUNPOD_CLOUD, RUNPOD_PORT,
 #              RUNPOD_MAX_SESSION_MINUTES (see tools/runpod-config.py)
 
@@ -45,6 +45,7 @@ jobs:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
           RUNPOD_TOKEN_SECRET: ${{ secrets.RUNPOD_TOKEN_SECRET }}
           RUNPOD_TEMPLATE_ID: ${{ vars.RUNPOD_TEMPLATE_ID }}
+          RUNPOD_IMAGE: ${{ vars.RUNPOD_IMAGE }}
           RUNPOD_GPU_IDS: ${{ vars.RUNPOD_GPU_IDS }}
           RUNPOD_DATA_CENTER_IDS: ${{ vars.RUNPOD_DATA_CENTER_IDS }}
           RUNPOD_NETWORK_VOLUME_ID: ${{ vars.RUNPOD_NETWORK_VOLUME_ID }}

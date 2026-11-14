@@ -8,6 +8,8 @@ RUNPOD_API_KEY is unset, so callers can skip the upload.
   RUNPOD_API_KEY              RunPod API key (needs pod create/read/delete)
   RUNPOD_TOKEN_SECRET         shared HMAC secret; the pod gets the same value as a RunPod secret
   RUNPOD_TEMPLATE_ID          pod template to create sessions from
+  RUNPOD_IMAGE                optional, the pod image release (overrides the template's; a
+                              stopped pod with another image is replaced, not resumed)
   RUNPOD_GPU_IDS              comma-separated GPU type ids, tried in order
   RUNPOD_DATA_CENTER_IDS      optional, comma-separated
   RUNPOD_NETWORK_VOLUME_ID    optional, mounted at /workspace
@@ -39,6 +41,7 @@ def main():
         "apiKey": os.environ["RUNPOD_API_KEY"],
         "tokenSecret": os.environ["RUNPOD_TOKEN_SECRET"],
         "templateId": os.environ["RUNPOD_TEMPLATE_ID"],
+        "image": os.environ.get("RUNPOD_IMAGE", ""),
         "gpuIds": env_list("RUNPOD_GPU_IDS"),
         "dataCenterIds": env_list("RUNPOD_DATA_CENTER_IDS"),
         "networkVolumeId": os.environ.get("RUNPOD_NETWORK_VOLUME_ID", ""),
