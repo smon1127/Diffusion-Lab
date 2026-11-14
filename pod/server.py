@@ -4,7 +4,8 @@ One browser session at a time (v1). The browser publishes its canvas/camera trac
 a WHIP-style POST and receives the AI output on the same peer connection:
 
   GET    /health                  {"ready": bool, "stage": str}       (no auth; polled by api/runpod.php)
-  POST   /whip                    SDP offer (application/sdp) -> 201 SDP answer, Location: /whip/<id>
+  POST   /whip[?size=512|768|1024] SDP offer (application/sdp) -> 201 SDP answer, Location: /whip/<id>
+                                  (a new size rebuilds the pipeline first, ~20 s)
   DELETE /whip/<id>               end the session
   POST   /params                  JSON stream params (Daydream-style, see apply_params) -> 200
 
@@ -67,6 +68,7 @@ SD_CONFIG = os.environ.get("SD_CONFIG", "/app/config.yaml")
 MAX_SDP_BYTES = 64 * 1024
 MAX_PARAMS_BYTES = 256 * 1024
 MAX_STYLE_IMAGE_BYTES = 5 * 1024 * 1024
+ALLOWED_SIZES = ("512", "768", "1024")  # the page's STREAM_RESOLUTIONS
 
 BOOT = time.monotonic()
 state = {"ready": False, "stage": "starting", "last_activity": time.monotonic()}
@@ -132,7 +134,9 @@ class Engine:
 
     def __init__(self):
         self.wrapper = None
-        self.lock = threading.Lock()
+        self.config = None
+        self.lock = threading.Lock()           # input/output/params hand-over
+        self.pipeline_lock = threading.Lock()  # one frame or one reload at a time
         self.input = None          # newest np.ndarray (H, W, 3) RGB uint8
         self.output = None         # newest np.ndarray (H, W, 3) RGB uint8
         self.new_input = threading.Event()
@@ -141,7 +145,7 @@ class Engine:
 
     def load(self):
         import torch  # imported here so /health answers while torch loads
-        from streamdiffusion import create_wrapper_from_config, load_config
+        from streamdiffusion import load_config
 
         config = load_config(SD_CONFIG)
         config["output_type"] = "np"
@@ -151,14 +155,41 @@ class Engine:
         has_engines = any(name.endswith(".engine") for _, _, files in os.walk(engine_dir) for name in files)
         state["stage"] = "loading models" if has_engines else "building engines (first start on this GPU, about 15 min)"
         log.info("GPU %s, engines in %s (%s)", gpu, engine_dir, "cached" if has_engines else "building")
-        self.width, self.height = config.get("width", 512), config.get("height", 512)
-        self.wrapper = create_wrapper_from_config(config)
-        # One warm-up frame so the first visitor doesn't pay for lazy initialisation
-        from PIL import Image
-
-        self.wrapper(image=Image.new("RGB", (self.width, self.height)))
+        self.config = config
+        with self.pipeline_lock:
+            self._build(config.get("width", 512))
         state.update(ready=True, stage="ready", last_activity=time.monotonic())  # idle clock starts now
         log.info("models loaded in %.0fs", time.monotonic() - BOOT)
+
+    def _build(self, size: int):
+        """Creates the pipeline at size x size (caller holds pipeline_lock). The TensorRT
+        engines cover 384-1024 px, so a new size reuses them."""
+        from PIL import Image
+        from streamdiffusion import create_wrapper_from_config
+
+        config = {**self.config, "width": size, "height": size}
+        self.wrapper = create_wrapper_from_config(config)
+        self.width = self.height = size
+        # One warm-up frame so the first visitor doesn't pay for lazy initialisation
+        self.wrapper(image=Image.new("RGB", (size, size)))
+        with self.lock:
+            self.output = None
+
+    def resize(self, size: int):
+        """Rebuilds the pipeline at a new square size (the page's 512/768/1024 setting)."""
+        import gc
+
+        import torch
+
+        t0 = time.monotonic()
+        state.update(ready=False, stage=f"switching to {size} x {size}")
+        with self.pipeline_lock:
+            self.wrapper = None
+            gc.collect()
+            torch.cuda.empty_cache()
+            self._build(size)
+        state.update(ready=True, stage="ready", last_activity=time.monotonic())
+        log.info("pipeline resized to %d in %.0fs", size, time.monotonic() - t0)
 
     def submit(self, rgb: np.ndarray):
         with self.lock:
@@ -174,15 +205,16 @@ class Engine:
             with self.lock:
                 frame, self.input = self.input, None
                 params, self.pending_params = self.pending_params, None
-            if params:
-                try:
-                    self.wrapper.update_stream_params(**params)
-                except Exception:  # bad params must not kill the stream
-                    log.exception("update_stream_params failed")
-            if frame is None:
-                continue
-            image = Image.fromarray(frame).resize((self.width, self.height))
-            result = self.wrapper(image=image)
+            with self.pipeline_lock:
+                if params:
+                    try:
+                        self.wrapper.update_stream_params(**params)
+                    except Exception:  # bad params must not kill the stream
+                        log.exception("update_stream_params failed")
+                if frame is None:
+                    continue
+                image = Image.fromarray(frame).resize((self.width, self.height))
+                result = self.wrapper(image=image)
             out = np.asarray(result[0] if isinstance(result, (list, tuple)) else result)
             if out.ndim == 4:
                 out = out[0]
@@ -325,6 +357,12 @@ async def whip_post(request: web.Request):
         return web.json_response({"error": "expected an SDP offer with video"}, status=400)
     for existing in list(sessions):  # v1: one session; a new one replaces the old
         await close_session(existing)
+    size = request.query.get("size", "")
+    if size:
+        if size not in ALLOWED_SIZES:
+            return web.json_response({"error": "size must be one of " + ", ".join(ALLOWED_SIZES)}, status=400)
+        if int(size) != engine.width:
+            await asyncio.get_running_loop().run_in_executor(None, engine.resize, int(size))
 
     session_id = uuid.uuid4().hex
     pc = RTCPeerConnection(RTCConfiguration(iceServers=ice_servers()))
