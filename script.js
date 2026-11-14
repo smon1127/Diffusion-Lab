@@ -342,8 +342,6 @@ let idleAnimationEnabled = true;
 let lastActivityTime = Date.now();
 let idleAnimationTimer = null;
 const IDLE_TIMEOUT = 5000; // 5 seconds
-const IDLE_SPARK_MIN_INTERVAL = 1500; // 1.5 seconds
-const IDLE_SPARK_MAX_INTERVAL = 4000; // 4 seconds
 
 function pointerPrototype () {
     this.id = -1;
@@ -1907,124 +1905,7 @@ function addToTelegramWaitlist(message) {
     }
 }
 
-function processNextTelegramPrompt() {
-    if (telegramWaitlist.length === 0) {
-        stopTelegramProcessing();
-        return;
-    }
-    
-    const nextItem = telegramWaitlist.shift(); // Remove first item (FIFO)
-    console.log(`📱 Processing waitlist item: "${nextItem.prompt}" from ${nextItem.from} (type: ${nextItem.type || 'prompt'})`);
-    
-    // Debug logging removed - now handled in the specific processing sections below
-    
-    // Handle different types of waitlist items
-    if (nextItem.type === 'controlnet_preset') {
-        // Apply ControlNet preset parameters
-        Object.entries(nextItem.parameters).forEach(([key, value]) => {
-            if (config.hasOwnProperty(key)) {
-                config[key] = value;
-                console.log(`⚙️ Updated ${key} = ${value}`);
-            }
-        });
-        
-        // Update all slider positions and values
-        updateSliderPositions();
-        
-        // Save configuration
-        saveConfig();
-        
-        console.log(`✅ Applied ControlNet preset: ${nextItem.presetDisplayName}`);
-        
-        // Send feedback to server that ControlNet preset was applied
-        sendToServer({
-            type: 'controlnet_preset_applied',
-            presetName: nextItem.presetName,
-            presetDisplayName: nextItem.presetDisplayName,
-            from: nextItem.from,
-            chatId: nextItem.chatId
-        });
-    } else if (nextItem.isPreset && nextItem.presetName) {
-        // Handle prompt preset
-        setPrompt(nextItem.prompt);
-        
-        // Add to debug log - show processed message with content and timestamp
-        addTelegramMessageToDebug({
-            type: 'telegram_prompt_processed',
-            prompt: nextItem.prompt,
-            from: nextItem.from,
-            timestamp: nextItem.timestamp || new Date().toLocaleString()
-        });
-        
-        // Send feedback to server that prompt preset was applied
-        sendToServer({
-            type: 'telegram_prompt_applied',
-            promptId: nextItem.id,
-            prompt: nextItem.prompt,
-            from: nextItem.from,
-            chatId: nextItem.chatId,
-            isPreset: true,
-            presetName: nextItem.presetName
-        });
-    } else {
-        // Handle regular prompt (default behavior)
-        setPrompt(nextItem.prompt);
-        
-        // Add to debug log - show processed message with content and timestamp
-        addTelegramMessageToDebug({
-            type: 'telegram_prompt_processed',
-            prompt: nextItem.prompt,
-            from: nextItem.from,
-            timestamp: nextItem.timestamp || new Date().toLocaleString()
-        });
-        
-        // Send feedback to server that prompt was applied
-        sendToServer({
-            type: 'telegram_prompt_applied',
-            promptId: nextItem.id,
-            prompt: nextItem.prompt,
-            from: nextItem.from,
-            chatId: nextItem.chatId
-        });
-    }
-    
-    // Update timestamps for remaining items (they become the new "first")
-    if (telegramWaitlist.length > 0) {
-        telegramWaitlist[0].addedAt = Date.now();
-    }
-    
-    // Update debug display
-    if (config.DEBUG_MODE) {
-        updateMobileDebugInfo({
-            status: 'Running',
-            panelState: document.getElementById('controlPanel')?.classList.contains('collapsed') ? 'collapsed' : 'expanded',
-            touchEvents: window.mobileDebugTouchCount || 0,
-            canvasReady: !!document.getElementById('fluidCanvas'),
-            screenSize: `${window.innerWidth}x${window.innerHeight}`,
-            timestamp: new Date().toLocaleTimeString()
-        });
-    }
-}
 
-function startTelegramProcessing() {
-    if (telegramProcessingTimer) return; // Already running
-    
-    const interval = (config.TELEGRAM_WAITLIST_INTERVAL || 1) * 1000; // Convert to milliseconds
-    
-    telegramProcessingTimer = setInterval(() => {
-        processNextTelegramPrompt();
-    }, interval);
-    
-    console.log(`📱 Started Telegram processing timer (${config.TELEGRAM_WAITLIST_INTERVAL || 1}s intervals)`);
-}
-
-function stopTelegramProcessing() {
-    if (telegramProcessingTimer) {
-        clearInterval(telegramProcessingTimer);
-        telegramProcessingTimer = null;
-        console.log('📱 Stopped Telegram processing timer');
-    }
-}
 
 function clearTelegramWaitlist() {
     // Add to debug log
@@ -2056,43 +1937,6 @@ function clearTelegramWaitlist() {
     }, 3000);
 }
 
-function updateDebugDisplay() {
-    const debugInfo = document.getElementById('debugInfo');
-    if (!debugInfo || !config.DEBUG_MODE) return;
-    
-    // Get basic debug info (similar to existing updateMobileDebugInfo)
-    const panel = document.getElementById('controlPanel');
-    const info = {
-        status: 'Running',
-        panelState: panel ? (panel.classList.contains('collapsed') ? 'collapsed' : 'expanded') : 'missing',
-        touchEvents: window.mobileDebugTouchCount || 0,
-        canvasReady: !!document.getElementById('fluidCanvas'),
-        screenSize: `${window.innerWidth}x${window.innerHeight}`,
-        timestamp: new Date().toLocaleTimeString()
-    };
-    
-    // Get OSC status info
-    const oscStatus = getOSCStatusForDebug();
-    
-    // Get Telegram waitlist info
-    const waitlistInfo = getTelegramWaitlistInfo();
-    
-    debugInfo.innerHTML = `
-        <div><span style="color: #60a5fa;">Status:</span> <span style="color: #fbbf24;">${info.status}</span></div>
-        <div><span style="color: #60a5fa;">Panel:</span> <span style="color: #fbbf24;">${info.panelState}</span></div>
-        <div><span style="color: #60a5fa;">Touch Events:</span> <span style="color: #fbbf24;">${info.touchEvents}</span></div>
-        <div><span style="color: #60a5fa;">Canvas:</span> <span style="color: #fbbf24;">${info.canvasReady ? 'Ready' : 'Missing'}</span></div>
-        <div><span style="color: #60a5fa;">Screen:</span> <span style="color: #fbbf24;">${info.screenSize || 'Unknown'}</span></div>
-        <div><span style="color: #60a5fa;">Time:</span> <span style="color: #fbbf24;">${info.timestamp || 'N/A'}</span></div>
-        <div><span style="color: #60a5fa;">OSC Server:</span> <span style="color: ${oscStatus.color};">${oscStatus.text}</span></div>
-        <div style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 6px;">
-            <div><span style="color: #f472b6;">📱 Telegram:</span> <span style="color: #fbbf24;">${waitlistInfo.status}</span></div>
-            <div><span style="color: #f472b6;">Waitlist:</span> <span style="color: #fbbf24;">${waitlistInfo.count} queued</span></div>
-            ${waitlistInfo.nextPrompt ? `<div><span style="color: #f472b6;">Next:</span> <span style="color: #fbbf24;">"${waitlistInfo.nextPrompt}"</span></div>` : ''}
-            <div><span style="color: #f472b6;">Interval:</span> <span style="color: #fbbf24;">${waitlistInfo.interval}s</span></div>
-        </div>
-    `;
-}
 
 function getTelegramWaitlistInfo() {
     const isEnabled = config.TELEGRAM_RECEIVE === true;
@@ -2296,9 +2140,6 @@ function isMobile () {
     return mobile;
 }
 
-function isTouchDevice() {
-    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-}
 
 // Mobile Debug Overlay System
 function initializeMobileDebug() {
@@ -2620,9 +2461,6 @@ function addStreamEventToDebug(message) {
     updateStreamSectionVisibility();
 }
 
-function getDevicePixelRatio() {
-    return window.devicePixelRatio || 1;
-}
 
 function captureScreenshot () {
     let res = getResolution(config.CAPTURE_RESOLUTION);
@@ -3146,48 +2984,6 @@ function hideDragOverlay() {
     }
 }
 
-function handleMediaUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // Validate file type
-    const isImage = file.type.match(/^image\/(png|jpeg|jpg)$/);
-    const isVideo = file.type.match(/^video\/(mp4|webm|mov|quicktime)$/); // Added quicktime for .mov files
-    
-    console.log(`📁 File selected: ${file.name}, type: ${file.type}, size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
-    
-    if (!isImage && !isVideo) {
-        alert('Please select a PNG, JPG, JPEG image file or MP4, WebM, MOV video file.');
-        return;
-    }
-
-    // Validate file size (10MB for images, 50MB for videos)
-    const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-    const fileType = isVideo ? 'video' : 'image';
-    const maxSizeText = isVideo ? '50MB' : '10MB';
-    
-    if (file.size > maxSize) {
-        alert(`${fileType} file is too large. Please select a ${fileType} smaller than ${maxSizeText}.`);
-        return;
-    }
-
-    if (isVideo) {
-        // Handle video file
-        const url = URL.createObjectURL(file);
-        loadBackgroundVideo(url);
-        loadFluidBackgroundVideo(url, file.name);
-    } else {
-        // Handle image file
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            // Store original data URL for scale changes
-            backgroundMedia.originalDataURL = e.target.result;
-            loadBackgroundImage(e.target.result);
-            loadFluidBackgroundImage(e.target.result, file.name);
-        };
-        reader.readAsDataURL(file);
-    }
-}
 
 function loadBackgroundImage(dataURL) {
     const img = new Image();
@@ -3294,56 +3090,6 @@ function loadBackgroundImage(dataURL) {
     img.src = dataURL;
 }
 
-function loadBackgroundVideo(url) {
-    // Clear any existing background
-    clearBackgroundMedia();
-    
-    // Create video element
-    const video = document.createElement('video');
-    video.src = url;
-    video.loop = true; // Auto-loop as required
-    video.muted = true; // Muted to allow autoplay
-    video.crossOrigin = 'anonymous';
-    video.preload = 'auto'; // Changed from 'metadata' to 'auto' to ensure video data is loaded
-    video.playsInline = true; // Ensure inline playback on mobile
-    
-    // Wait for video to be ready with data
-    video.oncanplaythrough = function() {
-        // Store video element and metadata
-        backgroundMedia.element = video;
-        backgroundMedia.type = 'video';
-        backgroundMedia.width = video.videoWidth;
-        backgroundMedia.height = video.videoHeight;
-        backgroundMedia.loaded = true;
-        
-        // Create initial texture for the video
-        updateBackgroundVideoTexture();
-        
-        // Start playing the video
-        video.play().then(() => {
-            console.log(`📹 Background video playing: ${video.videoWidth}x${video.videoHeight}`);
-            
-            // Update UI
-            updateMediaPreview(url, 'video');
-            showClearButton(true);
-        }).catch(e => {
-            console.warn('Video autoplay failed:', e);
-            // Even if autoplay fails, the video is loaded and can be used
-            updateMediaPreview(url, 'video');
-            showClearButton(true);
-        });
-    };
-    
-    video.onloadedmetadata = function() {
-        console.log(`📹 Video metadata loaded: ${video.videoWidth}x${video.videoHeight}`);
-    };
-    
-    video.onerror = function(e) {
-        console.error('Error loading background video:', e);
-        alert('Failed to load video. Please try a different video file or ensure it\'s in a supported format (MP4, WebM, MOV).');
-        clearBackgroundMedia();
-    };
-}
 
 function createBackgroundTexture(canvas) {
     // Delete existing texture if it exists
@@ -3431,9 +3177,6 @@ function showClearButton(show) {
     }
 }
 
-function clearBackgroundImage() {
-    clearBackgroundMedia();
-}
 
 function clearBackgroundMedia() {
     // Clear WebGL texture
@@ -3473,60 +3216,6 @@ function clearAllBackground() {
     clearBackgroundMedia();
 }
 
-function clearFluidBackgroundMedia() {
-    // Clear uploaded media
-    if (fluidBackgroundMedia.loaded) {
-        // Clean up texture
-        if (fluidBackgroundMedia.texture) {
-            gl.deleteTexture(fluidBackgroundMedia.texture);
-            fluidBackgroundMedia.texture = null;
-        }
-        
-        // Clean up media element
-        if (fluidBackgroundMedia.element) {
-            if (fluidBackgroundMedia.type === 'video') {
-                fluidBackgroundMedia.element.pause();
-                fluidBackgroundMedia.element.src = '';
-            }
-            // Revoke object URL to free memory
-            if (fluidBackgroundMedia.element.src && fluidBackgroundMedia.element.src.startsWith('blob:')) {
-                URL.revokeObjectURL(fluidBackgroundMedia.element.src);
-            }
-            fluidBackgroundMedia.element = null;
-        }
-        
-        // Reset state
-        fluidBackgroundMedia.loaded = false;
-        fluidBackgroundMedia.type = null;
-        fluidBackgroundMedia.width = 0;
-        fluidBackgroundMedia.height = 0;
-        fluidBackgroundMedia.scale = 1.0;
-        
-        // Hide media controls and reset file input
-        const mediaScaleControl = document.getElementById('fluidMediaScaleControl');
-        const mediaUpload = document.getElementById('mediaUpload');
-        if (mediaScaleControl) mediaScaleControl.style.display = 'none';
-        if (mediaUpload) mediaUpload.value = '';
-        
-        console.log('🗑️ Fluid background media cleared');
-    }
-    
-    // Clear camera feed
-    if (fluidBackgroundCamera.active) {
-        stopFluidBackgroundCamera();
-        const button = document.getElementById('fluidCameraButton');
-        if (button) {
-            button.textContent = '📷 Camera';
-            button.classList.remove('active');
-        }
-    }
-    
-    // Hide old clear button if nothing is active (legacy support)
-    if (!fluidBackgroundMedia.loaded && !fluidBackgroundCamera.active) {
-        const clearButton = document.getElementById('clearFluidBackgroundButton');
-        if (clearButton) clearButton.style.display = 'none';
-    }
-}
 
 function clearFluidBackgroundMediaOnly() {
     // Clear only uploaded media, not camera
@@ -3895,43 +3584,6 @@ const simpleTextureShader = compileShader(gl.FRAGMENT_SHADER, `
 
     void main () {
         gl_FragColor = texture2D(uTexture, vUv);
-    }
-`);
-
-const cameraShader = compileShader(gl.FRAGMENT_SHADER, `
-    precision highp float;
-    precision highp sampler2D;
-
-    varying vec2 vUv;
-    uniform sampler2D uTexture;
-    uniform float uCanvasAspect;
-    uniform float uVideoAspect;
-
-    void main () {
-        // Flip Y coordinate for camera feed
-        vec2 flippedUv = vec2(vUv.x, 1.0 - vUv.y);
-        
-        // Calculate aspect ratio correction for "cover" behavior
-        vec2 scale = vec2(1.0);
-        vec2 offset = vec2(0.0);
-        
-        if (uCanvasAspect > uVideoAspect) {
-            // Canvas is wider than video - scale video to fit width, crop height
-            scale.y = uCanvasAspect / uVideoAspect;
-            offset.y = (1.0 - scale.y) * 0.5;
-        } else {
-            // Canvas is taller than video - scale video to fit height, crop width  
-            scale.x = uVideoAspect / uCanvasAspect;
-            offset.x = (1.0 - scale.x) * 0.5;
-        }
-        
-        // Apply scaling and centering
-        vec2 correctedUv = (flippedUv - offset) / scale;
-        
-        // Clamp to prevent sampling outside texture bounds
-        correctedUv = clamp(correctedUv, 0.0, 1.0);
-        
-        gl_FragColor = texture2D(uTexture, correctedUv);
     }
 `);
 
@@ -4412,7 +4064,6 @@ const copyProgram            = new Program(baseVertexShader, copyShader);
 const clearProgram           = new Program(baseVertexShader, clearShader);
 const colorProgram           = new Program(baseVertexShader, colorShader);
 const simpleTextureProgram   = new Program(baseVertexShader, simpleTextureShader);
-const cameraProgram          = new Program(baseVertexShader, cameraShader);
 const backgroundVideoProgram = new Program(baseVertexShader, backgroundVideoShader);
 const checkerboardProgram    = new Program(baseVertexShader, checkerboardShader);
 const bloomPrefilterProgram  = new Program(baseVertexShader, bloomPrefilterShader);
@@ -4576,37 +4227,6 @@ function resizeDoubleFBO (target, w, h, internalFormat, format, type, param) {
     return target;
 }
 
-function createTextureAsync (url) {
-    let texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255]));
-
-    let obj = {
-        texture,
-        width: 1,
-        height: 1,
-        attach (id) {
-            gl.activeTexture(gl.TEXTURE0 + id);
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            return id;
-        }
-    };
-
-    let image = new Image();
-    image.onload = () => {
-        obj.width = image.width;
-        obj.height = image.height;
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
-    };
-    image.src = url;
-
-    return obj;
-}
 
 function createNoiseTexture() {
     let texture = gl.createTexture();
@@ -4931,9 +4551,6 @@ function drawColor (target, color) {
     blit(target);
 }
 
-function drawBackgroundImage (target) {
-    drawBackgroundMedia(target);
-}
 
 function drawBackgroundMedia (target) {
     // Enable blending for the background media with premultiplied alpha
@@ -5874,14 +5491,6 @@ function updateBackgroundColor(hexColor) {
     }
 }
 
-function normalizeColor (input) {
-    let output = {
-        r: input.r / 255,
-        g: input.g / 255,
-        b: input.b / 255
-    };
-    return output;
-}
 
 function wrap (value, min, max) {
     let range = max - min;
@@ -9072,39 +8681,6 @@ function updateAudioDelay(value, updateInput = true) {
     document.getElementById('audioDelayFill').style.width = `${percentage}%`;
 }
 
-// Handle manual input of delay value
-function initializeAudioDelayInput() {
-    const input = document.getElementById('audioDelayValue');
-    if (!input) return;
-    
-    input.addEventListener('input', (e) => {
-        // Remove any non-numeric characters
-        let value = e.target.value.replace(/[^\d]/g, '');
-        e.target.value = value;
-    });
-    
-    input.addEventListener('change', (e) => {
-        // Get numeric value
-        let value = parseInt(e.target.value, 10);
-        
-        // Only clamp the minimum value to 0, allow higher than 500
-        value = Math.max(0, isNaN(value) ? 0 : value);
-        
-        // Update the input with the cleaned value
-        e.target.value = value;
-        
-        // Update delay without updating the input field again
-        updateAudioDelay(value, false);
-    });
-    
-    input.addEventListener('blur', (e) => {
-        // Ensure the value is set when leaving the field
-        if (e.target.value === '') {
-            e.target.value = '0';
-            updateAudioDelay(0, false);
-        }
-    });
-}
 
 // Initialize numeric input fields
 function initializeNumericInput(id, min, max, updateFn, precision = 1) {
@@ -9607,13 +9183,6 @@ function loadFromLocalStorage(key, defaultValue = null) {
     }
 }
 
-function clearLocalStorage() {
-    if (!isLocalStorageAvailable()) return;
-    
-    Object.values(STORAGE_KEYS).forEach(key => {
-        localStorage.removeItem(key);
-    });
-}
 
 // Stream State Persistence Functions
 // Enhanced obfuscation for the Telegram token (browser-safe method)
@@ -10849,109 +10418,6 @@ function handleControlNetPreset(message) {
     // Debug notification removed - no longer showing waitlist additions in UI
 }
 
-function showTelegramNotification(message, ignored = false) {
-    // Disabled - no overlay notifications in top right corner
-    return;
-    
-    // Create a temporary notification element
-    const notification = document.createElement('div');
-    notification.className = 'telegram-notification';
-    
-    const title = ignored ? 'Telegram Prompt Ignored' : 'Telegram Prompt Received';
-    const icon = ignored ? '🚫' : '📱';
-    const titleColor = ignored ? '#ff6b6b' : '#4ecdc4';
-    
-    notification.innerHTML = `
-        <div class="notification-content">
-            <span class="notification-icon">${icon}</span>
-            <div class="notification-text">
-                <div class="notification-title" style="color: ${titleColor};">${title}</div>
-                <div class="notification-subtitle">From: ${message.from}</div>
-                <div class="notification-prompt">"${message.prompt}"</div>
-                ${ignored ? '<div class="notification-status">Toggle "Receive from Telegram" to enable</div>' : ''}
-            </div>
-        </div>
-    `;
-    
-    // Add styles
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: rgba(0, 0, 0, 0.9);
-        color: white;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #333;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        z-index: 10000;
-        max-width: 350px;
-        animation: slideIn 0.3s ease-out;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    `;
-    
-    // Add animation styles if not already present
-    if (!document.querySelector('#telegram-notification-styles')) {
-        const style = document.createElement('style');
-        style.id = 'telegram-notification-styles';
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            .notification-content {
-                display: flex;
-                align-items: flex-start;
-                gap: 10px;
-            }
-            .notification-icon {
-                font-size: 24px;
-                flex-shrink: 0;
-            }
-            .notification-text {
-                flex: 1;
-            }
-            .notification-title {
-                font-weight: bold;
-                margin-bottom: 4px;
-                font-size: 14px;
-            }
-            .notification-subtitle {
-                font-size: 12px;
-                opacity: 0.8;
-                margin-bottom: 6px;
-            }
-            .notification-prompt {
-                font-size: 13px;
-                font-style: italic;
-                opacity: 0.9;
-                line-height: 1.3;
-            }
-            .notification-status {
-                font-size: 11px;
-                opacity: 0.7;
-                margin-top: 4px;
-                font-style: normal;
-            }
-        `;
-        document.head.appendChild(style);
-    }
-    
-    // Add to page
-    document.body.appendChild(notification);
-    
-    // Remove after 5 seconds
-    setTimeout(() => {
-        if (notification.parentNode) {
-            notification.style.animation = 'slideIn 0.3s ease-out reverse';
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-            }, 300);
-        }
-    }, 5000);
-}
 
 function updateUIFromConfig(parameter, value) {
     // Update sliders based on parameter
