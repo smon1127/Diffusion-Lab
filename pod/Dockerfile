@@ -15,11 +15,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HOME=/workspace/hf \
     PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# libgl1/libglib2.0-0: OpenCV; zstd: the environment archive; python3-minimal: the status
-# page during setup; git + build-essential: only for building a new environment
+# libgl1/libglib2.0-0: OpenCV; zstd: the environment archive; python3: the status page
+# during setup (python3-minimal lacks http.server); git + build-essential: only for building a new environment
 # (insightface, from the IPAdapter extra, compiles C++)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates libgl1 libglib2.0-0 zstd python3-minimal git build-essential \
+        ca-certificates libgl1 libglib2.0-0 zstd python3 git build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # uv, pinned

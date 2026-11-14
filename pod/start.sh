@@ -14,7 +14,7 @@ STAGE_FILE=/tmp/stage
 
 stage() { printf '%s' "$1" > "$STAGE_FILE"; echo "[start] $1"; }
 
-# /health while the environment is set up (python3-minimal from the image, not the env)
+# /health while the environment is set up (the system python3, not the env)
 stage "preparing"
 python3 - "$PORT" "$STAGE_FILE" <<'EOF' &
 import http.server, json, sys
@@ -49,6 +49,7 @@ else
 fi
 echo "[start] environment ready in $(( $(date +%s) - t0 ))s (release $RELEASE)"
 
-kill "$STATUS_PID"
+# (it may already be gone; under set -e a failing kill would end the script)
+kill "$STATUS_PID" 2>/dev/null || true
 wait "$STATUS_PID" 2>/dev/null || true
 exec /opt/env/venv/bin/python /app/server.py
