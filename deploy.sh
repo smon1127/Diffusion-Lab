@@ -11,11 +11,13 @@
 # downloaded to deploy-backups/<timestamp>/ before anything is overwritten.
 # Login details are read from .env (see .env.example). If .env sets DAYDREAM_API_KEY,
 # it is uploaded to api/.secrets/ for the PHP proxy in api/daydream.php, which keeps
-# it out of the page. That folder is blocked for web access by its .htaccess; the key
-# is only uploaded after a probe file there is confirmed unreachable from the web.
+# it out of the page. Likewise, the RUNPOD_* settings become api/.secrets/runpod.json
+# for api/runpod.php (see tools/runpod-config.py). That folder is blocked for web
+# access by its .htaccess; secrets are only uploaded after a probe file there is
+# confirmed unreachable from the web.
 set -euo pipefail
 
-FILES=(index.html script.js prompt-presets.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4 models/selfie_segmenter.tflite api/daydream.php api/.secrets/.htaccess)
+FILES=(index.html script.js prompt-presets.js coloris.min.js coloris.min.css daydream_logo.svg favicon.ico diffusion_lab_teaser.mp4 models/selfie_segmenter.tflite api/daydream.php api/runpod.php api/.secrets/.htaccess)
 SITE_URL="https://diffusionlab.de"
 SECRETS_DIR="api/.secrets" # inside the web folder, blocked by its .htaccess
 
@@ -69,10 +71,21 @@ if [ -n "$(git status --porcelain -- "${FILES[@]}")" ]; then
   echo "  Note: local changes to site files are NOT included (only the committed version is)."
 fi
 printf '  %s\n' "${FILES[@]}"
+# Secret files for api/.secrets/, built in the private temp folder
+secrets=()
 if [ -n "${DAYDREAM_API_KEY:-}" ]; then
+  ( umask 077; printf '%s\n' "$DAYDREAM_API_KEY" > "$work/daydream.key" )
+  secrets+=(daydream.key)
   echo "  + Daydream API key -> $SECRETS_DIR/daydream.key (web access blocked, checked before upload)"
 else
   echo "  (no DAYDREAM_API_KEY in .env: the proxy keeps its current key, if any)"
+fi
+if python3 tools/runpod-config.py "$work/runpod.json"; then
+  secrets+=(runpod.json)
+  echo "  + RunPod settings -> $SECRETS_DIR/runpod.json (web access blocked, checked before upload)"
+else
+  [ $? -eq 2 ] || exit 1
+  echo "  (no RUNPOD_API_KEY in .env: api/runpod.php keeps its current settings, if any)"
 fi
 
 if $dry_run; then
@@ -104,19 +117,20 @@ for file in "${FILES[@]}"; do
   ftp_curl --ftp-create-dirs --upload-file "$work/$file" "$base/$file"
 done
 
-if [ -n "${DAYDREAM_API_KEY:-}" ]; then
-  # Prove the folder is blocked for web access before putting the key there
+if [ ${#secrets[@]} -gt 0 ]; then
+  # Prove the folder is blocked for web access before putting secrets there
   probe="probe-$(date +%s)-$RANDOM.txt"
   echo "harmless deploy probe" > "$work/$probe"
   ftp_curl --upload-file "$work/$probe" "$base/$SECRETS_DIR/$probe"
   probe_status="$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/$SECRETS_DIR/$probe")"
   ftp_curl --quote "DELE ${remote_dir:+$remote_dir/}$SECRETS_DIR/$probe" --list-only "$base/$SECRETS_DIR/" >/dev/null 2>&1 || true
   if [ "$probe_status" != "403" ] && [ "$probe_status" != "404" ]; then
-    echo "NOT uploading the API key: $SECRETS_DIR/ is reachable from the web (HTTP $probe_status)." >&2
+    echo "NOT uploading secrets: $SECRETS_DIR/ is reachable from the web (HTTP $probe_status)." >&2
     exit 1
   fi
-  echo "Uploading the Daydream API key for the proxy ($SECRETS_DIR/ is blocked for web access: HTTP $probe_status)"
-  ( umask 077; printf '%s\n' "$DAYDREAM_API_KEY" > "$work/daydream.key" )
-  ftp_curl --upload-file "$work/daydream.key" "$base/$SECRETS_DIR/daydream.key"
+  for secret in "${secrets[@]}"; do
+    echo "Uploading $SECRETS_DIR/$secret ($SECRETS_DIR/ is blocked for web access: HTTP $probe_status)"
+    ftp_curl --upload-file "$work/$secret" "$base/$SECRETS_DIR/$secret"
+  done
 fi
 echo "Done: https://diffusionlab.de/ now serves $(git log -1 --format=%h "$commit")."
