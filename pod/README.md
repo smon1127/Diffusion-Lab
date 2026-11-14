@@ -95,3 +95,21 @@ Takeaways:
 - Diffusers warns on every frame about the [-1, 1] tensor range (`image_processor.py:730`); silence it.
 - End-to-end latency (camera → AI frame on screen) still needs a frame-counter measurement in the real frontend.
 - Spike cost: one RTX 4090 pod for about 65 min ≈ $0.96 (RunPod billing record not posted yet).
+
+## Production findings (live test 2026-11-14, template `yorr15bve1`, volume `e0w3svdne3` in EU-RO-1)
+- **Image pull dominates a cold start:** the 11.2 GB image took **6.3 min** from create to
+  `/health` on a fresh host. That alone breaks a 5-minute warm-up.
+- **Restarting on the same host is fast:** a container restart (image cached) answered
+  `/health` after **5 s**. → `api/runpod.php` now **stops** pods instead of terminating them and
+  resumes them on the next start. A stopped pod costs nothing (no volume disk; container disk
+  isn't billed while stopped; the network volume bills either way). If its host has no free GPU,
+  or the template has a newer image, a fresh pod is created instead.
+- **Loading SDXL from the network volume is slower:** `from_pretrained` took 45 s (about 20 s
+  from local disk on the spike pod).
+- **Engine build on first start:** UNet + VAE engines built and saved in about 9 min, then reused
+  ("engine_path already exists, skipping compile").
+- **Out of memory with 3 ControlNets + IPAdapter on 24 GB:** 12.5 GB PyTorch + ~11 GB TensorRT
+  (the UNet engine reserves for its largest profile, 1024 px / batch 4). The tile/feedback
+  ControlNet was dropped (cached attention covers it); `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
+- A failed load now deletes the pod after 2 minutes; before, a pod stuck in `error` never
+  counted as idle and would have run until the 60-minute limit.
