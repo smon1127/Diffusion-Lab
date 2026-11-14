@@ -1372,7 +1372,7 @@ function updateResolution() {
     saveConfig();
     if (streamInput.canvas) ensureStreamInputCanvas();
 
-    // The pod rebuilds its pipeline for the new size when we reconnect (~20 s, same GPU)
+    // The pod rebuilds its pipeline for the new size when we reconnect (1-2 min, same GPU)
     if (streamState.isStreaming) {
         addStreamEventToDebug({ type: 'resolution_changed', resolution: size });
         reconnectStream(`Switching to ${size} × ${size}`);
@@ -5544,6 +5544,7 @@ const RUNPOD_API_URL = 'api/runpod.php';
 const POD_START_TIMEOUT_MS = 10 * 60 * 1000; // resuming takes 1-2 min; a GPU machine new to the image ~7
 const POD_STATUS_POLL_MS = 2000;             // while the pod starts
 const POD_KEEPALIVE_MS = 15000;              // while streaming: keeps our session, refreshes the token
+const POD_RESIZE_TIMEOUT_MS = 5 * 60 * 1000; // rebuilding the pipeline at another size: 1-2 min
 const ICE_GATHERING_TIMEOUT_MS = 3000;
 const STYLE_IMAGE_MAX_SIZE = 512;            // px; the style image is sent once, downscaled
 
@@ -5715,7 +5716,7 @@ async function connectToPod(mediaStream) {
     await pc.setLocalDescription(await pc.createOffer());
     await waitForIceGathering(pc);
 
-    // A new size makes the pod rebuild its pipeline first (~20 s)
+    await ensurePodSize(getStreamResolution());
     const response = await podFetch(`/whip?size=${getStreamResolution()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/sdp' },
@@ -5738,6 +5739,27 @@ async function connectToPod(mediaStream) {
         }
     });
     return pc;
+}
+
+// Rebuilds the pod's pipeline at another size if needed (1-2 min) and waits for it. The
+// rebuild runs in the background on the pod, since the proxy cuts requests after 100 s.
+async function ensurePodSize(size) {
+    const response = await podFetch('/resize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ size })
+    });
+    if (response.status === 200) return;
+    if (response.status !== 202) throw new Error(`The GPU couldn't switch size (HTTP ${response.status}): ${await response.text()}`);
+    const started = Date.now();
+    while (Date.now() - started < POD_RESIZE_TIMEOUT_MS) {
+        await sleep(POD_STATUS_POLL_MS);
+        const health = await fetch(streamState.podUrl + '/health', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
+        if (health?.ready) return;
+        if (health?.stage === 'error') throw new Error("The GPU couldn't switch size");
+        if (health?.stage) setStreamLoader('loading', `Switching to ${size} × ${size}`, getStreamLoaderDetail(health.stage));
+    }
+    throw new Error('Switching size took too long');
 }
 
 function waitForIceGathering(pc) {
@@ -6277,7 +6299,7 @@ function closePodConnection() {
 }
 
 // New WebRTC connection to the same pod: for the restart button, a size change (the pod
-// rebuilds its pipeline, ~20 s) or a dropped connection. No new GPU, no cold start.
+// rebuilds its pipeline, 1-2 min) or a dropped connection. No new GPU, no cold start.
 async function reconnectStream(title = 'Reconnecting') {
     if (!streamState.isStreaming) return startStream();
     if (streamState.isReconnecting) return;

@@ -4,8 +4,9 @@ One browser session at a time (v1). The browser publishes its canvas/camera trac
 a WHIP-style POST and receives the AI output on the same peer connection:
 
   GET    /health                  {"ready": bool, "stage": str}       (no auth; polled by api/runpod.php)
-  POST   /whip[?size=512|768|1024] SDP offer (application/sdp) -> 201 SDP answer, Location: /whip/<id>
-                                  (a new size rebuilds the pipeline first, ~20 s)
+  POST   /whip[?size=N]           SDP offer (application/sdp) -> 201 SDP answer, Location: /whip/<id>
+                                  (409 if N isn't the pipeline's size: POST /resize first)
+  POST   /resize                  {"size": 512|768|1024} -> 202, rebuilds in the background (/health)
   DELETE /whip/<id>               end the session
   POST   /params                  JSON stream params (Daydream-style, see apply_params) -> 200
 
@@ -188,7 +189,12 @@ class Engine:
             self.wrapper = None
             gc.collect()
             torch.cuda.empty_cache()
-            self._build(size)
+            try:
+                self._build(size)
+            except Exception:
+                log.exception("resize to %d failed", size)
+                state["stage"] = "error"
+                return
         state.update(ready=True, stage="ready", last_activity=time.monotonic())
         log.info("pipeline resized to %d in %.0fs", size, time.monotonic() - t0)
 
@@ -380,11 +386,9 @@ async def whip_post(request: web.Request):
     for existing in list(sessions):  # v1: one session; a new one replaces the old
         await close_session(existing)
     size = request.query.get("size", "")
-    if size:
-        if size not in ALLOWED_SIZES:
-            return web.json_response({"error": "size must be one of " + ", ".join(ALLOWED_SIZES)}, status=400)
-        if int(size) != engine.width:
-            await asyncio.get_running_loop().run_in_executor(None, engine.resize, int(size))
+    if size and size != str(engine.width):
+        # A rebuild takes longer than the HTTP proxy allows (100 s); see POST /resize
+        return web.json_response({"error": "size differs, POST /resize first", "size": engine.width}, status=409)
 
     session_id = uuid.uuid4().hex
     pc = RTCPeerConnection(RTCConfiguration(iceServers=ice_servers()))
@@ -416,6 +420,27 @@ async def whip_post(request: web.Request):
         content_type="application/sdp",
         headers={"Location": f"/whip/{session_id}"},
     )
+
+
+async def resize_post(request: web.Request):
+    """Starts rebuilding the pipeline at another size and returns at once (202); /health
+    reports the progress. The rebuild (about 1-2 min, models come from the network volume)
+    would outlast the RunPod proxy's 100 s request limit."""
+    try:
+        size = str((await request.json()).get("size", ""))
+    except (json.JSONDecodeError, AttributeError):
+        return web.json_response({"error": "expected {\"size\": N}"}, status=400)
+    if size not in ALLOWED_SIZES:
+        return web.json_response({"error": "size must be one of " + ", ".join(ALLOWED_SIZES)}, status=400)
+    if not state["ready"]:
+        return web.json_response({"error": "busy: " + state["stage"]}, status=409)
+    if int(size) == engine.width:
+        return web.json_response({"ok": True, "size": engine.width})
+    for existing in list(sessions):
+        await close_session(existing)
+    state.update(ready=False, stage=f"switching to {size} x {size}")
+    asyncio.get_running_loop().run_in_executor(None, engine.resize, int(size))
+    return web.json_response({"ok": True, "size": int(size), "pending": True}, status=202)
 
 
 async def whip_delete(request: web.Request):
@@ -519,6 +544,7 @@ def main():
     app.router.add_post("/whip", whip_post)
     app.router.add_delete("/whip/{session_id}", whip_delete)
     app.router.add_post("/params", params_post)
+    app.router.add_post("/resize", resize_post)
     app.cleanup_ctx.append(watchdog)
     web.run_app(app, host="0.0.0.0", port=PORT, access_log=None)
 
