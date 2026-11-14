@@ -69,6 +69,7 @@ MAX_SDP_BYTES = 64 * 1024
 MAX_PARAMS_BYTES = 2 * 1024 * 1024  # room for one downscaled style image as a data: URL
 MAX_STYLE_IMAGE_BYTES = 1024 * 1024
 ALLOWED_SIZES = ("512", "768", "1024")  # the page's STREAM_RESOLUTIONS
+LOAD_ERROR_GRACE_SECONDS = 120
 
 BOOT = time.monotonic()
 state = {"ready": False, "stage": "starting", "last_activity": time.monotonic()}
@@ -476,6 +477,11 @@ async def watchdog(_app):
         while True:
             await asyncio.sleep(30)
             now = time.monotonic()
+            if state["stage"] == "error":
+                # A failed load won't recover; leave the error readable for a moment, then go
+                if now - state.setdefault("failed_at", now) > LOAD_ERROR_GRACE_SECONDS:
+                    await terminate_self("model load failed")
+                continue
             if sessions or not state["ready"]:
                 state["last_activity"] = now  # loading/building engines is not idle
             if now - BOOT > MAX_SECONDS:

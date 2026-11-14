@@ -10,7 +10,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_CACHE_DIR=/tmp/uv-cache \
     VIRTUAL_ENV=/opt/venv \
     PATH=/opt/venv/bin:$PATH \
-    HF_HOME=/workspace/hf
+    HF_HOME=/workspace/hf \
+    PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # build-essential: insightface (IPAdapter extra) compiles C++ on install
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -5956,8 +5956,7 @@ const AI_MODEL = {
     label: 'SDXL Turbo',
     controlnets: [
         { model_id: 'xinsir/controlnet-depth-sdxl-1.0', scaleProp: 'CONTROLNET_DEPTH_SCALE' },
-        { model_id: 'xinsir/controlnet-canny-sdxl-1.0', scaleProp: 'CONTROLNET_CANNY_SCALE' },
-        { model_id: 'xinsir/controlnet-tile-sdxl-1.0', fixedScale: 0.1 } // feedback: blends in the last output
+        { model_id: 'xinsir/controlnet-canny-sdxl-1.0', scaleProp: 'CONTROLNET_CANNY_SCALE' }
     ]
 };
 
@@ -6016,7 +6015,7 @@ function buildStreamParams() {
         controlnets: AI_MODEL.controlnets.map(cn => ({
             model_id: cn.model_id,
             enabled: true,
-            conditioning_scale: cn.scaleProp ? config[cn.scaleProp] : cn.fixedScale
+            conditioning_scale: config[cn.scaleProp]
         })),
         ip_adapter: {
             scale: config.STYLE_STRENGTH || 0.5,
