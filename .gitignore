@@ -64,3 +64,4 @@ api/.secrets/*
 
 # Local working notes (plans, reviews, lessons)
 tasks/
+__pycache__/

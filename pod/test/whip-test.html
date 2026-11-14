@@ -1,0 +1,108 @@
+<!doctype html>
+<!-- Manual/automated test for pod/server.py: open with ?pod=<pod URL>&token=<token>[&relay=1]
+     Publishes an animated canvas, shows the AI output and prints connection stats. -->
+<html>
+<head><meta charset="utf-8"><title>Pod WHIP test</title>
+<style>body{font:14px monospace;background:#111;color:#ddd} canvas,video{width:384px;height:384px;background:#000;margin:4px}</style>
+</head>
+<body>
+<canvas id="src" width="512" height="512"></canvas><video id="out" autoplay muted playsinline></video>
+<pre id="log"></pre>
+<script>
+const q = new URLSearchParams(location.search);
+const podUrl = q.get('pod'), token = q.get('token');
+const logEl = document.getElementById('log');
+const log = (...a) => { logEl.textContent += a.join(' ') + '\n'; console.log(...a); };
+window.testResult = { status: 'running' };
+
+// Moving shapes so the output visibly changes
+const ctx = document.getElementById('src').getContext('2d');
+let t = 0;
+(function draw() {
+  t += 1 / 30;
+  ctx.fillStyle = `hsl(${(t * 40) % 360},60%,40%)`; ctx.fillRect(0, 0, 512, 512);
+  ctx.fillStyle = '#fff'; ctx.beginPath();
+  ctx.arc(256 + 150 * Math.cos(t), 256 + 150 * Math.sin(t * 1.3), 60, 0, 7); ctx.fill();
+  ctx.fillStyle = '#222'; ctx.fillRect(100 + 80 * Math.sin(t * 2), 380, 120, 80);
+  requestAnimationFrame(draw);
+})();
+
+// Mean brightness (0-255) of the received AI frame: ~0 means the pod sends black frames
+const probe = document.createElement('canvas');
+probe.width = probe.height = 64;
+function outputBrightness() {
+  const video = document.getElementById('out');
+  if (!video.videoWidth) return null;
+  const c = probe.getContext('2d', { willReadFrequently: true });
+  c.drawImage(video, 0, 0, 64, 64);
+  const px = c.getImageData(0, 0, 64, 64).data;
+  let sum = 0;
+  for (let i = 0; i < px.length; i += 4) sum += (px[i] + px[i + 1] + px[i + 2]) / 3;
+  return Math.round(sum / (px.length / 4));
+}
+
+async function run() {
+  const ice = q.get('ice') ? JSON.parse(q.get('ice')) : [{ urls: 'stun:stun.l.google.com:19302' }];
+  const pc = new RTCPeerConnection({ iceServers: ice, iceTransportPolicy: q.get('relay') ? 'relay' : 'all' });
+  const stream = document.getElementById('src').captureStream(30);
+  pc.addTransceiver(stream.getVideoTracks()[0], { direction: 'sendrecv' });
+  pc.ontrack = (e) => { document.getElementById('out').srcObject = new MediaStream([e.track]); };
+  pc.onconnectionstatechange = () => log('connection:', pc.connectionState);
+
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') return resolve();
+    pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && resolve();
+    setTimeout(resolve, 3000);
+  });
+  const t0 = performance.now();
+  const res = await fetch(podUrl + '/whip', {
+    method: 'POST', body: pc.localDescription.sdp,
+    headers: { 'Content-Type': 'application/sdp', Authorization: 'Bearer ' + token }
+  });
+  log('POST /whip ->', res.status, 'in', Math.round(performance.now() - t0), 'ms; Location:', res.headers.get('Location'));
+  if (res.status !== 201) { window.testResult = { status: 'whip-failed', code: res.status, body: await res.text() }; return; }
+  await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+
+  // Live param change, as the site does
+  setTimeout(async () => {
+    const r = await fetch(podUrl + '/params', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ prompt: 'neon cyberpunk city, glowing lights', seed: 7 })
+    });
+    log('POST /params ->', r.status, await r.text());
+  }, 6000);
+
+  // Stats every 2 s, final result after 20 s
+  let samples = [];
+  const timer = setInterval(async () => {
+    const stats = await pc.getStats();
+    let pair, inbound, local, remote;
+    stats.forEach((s) => {
+      if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s;
+      if (s.type === 'inbound-rtp' && s.kind === 'video') inbound = s;
+    });
+    if (pair) { local = stats.get(pair.localCandidateId); remote = stats.get(pair.remoteCandidateId); }
+    const sample = {
+      route: pair ? `${local.candidateType}/${local.protocol} -> ${remote.candidateType}/${remote.protocol}` : 'none',
+      rttMs: pair && pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null,
+      fps: inbound ? inbound.framesPerSecond : null,
+      framesDecoded: inbound ? inbound.framesDecoded : 0,
+      size: inbound ? `${inbound.frameWidth}x${inbound.frameHeight}` : null,
+      outMean: outputBrightness()
+    };
+    samples.push(sample);
+    log(JSON.stringify(sample));
+  }, 2000);
+  setTimeout(async () => {
+    clearInterval(timer);
+    const del = await fetch(podUrl + res.headers.get('Location'), { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+    log('DELETE session ->', del.status);
+    pc.close();
+    window.testResult = { status: 'done', last: samples[samples.length - 1], samples };
+  }, 20000);
+}
+run().catch((e) => { log('ERROR', e.message); window.testResult = { status: 'error', message: e.message }; });
+</script>
+</body>
+</html>
