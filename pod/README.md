@@ -25,7 +25,7 @@ Browser ──POST start / GET status──> api/runpod.php ──RunPod REST v2
 |---|---|---|
 | `TOKEN_SECRET` | (required) | same value as `RUNPOD_TOKEN_SECRET` in the site's `.env`. Set it as a RunPod secret: `{{ RUNPOD_SECRET_diffusionlab_token }}` |
 | `ALLOWED_ORIGINS` | `https://diffusionlab.de,https://www.diffusionlab.de` | CORS + origin check |
-| `IDLE_MINUTES` | 5 | no session and no authenticated request for this long → the pod deletes itself |
+| `IDLE_MINUTES` | 5 | no session and no authenticated request for this long → the pod stops itself. Also the standby after "Stop AI": `api/runpod.php` doesn't stop the pod on stop, so a start within this time takes seconds |
 | `MAX_SESSION_MINUTES` | 60 | hard limit after boot (api/runpod.php passes its own value) |
 | `ICE_SERVERS` | Google STUN | JSON list of `{urls, username?, credential?}`, e.g. a TURN fallback |
 | `SD_CONFIG` | `/app/config.yaml` | StreamDiffusion config |

@@ -6316,7 +6316,8 @@ function stopStream() {
     streamState.popupCheckInterval = streamState.promptUpdateInterval = streamState.keepaliveInterval = null;
 
     closeStreamOverlay();
-    updateStreamStatus('Idle', 'idle');
+    // The pod stays on standby for its idle time (5 min): starting again then takes seconds
+    updateStreamStatus(session ? 'Stopped · GPU on standby for 5 min' : 'Idle', 'idle');
     updateStreamButton(false);
 }
 
