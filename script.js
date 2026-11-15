@@ -5378,22 +5378,15 @@ function createOrganicSplat() {
 function generateOrganicColor(colorLife) {
     const time = Date.now() * 0.001;
     
-    // COLOR LIFE: Intuitive 0-1 range (0 = static color, 1 = full rainbow evolution)
-    const colorfulOverride = config.COLORFUL;
-    const dynamicColorStrength = Math.max(colorLife, colorfulOverride ? 1.0 : 0);
-    
-    if (dynamicColorStrength > 0.1) {
-        // Dynamic rainbow colors - strength based on Color Life value
-        const evolutionSpeed = dynamicColorStrength * 0.2; // 0-0.2 evolution speed
-        const hueShift = dynamicColorStrength * Math.sin(time * 0.15) * 0.4; // Hue variation
-        const baseHue = (time * evolutionSpeed) % 1.0;
-        const finalHue = (baseHue + hueShift + 1) % 1.0;
-        
-        // Color Life affects saturation and brightness variation
-        const saturation = 0.7 + (dynamicColorStrength * 0.3); // 0.7-1.0 saturation
-        const brightness = 0.8 + Math.sin(time * 0.3) * dynamicColorStrength * 0.2; // Brightness pulse
-        
-        let c = HSVtoRGB(finalHue, saturation, brightness);
+    // Rainbow only with the Colorful toggle on; otherwise the brush color (STATIC_COLOR),
+    // whose brightness COLOR LIFE makes pulse (0 = steady)
+    if (config.COLORFUL) {
+        // Slowly evolving rainbow with a hue wobble and a gentle brightness pulse
+        const baseHue = (time * 0.2) % 1.0;
+        const finalHue = (baseHue + Math.sin(time * 0.15) * 0.4 + 1) % 1.0;
+        const brightness = 0.8 + Math.sin(time * 0.3) * 0.2;
+
+        let c = HSVtoRGB(finalHue, 1.0, brightness);
         c.r *= 10.0; // Match Ctrl+B intensity
         c.g *= 10.0;
         c.b *= 10.0;
