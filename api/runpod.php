@@ -286,7 +286,10 @@ $clients = array_filter(
 
 // --- actions ----------------------------------------------------------------------
 // state: podId (kept while the pod exists, also when stopped), startedAt (when the
-// current run began; null while stopped), clients (session => last poll).
+// current run began; null while stopped), clients (session => last poll, in join order).
+// One visitor at a time: the pod runs one stream (a new WebRTC connection replaces the
+// old one), so the earliest session still polling has the GPU and the others queue. A
+// queued session gets no token, so it can't connect and knock the active one off.
 
 if ($action === 'start') {
     if ($session === '') {
@@ -353,6 +356,13 @@ if ($now - (int) $state['startedAt'] > $maxSessionSeconds) {
     stopPod($config, $podId);
     $saveState(['podId' => $podId, 'startedAt' => null, 'clients' => []]);
     respond(200, ['success' => true, 'state' => 'stopped', 'reason' => 'time limit']);
+}
+$position = (int) array_search($session, array_keys($clients), true);
+if ($position > 0) {
+    $clients[$session] = $now; // keeps its place (an existing key doesn't move)
+    $state['clients'] = $clients;
+    $saveState($state);
+    respond(200, ['success' => true, 'state' => 'queued', 'position' => $position]);
 }
 
 [$status, $pod] = runpod($config, 'GET', 'pods/' . $podId);
