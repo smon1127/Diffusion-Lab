@@ -6117,12 +6117,28 @@ function getStreamLoaderDetail(stage = '') {
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// One session id per browser, kept across reloads and tabs: a reopened page reclaims its
+// place at the GPU instead of queueing behind its own closed tab (whose stop beacon may
+// never have arrived; api/runpod.php only forgets a silent session after 90 s)
+function getVisitorSession() {
+    try {
+        let id = localStorage.getItem(STORAGE_KEYS.POD_SESSION);
+        if (!/^[a-f0-9]{32}$/.test(id || '')) {
+            id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+            localStorage.setItem(STORAGE_KEYS.POD_SESSION, id);
+        }
+        return id;
+    } catch {
+        return null; // no storage (private mode): api/runpod.php makes one
+    }
+}
+
 // Starts the GPU pod (or joins the running one) and waits until its models are loaded.
 // Throws if it fails, takes too long, or the start was cancelled (stopStream clears the session).
 async function waitForPod() {
     streamWarmup.startedAt = Date.now();
     setStreamLoader('loading', 'Starting a GPU', getStreamLoaderDetail());
-    const { session } = await runpodApi('start', null);
+    const { session } = await runpodApi('start', getVisitorSession());
     streamState.session = session;
     addStreamEventToDebug({ type: 'pod_starting' });
 
@@ -9190,7 +9206,8 @@ const STORAGE_KEYS = {
     OVERLAY_LAYOUT: STORAGE_PREFIX + 'overlayLayout',
     CAMERA_LAYERS: STORAGE_PREFIX + 'cameraLayers',
     CAMERA_CHOICE: STORAGE_PREFIX + 'cameraChoice',  // 'yes' / 'no', asked once on the first start
-    REMOTE_CHOICE: STORAGE_PREFIX + 'remoteChoice'   // 'yes' / 'no', asked once before connecting
+    REMOTE_CHOICE: STORAGE_PREFIX + 'remoteChoice',  // 'yes' / 'no', asked once before connecting
+    POD_SESSION: STORAGE_PREFIX + 'podSession'       // this browser's id at api/runpod.php
 };
 
 // Left over from the Daydream backend (including a visitor's own Daydream API key): remove
