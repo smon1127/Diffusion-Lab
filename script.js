@@ -6130,6 +6130,14 @@ async function waitForPod() {
     while (streamState.session === session) {
         const status = await runpodApi('status', session);
         if (streamState.session !== session) break;
+        if (status.state === 'queued') {
+            // Another visitor has the GPU; we're connected automatically when it frees up
+            streamWarmup.startedAt = Date.now(); // the start timeout counts from our turn
+            const ahead = status.position === 1 ? "You're next" : `${status.position} visitors ahead of you`;
+            setStreamLoader('loading', 'The AI is in use', `${ahead}: it starts as soon as it's free`);
+            await sleep(POD_STATUS_POLL_MS);
+            continue;
+        }
         if (status.state === 'ready') {
             rememberPodStatus(status);
             streamState.podUrl = status.podUrl;
@@ -6155,8 +6163,9 @@ async function keepPodSession() {
         rememberPodStatus(status);
         if (status.state === 'ready') {
             streamState.token = status.token;
-        } else if (status.state === 'stopped' || status.state === 'error') {
-            // e.g. the pod hit its time limit or was stopped elsewhere
+        } else if (status.state === 'stopped' || status.state === 'error' || status.state === 'queued') {
+            // e.g. the pod hit its time limit or was stopped elsewhere, or our session
+            // timed out (tab in the background) and someone else has the GPU now
             stopStream();
             document.getElementById('streamOverlay')?.classList.add('visible');
             setStreamLoader('error', 'The AI session ended', `GPU state: ${status.state}`);
