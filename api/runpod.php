@@ -10,10 +10,11 @@
 // loading, `stage` carries the pod's own progress label (e.g. "loading models").
 //
 // One pod at a time, created from a RunPod template with the models and TensorRT
-// engines on a network volume. After a session it is stopped, not deleted: a stopped
-// pod costs nothing and resumes on the same host with its image cached. If that host
-// has no free GPU, or RUNPOD_IMAGE names a newer release, a new pod is created instead.
-// The pod also stops itself when idle; an external cron is the last safety net.
+// engines on a network volume. After a session it stays on standby for its idle time
+// (IDLE_MINUTES, 5), so starting again is quick, then stops itself; it is stopped, not
+// deleted: a stopped pod costs nothing and resumes on the same host with its image cached.
+// If that host has no free GPU, or RUNPOD_IMAGE names a newer release, a new pod is
+// created instead. The time limit and an external cron are the safety nets.
 //
 // Settings and the RunPod API key are read from api/.secrets/runpod.json, which
 // .htaccess blocks for web access and deploy.sh uploads from .env. The browser never
@@ -336,11 +337,10 @@ if ($action === 'start') {
 }
 
 if ($action === 'stop') {
+    // Only leaves: the pod stays on standby, so starting again within its idle time
+    // (IDLE_MINUTES, 5) takes seconds instead of a 2-4 min cold start. Its idle watcher
+    // stops it after that (about $0.07 at $0.89/h); the time limit and the cron still apply.
     unset($clients[$session]);
-    if ($podId !== '' && count($clients) === 0 && !empty($state['startedAt'])) {
-        stopPod($config, $podId);
-        $state['startedAt'] = null;
-    }
     $state['clients'] = $clients;
     $saveState($state);
     respond(200, ['success' => true, 'state' => 'stopped']);
